@@ -10,31 +10,90 @@
         hx-get="/search"
         hx-trigger="input changed delay:300ms, search"
         hx-target="#recipe-grid"
-        hx-include="[name='tags']"
+        hx-include="[name='tags'], [name='category']"
         autocomplete="off"
     >
 </div>
 
-<div class="tag-filters" id="tag-filters">
-    {% for tag in all_tags %}
-    <label class="tag-pill {% if tag in active_tags %}active{% endif %}">
-        <input
-            type="checkbox"
-            name="tags"
-            value="{{ tag }}"
-            {% if tag in active_tags %}checked{% endif %}
-            hx-get="/search"
-            hx-trigger="change"
-            hx-target="#recipe-grid"
-            hx-include="[name='q'], [name='tags']"
-        >
-        {{ tag }}
-    </label>
+<div class="filters">
+    <div class="filter-group">
+        <h3 class="filter-title">Catégorie</h3>
+        <div class="category-filters">
+            <label class="tag-pill {% if not active_category_id %}active{% endif %}">
+                <input
+                    type="radio"
+                    name="category"
+                    value=""
+                    {% if not active_category_id %}checked{% endif %}
+                    hx-get="/search"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags']"
+                >
+                Toutes
+            </label>
+            {% for cat in all_categories %}
+            <label class="tag-pill {% if active_category_id == cat.id %}active{% endif %}">
+                <input
+                    type="radio"
+                    name="category"
+                    value="{{ cat.id }}"
+                    {% if active_category_id == cat.id %}checked{% endif %}
+                    hx-get="/search"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags']"
+                >
+                {{ cat.display_name }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% for family_key, family in all_tags.items() %}
+    <div class="filter-group">
+        <h3 class="filter-title">{{ family.display_name }}</h3>
+        <div class="tag-filters">
+            {% for tag in family.tags %}
+            <label class="tag-pill {% if tag.id in active_tag_ids %}active{% endif %}">
+                <input
+                    type="checkbox"
+                    name="tags"
+                    value="{{ tag.id }}"
+                    {% if tag.id in active_tag_ids %}checked{% endif %}
+                    hx-get="/search"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='category'], [name='tags']"
+                >
+                {{ tag.display_name }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
     {% endfor %}
 </div>
 
 <div id="recipe-grid">
     {% include "partials/recipe_cards.html" %}
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.tag-pill input').forEach(function(input) {
+        input.addEventListener('change', function() {
+            const label = this.closest('.tag-pill');
+            if (this.type === 'checkbox') {
+                label.classList.toggle('active', this.checked);
+            } else if (this.type === 'radio') {
+                document.querySelectorAll('.tag-pill input[type="radio"][name="category"]').forEach(function(radio) {
+                    radio.closest('.tag-pill').classList.remove('active');
+                });
+                label.classList.add('active');
+            }
+        });
+    });
+});
+</script>
 
 {% endblock %}

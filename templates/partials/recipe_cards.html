@@ -2,10 +2,13 @@
     {% for recipe in recipes %}
     <a href="/recipe/{{ recipe.id }}" class="recipe-card">
         <h2>{{ recipe.title }}</h2>
+        {% if recipe.category %}
+        <span class="card-category">{{ recipe.category.display_name }}</span>
+        {% endif %}
         <p class="description">{{ recipe.description }}</p>
         <div class="card-tags">
             {% for tag in recipe.tags %}
-            <span class="tag">{{ tag }}</span>
+            <span class="tag">{{ tag.display_name }}</span>
             {% endfor %}
         </div>
     </a>

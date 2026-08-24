@@ -86,6 +86,12 @@ main {
     background: var(--accent);
     border-color: var(--accent);
     color: white;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(192, 113, 74, 0.3);
+}
+.tag-pill.active:hover {
+    background: var(--accent-dk);
+    border-color: var(--accent-dk);
 }
 
 /* Recipe grid */
@@ -211,3 +217,56 @@ a.tag:hover { background: var(--accent); color: white; }
     color: white;
 }
 .link-icon { font-size: 1rem; }
+
+/* Filters */
+.filters { margin-bottom: 2rem; }
+.filter-group { margin-bottom: 1rem; }
+.filter-title {
+    font-family: sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+}
+.category-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Category badge */
+.category-badge {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    background: var(--accent);
+    color: white;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-family: sans-serif;
+    margin-bottom: 0.75rem;
+}
+.card-category {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    background: var(--accent);
+    color: white;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-family: sans-serif;
+    margin-bottom: 0.4rem;
+}
+
+/* Detail tags grouped by family */
+.detail-tag-family {
+    margin-bottom: 0.5rem;
+}
+.detail-tag-family-name {
+    font-family: sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-right: 0.4rem;
+}

@@ -7,15 +7,26 @@
 
     <h1>{{ recipe.title }}</h1>
 
+    {% if recipe.category %}
+    <span class="category-badge">{{ recipe.category.display_name }}</span>
+    {% endif %}
+
     {% if recipe.description %}
     <p class="lead">{{ recipe.description }}</p>
     {% endif %}
 
+    {% if recipe.tags %}
     <div class="detail-tags">
-        {% for tag in recipe.tags %}
-        <a href="/?tags={{ tag }}" class="tag">{{ tag }}</a>
+        {% for family_key, family in recipe.tags.items() %}
+        <div class="detail-tag-family">
+            <span class="detail-tag-family-name">{{ family.family_display_name }}</span>
+            {% for tag in family.tags %}
+            <a href="/?tags={{ tag.id }}" class="tag">{{ tag.display_name }}</a>
+            {% endfor %}
+        </div>
         {% endfor %}
     </div>
+    {% endif %}
 
     {% if recipe.source_url or recipe.dropbox_url %}
     <div class="recipe-links">

@@ -2,14 +2,25 @@
 
 import pytest
 
-from recipes.db import init_db, upsert_recipe
+from recipes.db import (
+    get_all_categories,
+    get_all_tags_grouped,
+    init_db,
+    sync_recipe_tags,
+    upsert_recipe,
+)
 
 SAMPLE = {
     "title": "Poulet Rôti",
     "description": "Simple French roast chicken.",
     "ingredients": ["chicken", "garlic", "thyme", "butter"],
     "instructions": "Season. Roast at 200°C for 1 hour.",
-    "tags": ["chicken", "french", "dinner", "baked"],
+    "category": "plat-principal",
+    "tags": {
+        "origin": ["francais"],
+        "protein": ["poulet"],
+        "cooking_method": ["roti"],
+    },
     "source_file": "/recipes/poulet.docx",
     "file_hash": "aaa111",
 }
@@ -18,7 +29,8 @@ SAMPLE = {
 @pytest.fixture(autouse=True)
 def seed(temp_db):
     init_db()
-    upsert_recipe(SAMPLE)
+    recipe_id = upsert_recipe(SAMPLE)
+    sync_recipe_tags(recipe_id, SAMPLE["tags"])
 
 
 def test_index_returns_200(client):
@@ -27,10 +39,15 @@ def test_index_returns_200(client):
     assert "Poulet Rôti" in resp.text
 
 
-def test_index_shows_tags(client):
+def test_index_shows_tag_families(client):
     resp = client.get("/")
-    assert "french" in resp.text
-    assert "dinner" in resp.text
+    assert "Origine" in resp.text
+    assert "Protéine principale" in resp.text
+
+
+def test_index_shows_categories(client):
+    resp = client.get("/")
+    assert "Plat principal" in resp.text
 
 
 def test_search_by_keyword(client):
@@ -46,7 +63,24 @@ def test_search_no_results(client):
 
 
 def test_search_by_tag(client):
-    resp = client.get("/search?tags=french")
+    tags = get_all_tags_grouped()
+    francais_id = None
+    for fam_data in tags.values():
+        for t in fam_data["tags"]:
+            if t["name"] == "francais":
+                francais_id = t["id"]
+                break
+    assert francais_id is not None
+
+    resp = client.get(f"/search?tags={francais_id}")
+    assert resp.status_code == 200
+    assert "Poulet Rôti" in resp.text
+
+
+def test_search_by_category(client):
+    categories = get_all_categories()
+    plat_id = next(c["id"] for c in categories if c["name"] == "plat-principal")
+    resp = client.get(f"/search?category={plat_id}")
     assert resp.status_code == 200
     assert "Poulet Rôti" in resp.text
 
@@ -56,6 +90,7 @@ def test_recipe_detail(client):
     assert resp.status_code == 200
     assert "Poulet Rôti" in resp.text
     assert "garlic" in resp.text
+    assert "Plat principal" in resp.text
 
 
 def test_recipe_detail_not_found(client):

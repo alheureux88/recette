@@ -12,7 +12,7 @@ import dropbox
 from dropbox.exceptions import ApiError
 from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 
-from recipes.db import get_processed_hash, init_db, mark_processed, upsert_recipe
+from recipes.db import get_processed_hash, init_db, mark_processed, sync_recipe_tags, upsert_recipe
 from recipes.parsers import extract_text
 from recipes.tagger import tag_recipe
 
@@ -110,11 +110,17 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
     structured["dropbox_url"] = dropbox_url
 
     recipe_id = upsert_recipe(structured)
+    tags = structured.get("tags", {})
+    if isinstance(tags, dict):
+        sync_recipe_tags(
+            recipe_id, {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)}
+        )
     mark_processed(path, content_hash)
 
     log.info(
         f"  Saved recipe #{recipe_id}: '{structured['title']}' "
-        f"| tags: {structured['tags']} "
+        f"| category: {structured.get('category')} "
+        f"| tags: {structured.get('tags', {})} "
         f"| source_url: {structured.get('source_url')} "
         f"| dropbox_url: {dropbox_url}"
     )
