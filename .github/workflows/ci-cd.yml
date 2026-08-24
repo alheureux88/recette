@@ -106,4 +106,4 @@ jobs:
         run: |
           # Sends an isolated HTTP POST request straight to your internal Portainer engine
           # Masked cleanly behind your encrypted GitHub Repository Secrets
-          curl -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
+          curl --insecure -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}"
