@@ -7,6 +7,7 @@ Run:  uvicorn recipes.main:app --host 0.0.0.0 --port 8000
 
 import logging
 import os
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -35,11 +36,15 @@ POLL_INTERVAL_MINUTES = int(os.environ.get("POLL_INTERVAL_MINUTES", "15"))
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
 
-    log.info("Running initial Dropbox poll on startup...")
-    try:
-        poll_dropbox()
-    except Exception as e:
-        log.error(f"Initial poll failed: {e}")
+    log.info("Starting initial Dropbox poll in background...")
+
+    def _initial_poll() -> None:
+        try:
+            poll_dropbox()
+        except Exception as e:
+            log.error(f"Initial poll failed: {e}")
+
+    threading.Thread(target=_initial_poll, daemon=True).start()
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(

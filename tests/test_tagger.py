@@ -259,7 +259,7 @@ class TestTagRecipe:
         assert result["title"] == "Anthropic Recipe"
         mock_client.messages.create.assert_called_once()
 
-    def test_truncates_long_text(self):
+    def test_sends_full_text(self):
         recipe_json = json.dumps({"title": "Test", "tags": {}})
 
         mock_client = MagicMock()
@@ -272,4 +272,4 @@ class TestTagRecipe:
 
         call_args = mock_client.chat.completions.create.call_args
         user_content = call_args.kwargs["messages"][1]["content"]
-        assert len(user_content) == 6000
+        assert len(user_content) == 10000

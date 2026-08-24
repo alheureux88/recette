@@ -7,7 +7,9 @@ import fnmatch
 import hashlib
 import logging
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,8 @@ IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/data/images"))
 
 _dbx_client: dropbox.Dropbox | None = None
 _dbx_token_expiry: float = 0
+_DBX_LOCK = threading.Lock()
+_DB_LOCK = threading.Lock()
 
 
 def _refresh_dropbox_token() -> tuple[str, float]:
@@ -90,22 +94,25 @@ def _get_dropbox_client() -> dropbox.Dropbox:
     if _dbx_client is not None and time.time() < _dbx_token_expiry:
         return _dbx_client
 
-    refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN")
+    with _DBX_LOCK:
+        if _dbx_client is not None and time.time() < _dbx_token_expiry:
+            return _dbx_client
 
-    if refresh_token:
-        access_token, expiry = _refresh_dropbox_token()
-        _dbx_client = dropbox.Dropbox(access_token)
-        _dbx_token_expiry = expiry
-        return _dbx_client
+        refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN")
 
-    # Fallback to static token (for dev/testing)
-    static_token = os.environ.get("DROPBOX_TOKEN")
-    if static_token:
-        _dbx_client = dropbox.Dropbox(static_token)
-        _dbx_token_expiry = time.time() + 3600
-        return _dbx_client
+        if refresh_token:
+            access_token, expiry = _refresh_dropbox_token()
+            _dbx_client = dropbox.Dropbox(access_token)
+            _dbx_token_expiry = expiry
+            return _dbx_client
 
-    raise ValueError("No Dropbox credentials configured")
+        static_token = os.environ.get("DROPBOX_TOKEN")
+        if static_token:
+            _dbx_client = dropbox.Dropbox(static_token)
+            _dbx_token_expiry = time.time() + 3600
+            return _dbx_client
+
+        raise ValueError("No Dropbox credentials configured")
 
 
 def reset_dropbox_client() -> None:
@@ -242,7 +249,6 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
     content = download_file(dbx, path)
     content_hash = file_hash(content)
 
-    # Skip if we've already processed this exact version
     existing_hash = get_processed_hash(path)
     if existing_hash == content_hash:
         log.info(f"  Skipping (unchanged): {path}")
@@ -274,16 +280,16 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
     structured["file_hash"] = content_hash
     structured["dropbox_url"] = dropbox_url
 
-    recipe_id = upsert_recipe(structured)
-    tags = structured.get("tags", {})
-    if isinstance(tags, dict):
-        sync_recipe_tags(
-            recipe_id, {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)}
-        )
-
-    _save_images(recipe_id, entry.name, content)
-
-    mark_processed(path, content_hash)
+    with _DB_LOCK:
+        recipe_id = upsert_recipe(structured)
+        tags = structured.get("tags", {})
+        if isinstance(tags, dict):
+            sync_recipe_tags(
+                recipe_id,
+                {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)},
+            )
+        _save_images(recipe_id, entry.name, content)
+        mark_processed(path, content_hash)
 
     log.info(
         f"  Saved recipe #{recipe_id}: '{structured['title']}' "
@@ -310,15 +316,21 @@ def run() -> None:
         return
 
     log.info(f"Found {len(files)} recipe file(s).")
-    for entry in files:
-        try:
-            process_file(dbx, entry)
-        except AuthError as e:
-            log.error(f"Dropbox authentication error while processing {entry.name}: {e}")
-            log.info("Token may have expired. Please refresh your Dropbox credentials.")
-            return
-        except Exception as e:
-            log.error(f"Unexpected error processing {entry.name}: {e}")
+    max_workers = int(os.environ.get("POLL_WORKERS", "5"))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(process_file, dbx, entry): entry for entry in files}
+        for future in as_completed(futures):
+            entry = futures[future]
+            try:
+                future.result()
+            except AuthError as e:
+                log.error(f"Dropbox authentication error while processing {entry.name}: {e}")
+                log.info("Token may have expired. Please refresh your Dropbox credentials.")
+                executor.shutdown(wait=False, cancel_futures=True)
+                return
+            except Exception as e:
+                log.error(f"Unexpected error processing {entry.name}: {e}")
 
     log.info("Done.")
 

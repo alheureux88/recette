@@ -5,11 +5,13 @@ structured data with tags grouped by family and a category.
 
 import json
 import os
+import threading
 from typing import Any
 
 from recipes.db import get_all_categories, get_existing_tags_for_prompt
 
 _client: Any = None
+_client_lock = threading.Lock()
 
 
 def reset_client() -> None:
@@ -22,22 +24,26 @@ def _get_client() -> Any:
     if _client is not None:
         return _client
 
-    provider = os.environ.get("LLM_PROVIDER", "openai").lower()
-    api_key = os.environ["LLM_API_KEY"]
+    with _client_lock:
+        if _client is not None:
+            return _client
 
-    if provider == "anthropic":
-        from anthropic import Anthropic
+        provider = os.environ.get("LLM_PROVIDER", "openai").lower()
+        api_key = os.environ["LLM_API_KEY"]
 
-        _client = Anthropic(api_key=api_key)
-    else:
-        from openai import OpenAI
+        if provider == "anthropic":
+            from anthropic import Anthropic
 
-        base_url = os.environ.get("LLM_BASE_URL")
-        _client = (
-            OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
-        )
+            _client = Anthropic(api_key=api_key)
+        else:
+            from openai import OpenAI
 
-    return _client
+            base_url = os.environ.get("LLM_BASE_URL")
+            _client = (
+                OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+            )
+
+        return _client
 
 
 def _get_provider() -> str:
@@ -152,7 +158,7 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
             max_tokens=1000,
             system=system_prompt,
             messages=[
-                {"role": "user", "content": raw_text[:6000]},
+                {"role": "user", "content": raw_text},
             ],
         )
         raw = response.content[0].text.strip()
@@ -163,7 +169,7 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
             temperature=0.2,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": raw_text[:6000]},
+                {"role": "user", "content": raw_text},
             ],
         )
         raw = (response.choices[0].message.content or "").strip()
