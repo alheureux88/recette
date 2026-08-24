@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # only exposed to localhost — Nginx proxies it
+    env_file:
+      - .env
+    volumes:
+      - recipes_data:/data       # SQLite database persists here
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  recipes_data:

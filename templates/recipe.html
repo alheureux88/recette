@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ recipe.title }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<div class="recipe-detail">
+    <a href="/" class="back">← Toutes les recettes</a>
+
+    <h1>{{ recipe.title }}</h1>
+
+    {% if recipe.description %}
+    <p class="lead">{{ recipe.description }}</p>
+    {% endif %}
+
+    <div class="detail-tags">
+        {% for tag in recipe.tags %}
+        <a href="/?tags={{ tag }}" class="tag">{{ tag }}</a>
+        {% endfor %}
+    </div>
+
+    {% if recipe.source_url or recipe.dropbox_url %}
+    <div class="recipe-links">
+        {% if recipe.source_url %}
+        <a href="{{ recipe.source_url }}" target="_blank" rel="noopener" class="recipe-link">
+            <span class="link-icon">🌐</span> Voir le site original
+        </a>
+        {% endif %}
+        {% if recipe.dropbox_url %}
+        <a href="{{ recipe.dropbox_url }}" target="_blank" rel="noopener" class="recipe-link">
+            <span class="link-icon">📄</span> Voir le fichier original
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="recipe-body">
+        <section class="ingredients">
+            <h2>Ingrédients</h2>
+            <ul>
+                {% for item in recipe.ingredients %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="instructions">
+            <h2>Instructions</h2>
+            {% for step in recipe.instructions.split('\n') %}
+                {% if step.strip() %}
+                <p>{{ step }}</p>
+                {% endif %}
+            {% endfor %}
+        </section>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="search-bar">
+    <input
+        type="search"
+        name="q"
+        placeholder="Rechercher des recettes..."
+        value="{{ query }}"
+        hx-get="/search"
+        hx-trigger="input changed delay:300ms, search"
+        hx-target="#recipe-grid"
+        hx-include="[name='tags']"
+        autocomplete="off"
+    >
+</div>
+
+<div class="tag-filters" id="tag-filters">
+    {% for tag in all_tags %}
+    <label class="tag-pill {% if tag in active_tags %}active{% endif %}">
+        <input
+            type="checkbox"
+            name="tags"
+            value="{{ tag }}"
+            {% if tag in active_tags %}checked{% endif %}
+            hx-get="/search"
+            hx-trigger="change"
+            hx-target="#recipe-grid"
+            hx-include="[name='q'], [name='tags']"
+        >
+        {{ tag }}
+    </label>
+    {% endfor %}
+</div>
+
+<div id="recipe-grid">
+    {% include "partials/recipe_cards.html" %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: nox-lint
+        name: nox lint
+        entry: nox -s lint
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: nox-typecheck
+        name: nox typecheck
+        entry: nox -s typecheck
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: nox-test
+        name: nox test
+        entry: nox -s test
+        language: system
+        pass_filenames: false
+        always_run: true

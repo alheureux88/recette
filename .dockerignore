@@ -1,0 +1,13 @@
+.env
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.db
+logs/
+.git
+.gitignore
+.nox
+tests/
+noxfile.py
+pyproject.toml   # already baked in via uv.lock in the image

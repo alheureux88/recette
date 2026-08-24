@@ -1,0 +1,15 @@
+{% if recipes %}
+    {% for recipe in recipes %}
+    <a href="/recipe/{{ recipe.id }}" class="recipe-card">
+        <h2>{{ recipe.title }}</h2>
+        <p class="description">{{ recipe.description }}</p>
+        <div class="card-tags">
+            {% for tag in recipe.tags %}
+            <span class="tag">{{ tag }}</span>
+            {% endfor %}
+        </div>
+    </a>
+    {% endfor %}
+{% else %}
+    <p class="empty">Aucune recette trouvée. Essayez une autre recherche ou étiquette.</p>
+{% endif %}
