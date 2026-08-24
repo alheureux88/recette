@@ -19,6 +19,11 @@ RUN uv sync --no-dev --frozen
 # ---- final image ----
 FROM base AS final
 
+# Install system dependencies for file parsing
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends antiword && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy installed venv from deps stage
 COPY --from=deps /app/.venv /app/.venv
 

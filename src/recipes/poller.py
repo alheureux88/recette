@@ -3,6 +3,7 @@ poller.py — Poll a Dropbox folder for new or changed recipe files,
 parse them, tag them via LLM, and store in SQLite.
 """
 
+import fnmatch
 import hashlib
 import logging
 import os
@@ -24,7 +25,18 @@ log = logging.getLogger(__name__)
 
 DROPBOX_TOKEN = os.environ["DROPBOX_TOKEN"]
 DROPBOX_FOLDER = os.environ.get("DROPBOX_FOLDER", "")
-SUPPORTED_EXTS = {".txt", ".docx", ".pdf"}
+DROPBOX_FILE_FILTER = os.environ.get("DROPBOX_FILE_FILTER", "")
+SUPPORTED_EXTS = {".txt", ".docx", ".doc", ".odt", ".pdf"}
+
+
+def matches_filter(filename: str) -> bool:
+    """Check if filename matches the filter pattern (supports * wildcard).
+
+    Empty filter matches everything.
+    """
+    if not DROPBOX_FILE_FILTER:
+        return True
+    return fnmatch.fnmatch(filename.lower(), DROPBOX_FILE_FILTER.lower())
 
 
 def file_hash(content: bytes) -> str:
@@ -32,19 +44,28 @@ def file_hash(content: bytes) -> str:
 
 
 def list_recipe_files(dbx: dropbox.Dropbox) -> list[dropbox.files.FileMetadata]:
-    """Return all supported files in the Dropbox folder (non-recursive)."""
+    """Return all supported files in the Dropbox folder (non-recursive).
+
+    Applies file filter from DROPBOX_FILE_FILTER env var if set.
+    """
     result = dbx.files_list_folder(DROPBOX_FOLDER)
     entries = result.entries[:]
     while result.has_more:
         result = dbx.files_list_folder_continue(result.cursor)
         entries.extend(result.entries)
 
-    return [
+    files = [
         e
         for e in entries
         if isinstance(e, dropbox.files.FileMetadata)
         and Path(e.name).suffix.lower() in SUPPORTED_EXTS
+        and matches_filter(e.name)
     ]
+
+    if DROPBOX_FILE_FILTER:
+        log.info(f"File filter active: '{DROPBOX_FILE_FILTER}'")
+
+    return files
 
 
 def download_file(dbx: dropbox.Dropbox, path: str) -> bytes:
@@ -72,6 +93,18 @@ def get_or_create_shared_link(dbx: dropbox.Dropbox, path: str) -> str | None:
         return None
 
 
+def extract_title_from_filename(filename: str) -> str:
+    """Extract a default title from the filename.
+
+    Expected format: "CATEGORY Title of recipe.ext" or "Title of recipe.ext"
+    """
+    name = Path(filename).stem
+    parts = name.split(maxsplit=1)
+    if len(parts) > 1 and parts[0].isupper():
+        return parts[1]
+    return name
+
+
 def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> None:
     path = entry.path_lower
     log.info(f"Downloading: {path}")
@@ -95,9 +128,10 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
         log.warning(f"  Empty text extracted from {entry.name}, skipping.")
         return
 
-    log.info("  Tagging with LLM...")
+    default_title = extract_title_from_filename(entry.name)
+    log.info(f"  Tagging with LLM... (default title: '{default_title}')")
     try:
-        structured = tag_recipe(raw_text)
+        structured = tag_recipe(raw_text, default_title=default_title)
     except Exception as e:
         log.error(f"  Tagging failed for {entry.name}: {e}")
         return

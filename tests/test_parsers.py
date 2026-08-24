@@ -26,7 +26,7 @@ def test_extract_text_txt():
 
 def test_extract_text_unsupported_extension():
     with pytest.raises(ValueError, match="Type de fichier non pris en charge"):
-        extract_text("recipe.odt", b"some content")
+        extract_text("recipe.xyz", b"some content")
 
 
 def test_extract_text_case_insensitive_extension():
@@ -71,3 +71,36 @@ def test_extract_text_docx(tmp_path):
 
     result = extract_text("test.docx", docx_path.read_bytes())
     assert "Chocolate Cake" in result
+
+
+def test_extract_text_odt():
+    """Test .odt parsing — requires odfpy."""
+    pytest.importorskip("odf")
+    from odf.opendocument import OpenDocumentText
+    from odf.text import P
+
+    doc = OpenDocumentText()
+    p = P(text="Tarte au sucre recipe")
+    doc.text.addElement(p)
+
+    import io
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+
+    result = extract_text("test.odt", buffer.read())
+    assert "Tarte au sucre" in result
+
+
+def test_extract_text_doc():
+    """Test .doc parsing — requires textract and antiword."""
+    pytest.importorskip("textract")
+    # .doc files are complex binary format, so we just test that the function
+    # can be called without crashing on invalid data
+    from recipes.parsers import parse_doc
+
+    # This will raise a ValueError because either antiword is not installed
+    # or the content is not a valid .doc file
+    with pytest.raises(ValueError, match="(antiword|Erreur lors de la lecture du fichier .doc)"):
+        parse_doc(b"not a valid doc file")

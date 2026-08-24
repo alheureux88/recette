@@ -85,13 +85,20 @@ def build_system_prompt() -> str:
             "Pour les étiquettes hiérarchiques (Origine), inclus toujours les étiquettes parentes.",
             "Pour la catégorie, utilise le nom exact d'une des catégories disponibles.",
             "",
+            "=== IMPORTANT pour les instructions ===",
+            "",
+            "Le texte brut contient des paragraphes séparés par des sauts de ligne.",
+            "Préserve ces sauts de ligne dans le champ 'instructions' en utilisant '\\n' entre chaque étape.",
+            "NE mets PAS tout dans un seul paragraphe. Chaque étape doit être séparée par '\\n'.",
+            'Exemple: "Étape 1.\\nÉtape 2.\\nÉtape 3."',
+            "",
             "=== Format de sortie JSON ===",
             "",
             "{",
             '  "title": "Nom de la recette",',
             '  "description": "Résumé en une ou deux phrases",',
             '  "ingredients": ["ingrédient 1", "ingrédient 2"],',
-            '  "instructions": "Instructions complètes en une seule chaîne, étapes séparées par des retours à la ligne",',
+            '  "instructions": "Étape 1.\\nÉtape 2.\\nÉtape 3.",',
             '  "category": "plat-principal",',
             '  "tags": {',
             '    "origin": ["asiatique", "japonais"],',
@@ -112,7 +119,7 @@ def build_system_prompt() -> str:
     return "\n".join(lines)
 
 
-def tag_recipe(raw_text: str) -> dict[str, object]:
+def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, object]:
     system_prompt = build_system_prompt()
 
     if PROVIDER == "anthropic":
@@ -148,7 +155,12 @@ def tag_recipe(raw_text: str) -> dict[str, object]:
     except json.JSONDecodeError as e:
         raise ValueError(f"LLM returned invalid JSON: {e}\n\nRaw response:\n{raw}") from None
 
-    data.setdefault("title", "Recette sans titre")
+    title = data.get("title")
+    if not title or title == "Recette sans titre":
+        data["title"] = default_title or "Recette sans titre"
+    else:
+        data["title"] = title
+
     data.setdefault("description", "")
     data.setdefault("ingredients", [])
     data.setdefault("instructions", "")
