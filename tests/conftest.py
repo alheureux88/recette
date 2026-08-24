@@ -19,13 +19,20 @@ def temp_db(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "https://fake.llm/v1")
     monkeypatch.setenv("LLM_MODEL", "fake-model")
 
+    images_dir = tmp_path / "images"
+    monkeypatch.setenv("IMAGES_DIR", str(images_dir))
+    import recipes.poller as poller_module
+
+    monkeypatch.setattr(poller_module, "IMAGES_DIR", images_dir)
+    poller_module.reset_dropbox_client()
+
     import recipes.tagger as tagger_module
 
     tagger_module.reset_client()
 
-    import recipes.poller as poller_module
+    import recipes.main as main_module
 
-    poller_module.reset_dropbox_client()
+    monkeypatch.setattr(main_module, "IMAGES_DIR", images_dir)
 
     yield db_file
 

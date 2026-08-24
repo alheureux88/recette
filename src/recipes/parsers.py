@@ -241,6 +241,68 @@ def extract_images_pdf(content: bytes) -> list[tuple[str, bytes]]:
     return images
 
 
+def extract_images_doc(content: bytes) -> list[tuple[str, bytes]]:
+    import olefile
+
+    images: list[tuple[str, bytes]] = []
+    if not olefile.isOleFile(io.BytesIO(content)):
+        return images
+
+    ole = olefile.OleFileIO(content)
+    try:
+        for stream_path in ole.listdir():
+            name = "/".join(stream_path)
+            data = ole.openstream(stream_path).read()
+            _scan_stream_for_images(data, name, images)
+    finally:
+        ole.close()
+    return images
+
+
+def _scan_stream_for_images(data: bytes, stream_name: str, images: list[tuple[str, bytes]]) -> None:
+    import re
+
+    _JPEG_START = re.compile(b"\xff\xd8\xff[\xe0\xe1\xe2\xe3\xdb]")
+    _PNG_START = b"\x89PNG\r\n\x1a\n"
+    _PNG_END = b"IEND"
+    _GIF_START = re.compile(b"GIF8[79]a")
+    _GIF_END = b"\x00\x3b"
+
+    idx = len(images)
+
+    for m in _JPEG_START.finditer(data):
+        start = m.start()
+        end = data.find(b"\xff\xd9", start + 2)
+        if end != -1:
+            img = data[start : end + 2]
+            if len(img) > 100:
+                idx += 1
+                images.append((f"{stream_name}_img{idx}.jpg", img))
+
+    pos = 0
+    while True:
+        start = data.find(_PNG_START, pos)
+        if start == -1:
+            break
+        end = data.find(_PNG_END, start)
+        if end != -1:
+            end += 4 + 4
+            img = data[start:end]
+            if len(img) > 100:
+                idx += 1
+                images.append((f"{stream_name}_img{idx}.png", img))
+        pos = start + 1
+
+    for m in _GIF_START.finditer(data):
+        start = m.start()
+        end = data.find(_GIF_END, start + 6)
+        if end != -1:
+            img = data[start : end + 2]
+            if len(img) > 100:
+                idx += 1
+                images.append((f"{stream_name}_img{idx}.gif", img))
+
+
 def extract_images(filename: str, content: bytes) -> list[tuple[str, bytes]]:
     """Extract embedded images from a document file.
 
@@ -249,6 +311,8 @@ def extract_images(filename: str, content: bytes) -> list[tuple[str, bytes]]:
     suffix = Path(filename).suffix.lower()
     if suffix == ".docx":
         return extract_images_docx(content)
+    elif suffix == ".doc":
+        return extract_images_doc(content)
     elif suffix == ".odt":
         return extract_images_odt(content)
     elif suffix == ".pdf":

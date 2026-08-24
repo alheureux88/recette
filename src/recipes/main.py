@@ -35,6 +35,7 @@ POLL_INTERVAL_MINUTES = int(os.environ.get("POLL_INTERVAL_MINUTES", "15"))
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
     log.info("Starting initial Dropbox poll in background...")
 
@@ -66,9 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Recettes Merizzi", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
+app.mount("/images", StaticFiles(directory=str(IMAGES_DIR), check_dir=False), name="images")
 
 templates = Jinja2Templates(directory="templates")
 

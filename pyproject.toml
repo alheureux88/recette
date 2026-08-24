@@ -16,6 +16,7 @@ dependencies = [
     "pymupdf>=1.24.0",
     "odfpy>=1.4.1",
     "textract>=1.6.5",
+    "olefile>=0.46",
     "chardet>=5.0.0",
     "apscheduler>=3.10.0",
 ]

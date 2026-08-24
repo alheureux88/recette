@@ -1,8 +1,19 @@
 """Tests for parsers.py — text extraction from txt, docx, pdf."""
 
+from pathlib import Path
+
 import pytest
 
-from recipes.parsers import _decode_with_fallback, extract_text, parse_pdf, parse_txt
+from recipes.parsers import (
+    _decode_with_fallback,
+    extract_images,
+    extract_images_doc,
+    extract_text,
+    parse_pdf,
+    parse_txt,
+)
+
+RESOURCES_DIR = Path(__file__).resolve().parent.parent / "resources"
 
 
 def test_parse_txt_utf8():
@@ -182,3 +193,35 @@ class TestParsePdf:
         except Exception:
             # pdfplumber may raise on invalid PDF data - that's acceptable
             pass
+
+
+class TestExtractImagesDoc:
+    def test_extracts_jpeg_from_real_doc(self):
+        pytest.importorskip("olefile")
+        doc_path = RESOURCES_DIR / "BISCUIT Biscuits a la noix de coco.doc"
+        if not doc_path.exists():
+            pytest.skip("resource .doc file not found")
+        content = doc_path.read_bytes()
+        images = extract_images_doc(content)
+        assert len(images) >= 1
+        name, img_bytes = images[0]
+        assert name.endswith(".jpg")
+        assert img_bytes[:2] == b"\xff\xd8"
+        assert len(img_bytes) > 100
+
+    def test_returns_empty_for_non_ole2(self):
+        pytest.importorskip("olefile")
+        assert extract_images_doc(b"not an ole2 file") == []
+
+    def test_returns_empty_for_empty_content(self):
+        pytest.importorskip("olefile")
+        assert extract_images_doc(b"") == []
+
+    def test_extract_images_dispatches_doc(self):
+        pytest.importorskip("olefile")
+        doc_path = RESOURCES_DIR / "BISCUIT Biscuits a la noix de coco.doc"
+        if not doc_path.exists():
+            pytest.skip("resource .doc file not found")
+        content = doc_path.read_bytes()
+        images = extract_images("BISCUIT Biscuits a la noix de coco.doc", content)
+        assert len(images) >= 1
