@@ -7,10 +7,13 @@ import fnmatch
 import hashlib
 import logging
 import os
+import time
 from pathlib import Path
+from typing import Any
 
 import dropbox
-from dropbox.exceptions import ApiError
+import requests
+from dropbox.exceptions import ApiError, AuthError
 from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 
 from recipes.db import get_processed_hash, init_db, mark_processed, sync_recipe_tags, upsert_recipe
@@ -23,10 +26,106 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DROPBOX_TOKEN = os.environ["DROPBOX_TOKEN"]
 DROPBOX_FOLDER = os.environ.get("DROPBOX_FOLDER", "")
 DROPBOX_FILE_FILTER = os.environ.get("DROPBOX_FILE_FILTER", "")
 SUPPORTED_EXTS = {".txt", ".docx", ".doc", ".odt", ".pdf"}
+
+_dbx_client: dropbox.Dropbox | None = None
+_dbx_token_expiry: float = 0
+
+
+def _refresh_dropbox_token() -> tuple[str, float]:
+    """Refresh the Dropbox access token using the refresh token flow.
+
+    Returns:
+        A tuple of (access_token, expiry_timestamp)
+    """
+    refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN")
+    app_key = os.environ.get("DROPBOX_APP_KEY")
+    app_secret = os.environ.get("DROPBOX_APP_SECRET")
+
+    if not all([refresh_token, app_key, app_secret]):
+        raise ValueError(
+            "Dropbox token refresh requires DROPBOX_REFRESH_TOKEN, "
+            "DROPBOX_APP_KEY, and DROPBOX_APP_SECRET environment variables"
+        )
+
+    log.info("Refreshing Dropbox access token...")
+    response = requests.post(
+        "https://api.dropbox.com/oauth2/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": app_key,
+            "client_secret": app_secret,
+        },
+        timeout=30,
+    )
+
+    if not response.ok:
+        error_body = response.text
+        log.error(f"Dropbox token refresh failed: {response.status_code}")
+        log.error(f"Response: {error_body}")
+        raise ValueError(f"Dropbox token refresh failed: {error_body}")
+
+    token_data = response.json()
+
+    access_token = str(token_data["access_token"])
+    expires_in = int(token_data.get("expires_in", 14400))
+    return access_token, time.time() + expires_in - 60
+
+
+def _get_dropbox_client() -> dropbox.Dropbox:
+    """Get or create a Dropbox client with automatic token refresh."""
+    global _dbx_client, _dbx_token_expiry
+
+    if _dbx_client is not None and time.time() < _dbx_token_expiry:
+        return _dbx_client
+
+    refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN")
+
+    if refresh_token:
+        access_token, expiry = _refresh_dropbox_token()
+        _dbx_client = dropbox.Dropbox(access_token)
+        _dbx_token_expiry = expiry
+        return _dbx_client
+
+    # Fallback to static token (for dev/testing)
+    static_token = os.environ.get("DROPBOX_TOKEN")
+    if static_token:
+        _dbx_client = dropbox.Dropbox(static_token)
+        _dbx_token_expiry = time.time() + 3600
+        return _dbx_client
+
+    raise ValueError("No Dropbox credentials configured")
+
+
+def reset_dropbox_client() -> None:
+    """Reset the cached Dropbox client (useful for testing)."""
+    global _dbx_client, _dbx_token_expiry
+    _dbx_client = None
+    _dbx_token_expiry = 0
+
+
+def _with_retry(func: Any, *args: Any, **kwargs: Any) -> Any:
+    """Execute a Dropbox API call with automatic retry on auth errors."""
+    global _dbx_client, _dbx_token_expiry
+
+    try:
+        return func(*args, **kwargs)
+    except AuthError as e:
+        if "expired_access_token" in str(e):
+            log.warning("Dropbox token expired, refreshing...")
+            _dbx_client = None
+            _dbx_token_expiry = 0
+            dbx = _get_dropbox_client()
+            # Retry with new client - need to update the dbx reference in args
+            new_args = list(args)
+            for i, arg in enumerate(new_args):
+                if isinstance(arg, dropbox.Dropbox):
+                    new_args[i] = dbx
+            return func(*new_args, **kwargs)
+        raise
 
 
 def matches_filter(filename: str) -> bool:
@@ -162,11 +261,15 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
 
 def run() -> None:
     init_db()
-    dbx = dropbox.Dropbox(DROPBOX_TOKEN)
+    dbx = _get_dropbox_client()
 
     log.info(f"Checking Dropbox folder: '{DROPBOX_FOLDER or '/'}'")
     try:
         files = list_recipe_files(dbx)
+    except AuthError as e:
+        log.error(f"Dropbox authentication error: {e}")
+        log.info("Token may have expired. Please refresh your Dropbox credentials.")
+        return
     except ApiError as e:
         log.error(f"Dropbox API error: {e}")
         return
@@ -175,6 +278,10 @@ def run() -> None:
     for entry in files:
         try:
             process_file(dbx, entry)
+        except AuthError as e:
+            log.error(f"Dropbox authentication error while processing {entry.name}: {e}")
+            log.info("Token may have expired. Please refresh your Dropbox credentials.")
+            return
         except Exception as e:
             log.error(f"Unexpected error processing {entry.name}: {e}")
 

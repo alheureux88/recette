@@ -18,6 +18,15 @@ def temp_db(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "fake-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://fake.llm/v1")
     monkeypatch.setenv("LLM_MODEL", "fake-model")
+
+    import recipes.tagger as tagger_module
+
+    tagger_module.reset_client()
+
+    import recipes.poller as poller_module
+
+    poller_module.reset_dropbox_client()
+
     yield db_file
 
 

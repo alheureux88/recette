@@ -187,7 +187,9 @@ def _create_tables(conn: sqlite3.Connection) -> None:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
+    rows = conn.execute("PRAGMA table_info(recipes)").fetchall()
+    cols = {row[1] for row in rows}
+    del rows
 
     if "tags" in cols:
         conn.execute("ALTER TABLE recipes DROP COLUMN tags")
@@ -197,12 +199,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
-    conn.executescript("""
-        DROP TRIGGER IF EXISTS recipes_ai;
-        DROP TRIGGER IF EXISTS recipes_au;
-        DROP TRIGGER IF EXISTS recipes_ad;
-        DROP TABLE IF EXISTS recipes_fts;
+    fts_exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='recipes_fts'"
+    ).fetchone()
 
+    if fts_exists:
+        del fts_exists
+        return
+    del fts_exists
+
+    conn.executescript("""
         CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5(
             title,
             description,
@@ -231,6 +237,7 @@ def _create_fts(conn: sqlite3.Connection) -> None:
             "INSERT INTO recipes_fts(rowid, title, description, ingredients) VALUES (?, ?, ?, ?)",
             (row["id"], row["title"], row["description"], row["ingredients"]),
         )
+    del rows
 
 
 def _seed(conn: sqlite3.Connection) -> None:
@@ -246,7 +253,8 @@ def _seed(conn: sqlite3.Connection) -> None:
         ).fetchone()
         if not family:
             continue
-        family_id = family["id"]
+        family_id = int(family["id"])
+        del family
 
         for name, display_name, _parent_name in tags:
             conn.execute(
@@ -261,9 +269,11 @@ def _seed(conn: sqlite3.Connection) -> None:
                     (family_id, parent_name),
                 ).fetchone()
                 if parent:
+                    parent_id = int(parent["id"])
+                    del parent
                     conn.execute(
                         "UPDATE tags SET parent_id = ? WHERE family_id = ? AND name = ?",
-                        (parent["id"], family_id, name),
+                        (parent_id, family_id, name),
                     )
 
     for name, display_name, sort_order in SEED_CATEGORIES:

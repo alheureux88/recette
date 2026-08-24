@@ -9,19 +9,43 @@ from typing import Any
 
 from recipes.db import get_all_categories, get_existing_tags_for_prompt
 
-PROVIDER = os.environ.get("LLM_PROVIDER", "openai").lower()
-MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-API_KEY = os.environ["LLM_API_KEY"]
+_client: Any = None
 
-if PROVIDER == "anthropic":
-    from anthropic import Anthropic
 
-    client: Any = Anthropic(api_key=API_KEY)
-else:
-    from openai import OpenAI
+def reset_client() -> None:
+    global _client
+    _client = None
 
-    base_url = os.environ.get("LLM_BASE_URL")
-    client = OpenAI(api_key=API_KEY, base_url=base_url) if base_url else OpenAI(api_key=API_KEY)
+
+def _get_client() -> Any:
+    global _client
+    if _client is not None:
+        return _client
+
+    provider = os.environ.get("LLM_PROVIDER", "openai").lower()
+    api_key = os.environ["LLM_API_KEY"]
+
+    if provider == "anthropic":
+        from anthropic import Anthropic
+
+        _client = Anthropic(api_key=api_key)
+    else:
+        from openai import OpenAI
+
+        base_url = os.environ.get("LLM_BASE_URL")
+        _client = (
+            OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+        )
+
+    return _client
+
+
+def _get_provider() -> str:
+    return os.environ.get("LLM_PROVIDER", "openai").lower()
+
+
+def _get_model() -> str:
+    return os.environ.get("LLM_MODEL", "gpt-4o-mini")
 
 
 FAMILY_DISPLAY_NAMES: dict[str, str] = {
@@ -122,9 +146,9 @@ def build_system_prompt() -> str:
 def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, object]:
     system_prompt = build_system_prompt()
 
-    if PROVIDER == "anthropic":
-        response = client.messages.create(
-            model=MODEL,
+    if _get_provider() == "anthropic":
+        response = _get_client().messages.create(
+            model=_get_model(),
             max_tokens=1000,
             system=system_prompt,
             messages=[
@@ -133,8 +157,8 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
         )
         raw = response.content[0].text.strip()
     else:
-        response = client.chat.completions.create(
-            model=MODEL,
+        response = _get_client().chat.completions.create(
+            model=_get_model(),
             max_tokens=1000,
             temperature=0.2,
             messages=[

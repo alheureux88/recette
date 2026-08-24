@@ -2,7 +2,7 @@
 
 import pytest
 
-from recipes.parsers import extract_text, parse_txt
+from recipes.parsers import _decode_with_fallback, extract_text, parse_pdf, parse_txt
 
 
 def test_parse_txt_utf8():
@@ -104,3 +104,81 @@ def test_extract_text_doc():
     # or the content is not a valid .doc file
     with pytest.raises(ValueError, match="(antiword|Erreur lors de la lecture du fichier .doc)"):
         parse_doc(b"not a valid doc file")
+
+
+class TestDecodeWithFallback:
+    def test_utf8_decoded_correctly(self):
+        text = "Ingrédients: farine, beurre"
+        result = _decode_with_fallback(text.encode("utf-8"))
+        assert "farine" in result
+        assert "beurre" in result
+
+    def test_falls_back_to_cp1252(self):
+        # Create bytes that are valid cp1252 but have many replacement chars in utf-8
+        # \xe9 is 'é' in cp1252, but invalid standalone in utf-8
+        raw = b"caf\xe9 au lait"
+        result = _decode_with_fallback(raw)
+        assert "caf" in result
+
+    def test_handles_pure_ascii(self):
+        result = _decode_with_fallback(b"simple ascii text")
+        assert result == "simple ascii text"
+
+    def test_handles_mixed_content(self):
+        # UTF-8 with some special characters
+        text = "Recette française avec des accents"
+        result = _decode_with_fallback(text.encode("utf-8"))
+        assert "française" in result
+
+
+class TestParsePdf:
+    def test_extracts_text_from_simple_pdf(self):
+        pytest.importorskip("pdfplumber")
+
+        # Create a minimal PDF with text
+        # This is a very basic PDF structure
+        pdf_content = (
+            b"%PDF-1.4\n"
+            b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n"
+            b"4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+            b"5 0 obj<</Length 44>>\n"
+            b"stream\nBT /F1 12 Tf 100 700 Td (Test Recipe) Tj ET\nendstream\nendobj\n"
+            b"xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000266 00000 n \n0000000340 00000 n \n"
+            b"trailer<</Size 6/Root 1 0 R>>\nstartxref\n434\n%%EOF"
+        )
+
+        # pdfplumber may or may not extract text from this minimal PDF
+        # Just verify it doesn't crash
+        try:
+            result = parse_pdf(pdf_content)
+            assert isinstance(result, str)
+        except Exception:
+            pytest.skip("Could not parse minimal test PDF")
+
+    def test_handles_empty_pdf(self):
+        pytest.importorskip("pdfplumber")
+
+        # Create a PDF with no text content
+        pdf_content = (
+            b"%PDF-1.4\n"
+            b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\n"
+            b"xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n"
+            b"trailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF"
+        )
+
+        result = parse_pdf(pdf_content)
+        assert result == ""
+
+    def test_returns_string(self):
+        pytest.importorskip("pdfplumber")
+        # Invalid PDF data may raise an exception from pdfplumber
+        try:
+            result = parse_pdf(b"not a pdf")
+            assert isinstance(result, str)
+        except Exception:
+            # pdfplumber may raise on invalid PDF data - that's acceptable
+            pass

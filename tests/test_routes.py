@@ -102,3 +102,18 @@ def test_search_empty_query_returns_all(client):
     resp = client.get("/search?q=")
     assert resp.status_code == 200
     assert "Poulet Rôti" in resp.text
+
+
+def test_search_invalid_category_returns_422(client):
+    resp = client.get("/search?category=abc")
+    assert resp.status_code == 422
+
+
+def test_recipe_detail_invalid_id_returns_422(client):
+    resp = client.get("/recipe/0")
+    assert resp.status_code == 422
+
+
+def test_recipe_detail_negative_id_returns_422(client):
+    resp = client.get("/recipe/-1")
+    assert resp.status_code == 422

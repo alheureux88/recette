@@ -54,15 +54,16 @@ def parse_doc(content: bytes) -> str:
     try:
         import textract
 
-        # Add ~/.local/bin to PATH for antiword (Windows)
+        env_backup: dict[str, str] = {}
         home_bin = Path.home() / ".local" / "bin"
         if home_bin.exists():
             current_path = os.environ.get("PATH", "")
             if str(home_bin) not in current_path:
+                env_backup["PATH"] = current_path
                 os.environ["PATH"] = f"{home_bin}{os.pathsep}{current_path}"
 
-        # Set HOME for antiword to find mapping files
         if "HOME" not in os.environ:
+            env_backup["HOME"] = ""
             os.environ["HOME"] = str(Path.home())
 
         with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
@@ -89,6 +90,11 @@ def parse_doc(content: bytes) -> str:
             return str(result)
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+            for key, val in env_backup.items():
+                if val:
+                    os.environ[key] = val
+                else:
+                    os.environ.pop(key, None)
     except ImportError:
         raise ValueError(
             "Le support des fichiers .doc nécessite la bibliothèque 'textract'. "

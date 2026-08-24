@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Path, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,6 +23,7 @@ from recipes.db import (
     init_db,
     search_recipes,
 )
+from recipes.models import SearchQuery
 from recipes.poller import run as poll_dropbox
 
 log = logging.getLogger(__name__)
@@ -85,12 +86,9 @@ async def index(request: Request) -> HTMLResponse:
 @app.get("/search", response_class=HTMLResponse)
 async def search(
     request: Request,
-    q: str = Query(""),
-    tags: list[int] = Query(default=[]),
-    category: str | None = Query(default=None),
+    query: SearchQuery = Depends(),
 ) -> HTMLResponse:
-    category_id = int(category) if category else None
-    recipes = search_recipes(query=q, tag_ids=tags, category_id=category_id)
+    recipes = search_recipes(query=query.q, tag_ids=query.tags, category_id=query.category)
     return templates.TemplateResponse(
         request=request,
         name="partials/recipe_cards.html",
@@ -101,7 +99,7 @@ async def search(
 
 
 @app.get("/recipe/{recipe_id}", response_class=HTMLResponse)
-async def recipe_detail(request: Request, recipe_id: int) -> HTMLResponse:
+async def recipe_detail(request: Request, recipe_id: int = Path(gt=0)) -> HTMLResponse:
     recipe = get_recipe(recipe_id)
     if not recipe:
         return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
