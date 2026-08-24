@@ -1,6 +1,11 @@
 {% if recipes %}
     {% for recipe in recipes %}
     <a href="/recipe/{{ recipe.id }}" class="recipe-card">
+        {% if recipe.images %}
+        <div class="card-image">
+            <img src="/images/{{ recipe.id }}/{{ recipe.images[0].filename }}" alt="{{ recipe.title }}" loading="lazy">
+        </div>
+        {% endif %}
         <h2>{{ recipe.title }}</h2>
         {% if recipe.category %}
         <span class="card-category">{{ recipe.category.display_name }}</span>

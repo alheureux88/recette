@@ -15,6 +15,14 @@
     <p class="lead">{{ recipe.description }}</p>
     {% endif %}
 
+    {% if recipe.images %}
+    <div class="recipe-images">
+        {% for img in recipe.images %}
+        <img src="/images/{{ recipe.id }}/{{ img.filename }}" alt="{{ recipe.title }}" loading="lazy" class="recipe-image">
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {% if recipe.tags %}
     <div class="detail-tags">
         {% for family_key, family in recipe.tags.items() %}

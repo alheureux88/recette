@@ -9,8 +9,8 @@ and `.pdf` files, tags them with an LLM, and serves them with full-text search a
 - **SQLite** with FTS5 — database + full-text search
 - **APScheduler** — built-in polling job (no cron needed)
 - **Dropbox Python SDK** — file sync
-- **pdfplumber** / **mammoth** — file parsing
-- **OpenAI-compatible API** — LLM tagging
+- **pdfplumber** / **mammoth** / **odfpy** / **textract** — file parsing (PDF, DOCX, ODT, TXT, and more)
+- **OpenAI** / **Anthropic** — LLM tagging (configurable provider)
 - **uv** — dependency management
 - **nox** — build pipeline (lint → typecheck → test → docker)
 - **ruff** — linting + formatting
@@ -26,8 +26,9 @@ recipes/
 ├── src/recipes/         # application source
 │   ├── main.py          # FastAPI app + scheduler
 │   ├── poller.py        # Dropbox sync
-│   ├── parsers.py       # docx / pdf / txt extraction
+│   ├── parsers.py       # docx / pdf / odt / txt extraction
 │   ├── tagger.py        # LLM structured tagging
+│   ├── models.py        # Pydantic models
 │   └── db.py            # SQLite schema + queries
 ├── tests/               # pytest test suite
 ├── static/              # CSS
@@ -35,8 +36,7 @@ recipes/
 ├── pyproject.toml       # dependencies + tool config
 ├── noxfile.py           # build pipeline
 ├── Dockerfile           # uv-based multi-stage build
-├── docker-compose.yml   # production container
-└── Makefile             # convenience aliases
+└── docker-compose.yml   # production container
 ```
 
 ---
@@ -57,7 +57,8 @@ uv tool install nox
 
 ```bash
 cp .env.example .env
-# Fill in DROPBOX_TOKEN, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+# Fill in DROPBOX_REFRESH_TOKEN, DROPBOX_APP_KEY, DROPBOX_APP_SECRET
+# Configure LLM_PROVIDER (openai or anthropic), LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
 # Install all dependencies (including dev)
 uv sync --group dev
@@ -80,11 +81,11 @@ This runs in order and stops on the first failure:
 Individual sessions:
 
 ```bash
-make lint           # ruff only
-make fmt            # auto-fix formatting in place
-make typecheck      # mypy only
-make test           # pytest only
-make docker         # docker build only
+nox -s lint           # ruff only
+nox -s fmt            # auto-fix formatting in place
+nox -s typecheck      # mypy only
+nox -s test           # pytest only
+nox -s docker         # docker build only
 ```
 
 ---
@@ -92,7 +93,7 @@ make docker         # docker build only
 ## Running locally (without Docker)
 
 ```bash
-make install
+uv sync --group dev
 source .env    # or: export $(cat .env | xargs)
 uvicorn recipes.main:app --port 8000 --reload
 ```
@@ -102,9 +103,9 @@ uvicorn recipes.main:app --port 8000 --reload
 ## Deploying
 
 ```bash
-make build     # builds and tags the image as recipes:latest
-make up        # docker compose up -d
-make logs      # tail logs
+nox -s docker     # builds and tags the image as recipes:latest
+docker compose up -d
+docker compose logs -f
 ```
 
 Your Nginx block (add to your existing config):
@@ -124,12 +125,24 @@ location / {
 1. Go to https://www.dropbox.com/developers/apps
 2. Create app → Scoped access → Full Dropbox
 3. Permissions: enable `files.content.read` + `files.metadata.read`
-4. Generate an access token → paste into `.env`
+4. For production (recommended), use OAuth2 refresh tokens:
+   - Authorize: `https://www.dropbox.com/oauth2/authorize?client_id=YOUR_APP_KEY&response_type=code&token_access_type=offline`
+   - Exchange code for tokens:
+     ```bash
+     curl -X POST https://api.dropbox.com/oauth2/token \
+       -d "code=YOUR_CODE&grant_type=authorization_code&client_id=YOUR_APP_KEY&client_secret=YOUR_APP_SECRET"
+     ```
+   - Copy the `refresh_token` from the response
+5. Fill in `.env`: `DROPBOX_REFRESH_TOKEN`, `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`
+
+Alternative: static token (expires after ~4 hours, not recommended for production)
 
 ---
 
 ## Adding a recipe
 
-Drop any `.txt`, `.docx`, or `.pdf` file into the Dropbox folder.
+Drop any `.txt`, `.docx`, `.pdf`, or `.odt` file into the Dropbox folder.
 The poller (running inside the app) picks it up on the next interval and it appears on the site automatically.
 No special format required — the LLM extracts everything.
+
+You can optionally filter files by pattern using `DROPBOX_FILE_FILTER` in `.env` (e.g., `BOEUF*` for beef recipes only, `*.odt` for ODT files only).

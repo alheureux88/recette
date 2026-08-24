@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, Path, Request
+from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,7 +23,7 @@ from recipes.db import (
     init_db,
     search_recipes,
 )
-from recipes.models import SearchQuery
+from recipes.poller import IMAGES_DIR
 from recipes.poller import run as poll_dropbox
 
 log = logging.getLogger(__name__)
@@ -61,6 +61,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Recettes Merizzi", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
+
 templates = Jinja2Templates(directory="templates")
 
 
@@ -86,9 +90,19 @@ async def index(request: Request) -> HTMLResponse:
 @app.get("/search", response_class=HTMLResponse)
 async def search(
     request: Request,
-    query: SearchQuery = Depends(),
+    q: str = Query(default=""),
+    tags: list[int] = Query(default=[]),
+    category: str | None = Query(default=None),
 ) -> HTMLResponse:
-    recipes = search_recipes(query=query.q, tag_ids=query.tags, category_id=query.category)
+    category_id: int | None = None
+    if category and category.strip():
+        try:
+            category_id = int(category)
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail="category must be a valid integer"
+            ) from None
+    recipes = search_recipes(query=q, tag_ids=tags, category_id=category_id)
     return templates.TemplateResponse(
         request=request,
         name="partials/recipe_cards.html",

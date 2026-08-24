@@ -13,6 +13,7 @@ dependencies = [
     "anthropic>=0.28.0",
     "mammoth>=1.8.0",
     "pdfplumber>=0.11.0",
+    "pymupdf>=1.24.0",
     "odfpy>=1.4.1",
     "textract>=1.6.5",
     "chardet>=5.0.0",

@@ -1,8 +1,9 @@
 """
-parsers.py — Extract raw text from .docx, .doc, .odt, .pdf, and .txt files.
+parsers.py — Extract raw text and images from .docx, .doc, .odt, .pdf, and .txt files.
 """
 
 import io
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -187,3 +188,69 @@ def extract_text(filename: str, content: bytes) -> str:
         return parse_pdf(content)
     else:
         raise ValueError(f"Type de fichier non pris en charge : {suffix}")
+
+
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".emf", ".wmf"}
+
+
+def _is_image(filename: str) -> bool:
+    return Path(filename).suffix.lower() in _IMAGE_EXTS
+
+
+def extract_images_docx(content: bytes) -> list[tuple[str, bytes]]:
+    images: list[tuple[str, bytes]] = []
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        for name in sorted(zf.namelist()):
+            if name.startswith("word/media/") and _is_image(name):
+                images.append((Path(name).name, zf.read(name)))
+    return images
+
+
+def extract_images_odt(content: bytes) -> list[tuple[str, bytes]]:
+    images: list[tuple[str, bytes]] = []
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        for name in sorted(zf.namelist()):
+            if name.startswith("Pictures/") and _is_image(name):
+                images.append((Path(name).name, zf.read(name)))
+    return images
+
+
+def extract_images_pdf(content: bytes) -> list[tuple[str, bytes]]:
+    import fitz
+
+    images: list[tuple[str, bytes]] = []
+    doc = fitz.open(stream=content, filetype="pdf")
+    try:
+        seen: set[int] = set()
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            for img_idx, img in enumerate(page.get_images(full=True)):
+                xref = img[0]
+                pix = fitz.Pixmap(doc, xref)
+                if pix.alpha:
+                    pix = fitz.Pixmap(doc, xref, alpha=False)
+                img_bytes = pix.tobytes("png")
+                img_hash = hash(img_bytes)
+                if img_hash in seen:
+                    continue
+                seen.add(img_hash)
+                fname = f"page{page_idx + 1}_img{img_idx + 1}.png"
+                images.append((fname, img_bytes))
+    finally:
+        doc.close()
+    return images
+
+
+def extract_images(filename: str, content: bytes) -> list[tuple[str, bytes]]:
+    """Extract embedded images from a document file.
+
+    Returns a list of (filename, image_bytes) tuples.
+    """
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".docx":
+        return extract_images_docx(content)
+    elif suffix == ".odt":
+        return extract_images_odt(content)
+    elif suffix == ".pdf":
+        return extract_images_pdf(content)
+    return []

@@ -16,8 +16,15 @@ import requests
 from dropbox.exceptions import ApiError, AuthError
 from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 
-from recipes.db import get_processed_hash, init_db, mark_processed, sync_recipe_tags, upsert_recipe
-from recipes.parsers import extract_text
+from recipes.db import (
+    get_processed_hash,
+    init_db,
+    mark_processed,
+    save_recipe_images,
+    sync_recipe_tags,
+    upsert_recipe,
+)
+from recipes.parsers import extract_images, extract_text
 from recipes.tagger import tag_recipe
 
 logging.basicConfig(
@@ -29,6 +36,7 @@ log = logging.getLogger(__name__)
 DROPBOX_FOLDER = os.environ.get("DROPBOX_FOLDER", "")
 DROPBOX_FILE_FILTER = os.environ.get("DROPBOX_FILE_FILTER", "")
 SUPPORTED_EXTS = {".txt", ".docx", ".doc", ".odt", ".pdf"}
+IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/data/images"))
 
 _dbx_client: dropbox.Dropbox | None = None
 _dbx_token_expiry: float = 0
@@ -204,6 +212,30 @@ def extract_title_from_filename(filename: str) -> str:
     return name
 
 
+def _save_images(recipe_id: int, filename: str, content: bytes) -> None:
+    try:
+        images = extract_images(filename, content)
+    except Exception as e:
+        log.warning(f"  Image extraction failed for {filename}: {e}")
+        return
+
+    if not images:
+        return
+
+    recipe_dir = IMAGES_DIR / str(recipe_id)
+    recipe_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_filenames: list[str] = []
+    for img_name, img_bytes in images:
+        dest = recipe_dir / img_name
+        dest.write_bytes(img_bytes)
+        saved_filenames.append(img_name)
+        log.info(f"  Saved image: {img_name} ({len(img_bytes)} bytes)")
+
+    save_recipe_images(recipe_id, saved_filenames)
+    log.info(f"  Saved {len(saved_filenames)} image(s) for recipe #{recipe_id}")
+
+
 def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> None:
     path = entry.path_lower
     log.info(f"Downloading: {path}")
@@ -248,6 +280,9 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
         sync_recipe_tags(
             recipe_id, {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)}
         )
+
+    _save_images(recipe_id, entry.name, content)
+
     mark_processed(path, content_hash)
 
     log.info(

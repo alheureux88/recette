@@ -183,6 +183,14 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             file_hash    TEXT NOT NULL,
             processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS recipe_images (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            filename     TEXT NOT NULL,
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
 
@@ -375,18 +383,28 @@ def sync_recipe_tags(recipe_id: int, tags_by_family: dict[str, list[str]]) -> No
 
 
 def _resolve_tag(conn: sqlite3.Connection, family_id: int, name: str) -> int | None:
+    display_name = name.replace("-", " ").title()
+
     row = conn.execute(
         "SELECT id FROM tags WHERE family_id = ? AND name = ?", (family_id, name)
     ).fetchone()
     if row:
         return int(row["id"])
 
-    display_name = name.replace("-", " ").title()
-    cur = conn.execute(
-        "INSERT INTO tags (family_id, name, display_name) VALUES (?, ?, ?)",
+    row = conn.execute(
+        "SELECT id FROM tags WHERE family_id = ? AND display_name = ?", (family_id, display_name)
+    ).fetchone()
+    if row:
+        return int(row["id"])
+
+    conn.execute(
+        "INSERT OR IGNORE INTO tags (family_id, name, display_name) VALUES (?, ?, ?)",
         (family_id, name, display_name),
     )
-    return int(cur.lastrowid) if cur.lastrowid else None
+    row = conn.execute(
+        "SELECT id FROM tags WHERE family_id = ? AND name = ?", (family_id, name)
+    ).fetchone()
+    return int(row["id"]) if row else None
 
 
 def _resolve_category(conn: sqlite3.Connection, name: str | None) -> int | None:
@@ -454,6 +472,8 @@ def get_recipe(recipe_id: int) -> dict[str, object] | None:
                 {"id": tr["id"], "name": tr["name"], "display_name": tr["display_name"]}
             )
         result["tags"] = tags_grouped
+
+        result["images"] = get_recipe_images(recipe_id)
 
         return result
 
@@ -536,6 +556,8 @@ def search_recipes(
             ).fetchall()
             d["tags"] = [dict(tr) for tr in tag_rows]
 
+            d["images"] = get_recipe_images(row["id"])
+
             results.append(d)
 
         return results
@@ -545,11 +567,12 @@ def get_all_tags_grouped() -> dict[str, dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT DISTINCT tf.name AS family, tf.display_name AS family_display_name,
+            SELECT tf.name AS family, tf.display_name AS family_display_name,
                    t.id, t.name, t.display_name
             FROM tags t
             JOIN tag_families tf ON t.family_id = tf.id
             JOIN recipe_tags rt ON t.id = rt.tag_id
+            GROUP BY t.id
             ORDER BY tf.sort_order, t.display_name
         """
         ).fetchall()
@@ -626,3 +649,22 @@ def get_processed_hash(path: str) -> str | None:
             "SELECT file_hash FROM processed_files WHERE path = ?", (path,)
         ).fetchone()
         return row["file_hash"] if row else None
+
+
+def save_recipe_images(recipe_id: int, image_filenames: list[str]) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
+        for idx, filename in enumerate(image_filenames):
+            conn.execute(
+                "INSERT INTO recipe_images (recipe_id, filename, sort_order) VALUES (?, ?, ?)",
+                (recipe_id, filename, idx),
+            )
+
+
+def get_recipe_images(recipe_id: int) -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, filename, sort_order FROM recipe_images WHERE recipe_id = ? ORDER BY sort_order",
+            (recipe_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
