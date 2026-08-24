@@ -28,9 +28,13 @@ RUN apt-get update && \
 COPY --from=deps /app/.venv /app/.venv
 
 # Copy application source and assets
+COPY pyproject.toml uv.lock* ./
 COPY src/       ./src/
 COPY static/    ./static/
 COPY templates/ ./templates/
+
+# Install the recipes package itself
+RUN uv pip install --no-deps .
 
 # Activate the venv for all subsequent commands
 ENV PATH="/app/.venv/bin:$PATH"
