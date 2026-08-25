@@ -147,6 +147,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             source_file  TEXT NOT NULL UNIQUE,
             file_hash    TEXT NOT NULL,
             manually_edited INTEGER NOT NULL DEFAULT 0,
+            connection_id INTEGER REFERENCES dropbox_connections(id),
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -218,6 +219,22 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             path         TEXT PRIMARY KEY,
             error        TEXT NOT NULL,
             failed_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS dropbox_connections (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL UNIQUE,
+            refresh_token TEXT NOT NULL,
+            folder        TEXT NOT NULL DEFAULT '',
+            file_filter   TEXT NOT NULL DEFAULT '',
+            active        INTEGER NOT NULL DEFAULT 1,
+            visible       INTEGER NOT NULL DEFAULT 1,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
     """)
 
@@ -343,6 +360,8 @@ def upsert_recipe(data: dict[str, object]) -> int:
         servings = data.get("servings")
         if isinstance(servings, bool) or not isinstance(servings, (int, float)):
             servings = None
+        raw_connection = data.get("connection_id")
+        connection_id = int(str(raw_connection)) if raw_connection is not None else None
 
         if existing:
             conn.execute(
@@ -350,7 +369,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                 UPDATE recipes SET
                     title=?, description=?, ingredients=?, instructions=?,
                     servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
-                    file_modified_at=?,
+                    file_modified_at=?, connection_id=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
             """,
@@ -365,6 +384,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                     data.get("dropbox_url"),
                     data["file_hash"],
                     data.get("file_modified_at"),
+                    connection_id,
                     data["source_file"],
                 ),
             )
@@ -374,8 +394,9 @@ def upsert_recipe(data: dict[str, object]) -> int:
                 """
                 INSERT INTO recipes
                     (title, description, ingredients, instructions, servings, category_id,
-                     source_url, dropbox_url, source_file, file_hash, file_modified_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_url, dropbox_url, source_file, file_hash, file_modified_at,
+                     connection_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     data["title"],
@@ -389,6 +410,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                     data["source_file"],
                     data["file_hash"],
                     data.get("file_modified_at"),
+                    connection_id,
                 ),
             )
             assert cur.lastrowid is not None
@@ -540,6 +562,16 @@ def get_recipe(recipe_id: int) -> dict[str, object] | None:
         ).fetchone()
         result["category"] = dict(cat_row) if cat_row else None
 
+        pc_row = conn.execute(
+            "SELECT id, name FROM dropbox_connections WHERE id = ?",
+            (result.get("connection_id"),),
+        ).fetchone()
+        result["provenance"] = (
+            {"id": pc_row["id"], "name": pc_row["name"]}
+            if pc_row
+            else {"id": None, "name": DEFAULT_ACCOUNT_NAME}
+        )
+
         tag_rows = conn.execute(
             """
             SELECT tf.name AS family, tf.display_name AS family_display_name,
@@ -575,12 +607,24 @@ def search_recipes(
     query: str = "",
     tag_ids: list[int] | None = None,
     category_id: int | None = None,
+    connection_id: int | None = None,
 ) -> list[dict[str, object]]:
+    """Recherche de recettes.
+
+    `connection_id` filtre par compte Dropbox d'origine ; la valeur sentinelle
+    DEFAULT_ACCOUNT_ID sélectionne les recettes du compte par défaut (.env).
+    Les recettes issues de connexions masquées sont toujours exclues.
+    """
     if tag_ids is None:
         tag_ids = []
 
     with get_conn() as conn:
-        conditions: list[str] = []
+        conditions: list[str] = [
+            "NOT EXISTS "
+            "(SELECT 1 FROM dropbox_connections dc WHERE dc.id = r.connection_id AND dc.visible = 0)"
+        ]
+        if not is_default_account_visible():
+            conditions.append("r.connection_id IS NOT NULL")
         params: list[object] = []
 
         if query:
@@ -611,13 +655,21 @@ def search_recipes(
             conditions.append("r.category_id = ?")
             params.append(category_id)
 
+        if connection_id == DEFAULT_ACCOUNT_ID:
+            conditions.append("r.connection_id IS NULL")
+        elif connection_id is not None:
+            conditions.append("r.connection_id = ?")
+            params.append(connection_id)
+
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         rows = conn.execute(
             f"""
-            SELECT r.*, c.name AS category_name, c.display_name AS category_display_name
+            SELECT r.*, c.name AS category_name, c.display_name AS category_display_name,
+                   pc.id AS provenance_id, pc.name AS provenance_name
             FROM recipes r
             LEFT JOIN categories c ON r.category_id = c.id
+            LEFT JOIN dropbox_connections pc ON pc.id = r.connection_id
             {where}
             ORDER BY r.updated_at DESC
         """,
@@ -635,6 +687,11 @@ def search_recipes(
                 }
             else:
                 d["category"] = None
+
+            if d.get("provenance_id") is not None:
+                d["provenance"] = {"id": d["provenance_id"], "name": d["provenance_name"]}
+            else:
+                d["provenance"] = {"id": None, "name": DEFAULT_ACCOUNT_NAME}
 
             tag_rows = conn.execute(
                 """
@@ -870,9 +927,11 @@ def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
             f"""
             SELECT r.id, r.title, r.source_file, r.created_at, r.updated_at,
                    r.file_modified_at, r.manually_edited,
-                   c.name AS category_name, c.display_name AS category_display_name
+                   c.name AS category_name, c.display_name AS category_display_name,
+                   pc.name AS provenance
             FROM recipes r
             LEFT JOIN categories c ON r.category_id = c.id
+            LEFT JOIN dropbox_connections pc ON pc.id = r.connection_id
             {where}
             ORDER BY r.created_at DESC
         """
@@ -888,6 +947,7 @@ def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
                 }
             else:
                 d["category"] = None
+            d["provenance"] = str(d["provenance"]) if d.get("provenance") else DEFAULT_ACCOUNT_NAME
 
             tag_rows = conn.execute(
                 """
@@ -931,12 +991,31 @@ def is_blacklisted(path: str) -> bool:
         return row is not None
 
 
+def _provenance_from_path(path: str, conn_names: dict[int, str]) -> str:
+    """Nom du compte d'origine d'un chemin source (prefixe 'account:<id>:')."""
+    if path.startswith("account:"):
+        try:
+            conn_id = int(path.split(":")[1])
+        except (IndexError, ValueError):
+            return "?"
+        return conn_names.get(conn_id, "?")
+    return DEFAULT_ACCOUNT_NAME
+
+
+def _connection_names() -> dict[int, str]:
+    return {int(str(c["id"])): str(c["name"]) for c in get_dropbox_connections()}
+
+
 def get_blacklisted_files() -> list[dict[str, object]]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT path, blacklisted_at FROM blacklist ORDER BY blacklisted_at DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+    conns = _connection_names()
+    result = [dict(r) for r in rows]
+    for r in result:
+        r["provenance"] = _provenance_from_path(str(r["path"]), conns)
+    return result
 
 
 def remove_from_blacklist(path: str) -> None:
@@ -960,9 +1039,180 @@ def get_failed_files() -> list[dict[str, object]]:
         rows = conn.execute(
             "SELECT path, error, failed_at FROM failed_files ORDER BY failed_at DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+    conns = _connection_names()
+    result = [dict(r) for r in rows]
+    for r in result:
+        r["provenance"] = _provenance_from_path(str(r["path"]), conns)
+    return result
 
 
 def remove_failed_file(path: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM failed_files WHERE path = ?", (path,))
+
+
+# ---------------------------------------------------------------------------
+# Dropbox connections (extra accounts configured at runtime)
+# ---------------------------------------------------------------------------
+
+
+def get_dropbox_connections() -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, name, folder, file_filter, active, visible, created_at "
+            "FROM dropbox_connections ORDER BY name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_dropbox_connection(
+    name: str,
+    refresh_token: str,
+    folder: str = "",
+    file_filter: str = "",
+) -> int | None:
+    """Insère une nouvelle connexion Dropbox. Retourne None si le nom existe déjà.
+
+    Les identifiants d'application (app key/secret) sont partagés avec le
+    compte par défaut et proviennent de l'environnement.
+    """
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM dropbox_connections WHERE name = ?", (name,)
+        ).fetchone()
+        if existing:
+            return None
+        cur = conn.execute(
+            """
+            INSERT INTO dropbox_connections
+                (name, refresh_token, folder, file_filter)
+            VALUES (?, ?, ?, ?)
+        """,
+            (name, refresh_token, folder, file_filter),
+        )
+        assert cur.lastrowid is not None
+        return int(cur.lastrowid)
+
+
+def get_dropbox_connection_credentials(connection_id: int) -> dict[str, object] | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, name, refresh_token, folder, file_filter "
+            "FROM dropbox_connections WHERE id = ?",
+            (connection_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_dropbox_connection(connection_id: int) -> bool:
+    """Supprime une connexion et toutes ses recettes associees.
+
+    Les recettes du compte (et leurs images/etiquettes), ainsi que les entrees
+    de traitement (fichiers traites, en erreur, blacklistes) sont supprimees :
+    re-ajouter la connexion repartira de zero.
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM dropbox_connections WHERE id = ?", (connection_id,)
+        ).fetchone()
+        if not row:
+            return False
+
+        conn.execute("DELETE FROM recipes WHERE connection_id = ?", (connection_id,))
+        prefix = f"account:{connection_id}:%"
+        conn.execute("DELETE FROM processed_files WHERE path LIKE ?", (prefix,))
+        conn.execute("DELETE FROM failed_files WHERE path LIKE ?", (prefix,))
+        conn.execute("DELETE FROM blacklist WHERE path LIKE ?", (prefix,))
+        conn.execute("DELETE FROM dropbox_connections WHERE id = ?", (connection_id,))
+        return True
+
+
+def set_dropbox_connection_active(connection_id: int, active: bool) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE dropbox_connections SET active = ? WHERE id = ?",
+            (1 if active else 0, connection_id),
+        )
+
+
+def set_dropbox_connection_visible(connection_id: int, visible: bool) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE dropbox_connections SET visible = ? WHERE id = ?",
+            (1 if visible else 0, connection_id),
+        )
+
+
+# ---------------------------------------------------------------------------
+# App settings (key/value) — used for the default (.env) Dropbox account flags
+# ---------------------------------------------------------------------------
+
+DEFAULT_ACCOUNT_ID = -1  # sentinel: recipes with connection_id IS NULL
+DEFAULT_ACCOUNT_NAME = "Défaut"
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        return str(row["value"]) if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+        """,
+            (key, value),
+        )
+
+
+def delete_setting(key: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+
+
+def is_default_account_active() -> bool:
+    return get_setting("default_active", "1") != "0"
+
+
+def set_default_account_active(active: bool) -> None:
+    set_setting("default_active", "1" if active else "0")
+
+
+def is_default_account_visible() -> bool:
+    return get_setting("default_visible", "1") != "0"
+
+
+def set_default_account_visible(visible: bool) -> None:
+    set_setting("default_visible", "1" if visible else "0")
+
+
+def get_recipe_provenances() -> list[dict[str, object]]:
+    """Liste des comptes Dropbox ayant au moins une recette visible.
+
+    Le compte par défaut (.env) apparaît sous DEFAULT_ACCOUNT_ID s'il a des
+    recettes. Les connexions masquées sont exclues.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT c.id AS id, c.name AS name, COUNT(r.id) AS count
+            FROM recipes r
+            JOIN dropbox_connections c ON c.id = r.connection_id
+            WHERE c.visible = 1
+            GROUP BY c.id, c.name
+
+            UNION ALL
+
+            SELECT {DEFAULT_ACCOUNT_ID} AS id, '{DEFAULT_ACCOUNT_NAME}' AS name,
+                   COUNT(id) AS count
+            FROM recipes
+            WHERE connection_id IS NULL AND
+                  {int(is_default_account_visible())} = 1
+
+            ORDER BY name
+        """
+        ).fetchall()
+        return [dict(r) for r in rows if r["count"] > 0]

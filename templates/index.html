@@ -10,7 +10,7 @@
         hx-get="/search"
         hx-trigger="input changed delay:300ms, search"
         hx-target="#recipe-grid"
-        hx-include="[name='tags'], [name='category']"
+        hx-include="[name='tags'], [name='category'], [name='account']"
         autocomplete="off"
     >
 </div>
@@ -28,7 +28,7 @@
                     hx-get="/search"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags']"
+                    hx-include="[name='q'], [name='tags'], [name='account']"
                 >
                 Toutes
             </label>
@@ -42,13 +42,48 @@
                     hx-get="/search"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags']"
+                    hx-include="[name='q'], [name='tags'], [name='account']"
                 >
                 {{ cat.display_name }}
             </label>
             {% endfor %}
         </div>
     </div>
+
+    {% if show_provenance and provenances %}
+    <div class="filter-group">
+        <h3 class="filter-title">Provenance</h3>
+        <div class="category-filters">
+            <label class="tag-pill active">
+                <input
+                    type="radio"
+                    name="account"
+                    value=""
+                    checked
+                    hx-get="/search"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags'], [name='category']"
+                >
+                Toutes
+            </label>
+            {% for prov in provenances %}
+            <label class="tag-pill">
+                <input
+                    type="radio"
+                    name="account"
+                    value="{{ prov.id }}"
+                    hx-get="/search"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags'], [name='category']"
+                >
+                {{ prov.name }} ({{ prov.count }})
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     {% for family_key, family in all_tags.items() %}
     <div class="filter-group">
@@ -86,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (this.type === 'checkbox') {
                 label.classList.toggle('active', this.checked);
             } else if (this.type === 'radio') {
-                document.querySelectorAll('.tag-pill input[type="radio"][name="category"]').forEach(function(radio) {
+                document.querySelectorAll('.tag-pill input[type="radio"][name="' + this.name + '"]').forEach(function(radio) {
                     radio.closest('.tag-pill').classList.remove('active');
                 });
                 label.classList.add('active');

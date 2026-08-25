@@ -551,6 +551,92 @@ a.tag:hover { background: var(--accent); color: white; }
     gap: 0.4rem;
     margin: 0.6rem 0 0.75rem;
 }
+.admin-tabs {
+    margin-bottom: 1.25rem;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.6rem;
+}
+.admin-tabs .filter-chip {
+    font-size: 0.9rem;
+    padding: 0.4rem 1.1rem;
+}
+.flash {
+    font-family: sans-serif;
+    font-size: 0.85rem;
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1rem;
+}
+.flash-ok {
+    background: #e8f5e9;
+    border: 1px solid #5cb85c;
+    color: #2e7d32;
+}
+.flash-error {
+    background: #fdecea;
+    border: 1px solid #d9534f;
+    color: #b03a37;
+}
+.config-note,
+.config-hint {
+    font-family: sans-serif;
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+.config-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.config-actions .config-hint {
+    margin-bottom: 0;
+}
+.env-badge {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    background: #5cb85c;
+    color: white;
+    border-radius: var(--radius);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+.status-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: sans-serif;
+}
+.status-on {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #5cb85c;
+}
+.status-off {
+    background: var(--tag-bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+
+/* Provenance (compte Dropbox d'origine) */
+.card-provenance {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0.1rem 0.5rem;
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-family: sans-serif;
+}
+.provenance-badge {
+    background: var(--muted);
+}
 .filter-chip {
     padding: 0.3rem 0.85rem;
     background: var(--surface);

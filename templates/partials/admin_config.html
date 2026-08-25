@@ -1,0 +1,163 @@
+<h2 class="admin-section-title">Connexions Dropbox</h2>
+
+{% if message %}
+<div class="flash flash-{{ message.0 }}">{{ message.1 }}</div>
+{% endif %}
+
+<p class="config-note">
+    Le compte configure via les variables d'environnement (.env) reste actif en
+    complement des connexions ajoutees ci-dessous.
+    {% if env_dropbox_enabled %}
+    Compte par defaut (.env) : <span class="env-badge">actif</span>
+    {% else %}
+    Aucun compte par defaut (.env) n'est configure : seules les connexions
+    ci-dessous seront synchronisees.
+    {% endif %}
+</p>
+
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>Nom</th>
+            <th>Synchronisation</th>
+            <th>Recettes</th>
+            <th>Dossier</th>
+            <th>Filtre</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Défaut (.env)</td>
+            <td>
+                {% if env_dropbox_enabled %}
+                <span class="status-badge {{ 'status-on' if default_active else 'status-off' }}">
+                    {% if default_active %}Active{% else %}En pause{% endif %}
+                </span>
+                {% else %}
+                <span class="status-badge status-off">Non configure</span>
+                {% endif %}
+            </td>
+            <td>
+                <span class="status-badge {{ 'status-on' if default_visible else 'status-off' }}">
+                    {% if default_visible %}Visibles{% else %}Masquees{% endif %}
+                </span>
+            </td>
+            <td class="path-cell">{{ dropbox_folder or "/" }}</td>
+            <td>—</td>
+            <td class="admin-actions">
+                {% if env_dropbox_enabled %}
+                <button class="{{ 'btn-blacklist' if default_active else 'btn-retry' }}"
+                        hx-post="/admin/config/dropbox/default/toggle-active"
+                        hx-target="#admin-content">
+                    {% if default_active %}Arreter{% else %}Demarrer{% endif %}
+                </button>
+                <button class="btn-cancel"
+                        hx-post="/admin/config/dropbox/default/toggle-visible"
+                        hx-target="#admin-content">
+                    {% if default_visible %}Masquer les recettes{% else %}Afficher les recettes{% endif %}
+                </button>
+                {% endif %}
+            </td>
+        </tr>
+        {% for conn in connections %}
+        <tr>
+            <td>{{ conn.name }}</td>
+            <td>
+                <span class="status-badge {{ 'status-on' if conn.active else 'status-off' }}">
+                    {% if conn.active %}Active{% else %}En pause{% endif %}
+                </span>
+            </td>
+            <td>
+                <span class="status-badge {{ 'status-on' if conn.visible else 'status-off' }}">
+                    {% if conn.visible %}Visibles{% else %}Masquees{% endif %}
+                </span>
+            </td>
+            <td class="path-cell">{{ conn.folder or "/" }}</td>
+            <td>{{ conn.file_filter or "—" }}</td>
+            <td class="admin-actions">
+                <button class="{{ 'btn-blacklist' if conn.active else 'btn-retry' }}"
+                        hx-post="/admin/config/dropbox/{{ conn.id }}/toggle-active"
+                        hx-target="#admin-content">
+                    {% if conn.active %}Arreter{% else %}Demarrer{% endif %}
+                </button>
+                <button class="btn-cancel"
+                        hx-post="/admin/config/dropbox/{{ conn.id }}/toggle-visible"
+                        hx-target="#admin-content">
+                    {% if conn.visible %}Masquer les recettes{% else %}Afficher les recettes{% endif %}
+                </button>
+                <button class="btn-retry"
+                        hx-post="/admin/config/dropbox/{{ conn.id }}/test"
+                        hx-target="#admin-content">
+                    Tester
+                </button>
+                <button class="btn-blacklist"
+                        hx-post="/admin/config/dropbox/{{ conn.id }}/delete"
+                        hx-target="#admin-content"
+                        hx-confirm="Supprimer cette connexion Dropbox ? Toutes ses recettes importees seront egalement supprimees.">
+                    Supprimer
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p class="config-hint">
+    « Arreter » suspend la synchronisation du compte au prochain scan ; les
+    recettes restent accessibles. Masquer les recettes les retire de la page
+    principale sans les supprimer.
+</p>
+
+<h2 class="admin-section-title">Ajouter une connexion</h2>
+
+<div class="config-actions">
+    <a href="/admin/config/dropbox/connect" class="btn-restore">
+        Connecter un compte Dropbox
+    </a>
+    <span class="config-hint">
+        Vous serez redirige vers Dropbox pour autoriser l'application. Le refresh
+        token sera recupere automatiquement.
+    </span>
+</div>
+
+<form class="admin-edit-form config-form"
+      hx-post="/admin/config/dropbox"
+      hx-target="#admin-content">
+    <div class="form-row">
+        <div class="field field-title">
+            <span>Nom de la connexion</span>
+            <input type="text" name="name" required
+                   placeholder="{% if oauth_account_label %}{{ oauth_account_label }}{% else %}Ex : Compte famille{% endif %}"
+                   {% if oauth_account_label %}value="{{ oauth_account_label.split(' — ')[0] }}"{% endif %}>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="field field-title">
+            <span>Refresh token</span>
+            {% if oauth_refresh_token %}
+            <input type="hidden" name="refresh_token" value="{{ oauth_refresh_token }}">
+            <input type="text" value="{{ oauth_refresh_token }}" disabled>
+            {% else %}
+            <input type="text" name="refresh_token"
+                   placeholder="Collez un refresh token ou utilisez le bouton ci-dessus">
+            {% endif %}
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="field">
+            <span>Dossier a scanner</span>
+            <input type="text" name="folder" placeholder="/Recettes (vide = racine)">
+        </div>
+        <div class="field">
+            <span>Filtre de fichiers</span>
+            <input type="text" name="file_filter" placeholder="Ex : BOEUF* ou *.odt">
+        </div>
+    </div>
+    <p class="config-hint">
+        L'application Dropbox utilisee est celle configuree dans le .env
+        (DROPBOX_APP_KEY / DROPBOX_APP_SECRET), partagee par toutes les connexions.
+    </p>
+    <div class="form-actions">
+        <button type="submit" class="btn-edit">Ajouter la connexion</button>
+    </div>
+</form>

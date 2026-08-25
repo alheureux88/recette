@@ -7,13 +7,14 @@ Run:  uvicorn recipes.main:app --host 0.0.0.0 --port 8000
 
 import logging
 import os
+import secrets
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -31,27 +32,50 @@ from recipes.auth import (
     require_user,
 )
 from recipes.db import (
+    DEFAULT_ACCOUNT_ID,
+    add_dropbox_connection,
     add_favorite,
     blacklist_and_delete_recipe,
+    delete_dropbox_connection,
+    delete_setting,
     get_all_categories,
     get_all_recipes_admin,
     get_all_tags_grouped,
     get_blacklisted_files,
+    get_dropbox_connection_credentials,
+    get_dropbox_connections,
     get_existing_tags_for_prompt,
     get_failed_files,
     get_favorite_recipes,
     get_or_create_user,
     get_recipe,
+    get_recipe_provenances,
+    get_setting,
     get_user_favorite_ids,
     init_db,
+    is_default_account_active,
+    is_default_account_visible,
     remove_failed_file,
     remove_favorite,
     remove_from_blacklist,
     search_recipes,
+    set_default_account_active,
+    set_default_account_visible,
+    set_dropbox_connection_active,
+    set_dropbox_connection_visible,
+    set_setting,
     sync_recipe_tags,
     update_recipe_manual,
 )
-from recipes.poller import IMAGES_DIR
+from recipes.poller import (
+    DROPBOX_FOLDER,
+    IMAGES_DIR,
+    build_oauth_authorize_url,
+    exchange_authorization_code,
+    forget_connection_client,
+    has_env_dropbox_credentials,
+    verify_connection_credentials,
+)
 from recipes.poller import run as poll_dropbox
 from recipes.units import format_ingredient, parse_quantity
 
@@ -121,6 +145,24 @@ def _base_context(request: Request, **extra: object) -> dict[str, object]:
     return ctx
 
 
+def _provenance_context() -> dict[str, object]:
+    """Filtre de provenance : affiché seulement si plusieurs comptes ont des recettes."""
+    provenances = get_recipe_provenances()
+    return {"provenances": provenances, "show_provenance": len(provenances) > 1}
+
+
+def _parse_account_param(raw: str | None) -> int | None:
+    """'default' → DEFAULT_ACCOUNT_ID, entier → id de connexion, sinon None."""
+    if raw is None or not raw.strip():
+        return None
+    if raw == "default":
+        return DEFAULT_ACCOUNT_ID
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     all_tags = get_all_tags_grouped()
@@ -142,6 +184,7 @@ async def index(request: Request) -> HTMLResponse:
             active_tag_ids=[],
             active_category_id=None,
             favorite_ids=favorite_ids,
+            **_provenance_context(),
         ),
     )
 
@@ -152,6 +195,7 @@ async def search(
     q: str = Query(default=""),
     tags: list[int] = Query(default=[]),
     category: str | None = Query(default=None),
+    account: str | None = Query(default=None),
 ) -> HTMLResponse:
     category_id: int | None = None
     if category and category.strip():
@@ -161,7 +205,9 @@ async def search(
             raise HTTPException(
                 status_code=422, detail="category must be a valid integer"
             ) from None
-    recipes = search_recipes(query=q, tag_ids=tags, category_id=category_id)
+    recipes = search_recipes(
+        query=q, tag_ids=tags, category_id=category_id, connection_id=_parse_account_param(account)
+    )
     user = get_user(request)
     favorite_ids: set[int] = set()
     if user:
@@ -174,6 +220,7 @@ async def search(
             "favorite_ids": favorite_ids,
             "user": user,
             "auth_enabled": OIDC_ENABLED,
+            **_provenance_context(),
         },
     )
 
@@ -275,6 +322,7 @@ async def recipe_detail(
             request,
             recipe=recipe,
             is_favorite=is_fav,
+            show_provenance=len(get_recipe_provenances()) > 1,
             **_ingredient_context(
                 recipe, _parse_servings_param(servings), units, _parse_multiplier_param(multiplier)
             ),
@@ -395,13 +443,30 @@ async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
     )
 
 
+ADMIN_TABS = ("recipes", "config")
+
+
+def _normalize_admin_tab(raw: str) -> str:
+    return raw if raw in ADMIN_TABS else "recipes"
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(
     request: Request,
+    tab: str = Query(default="recipes"),
     filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
+    tab = _normalize_admin_tab(tab)
     filter = _normalize_admin_filter(filter)
+
+    if tab == "config":
+        # Navigation pleine page : le contexte complet de l'onglet Configuration
+        # (connexions, statuts, etc.) doit etre fourni, sinon le tableau est vide.
+        ctx = _admin_config_context(request)
+        ctx["tab"] = tab
+        return templates.TemplateResponse(request=request, name="admin.html", context=ctx)
+
     recipes = get_all_recipes_admin(filter)
     blacklisted = get_blacklisted_files()
     failed = get_failed_files()
@@ -409,7 +474,12 @@ async def admin_page(
         request=request,
         name="admin.html",
         context=_base_context(
-            request, recipes=recipes, blacklisted=blacklisted, failed=failed, filter=filter
+            request,
+            recipes=recipes,
+            blacklisted=blacklisted,
+            failed=failed,
+            filter=filter,
+            tab=tab,
         ),
     )
 
@@ -431,6 +501,328 @@ def _admin_table_context(request: Request, filter: str = "") -> dict[str, object
         blacklisted=get_blacklisted_files(),
         failed=get_failed_files(),
         filter=filter,
+        tab="recipes",
+    )
+
+
+def _admin_config_context(
+    request: Request, message: tuple[str, str] | None = None
+) -> dict[str, object]:
+    """Contexte du partial Configuration. `message` = (kind, text)."""
+    return _base_context(
+        request,
+        connections=get_dropbox_connections(),
+        env_dropbox_enabled=has_env_dropbox_credentials(),
+        default_active=is_default_account_active(),
+        default_visible=is_default_account_visible(),
+        dropbox_folder=DROPBOX_FOLDER,
+        message=message,
+        tab="config",
+    )
+
+
+@app.post("/admin/config/dropbox", response_class=HTMLResponse)
+async def admin_config_add_dropbox(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    form = await request.form()
+    name = str(form.get("name") or "").strip()
+    refresh_token = str(form.get("refresh_token") or "").strip()
+    folder = str(form.get("folder") or "").strip()
+    file_filter = str(form.get("file_filter") or "").strip()
+
+    if not name or not refresh_token:
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(
+                request,
+                ("error", "Le nom et le refresh token sont obligatoires."),
+            ),
+            status_code=422,
+        )
+
+    connection_id = add_dropbox_connection(
+        name=name,
+        refresh_token=refresh_token,
+        folder=folder,
+        file_filter=file_filter,
+    )
+    if connection_id is None:
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(
+                request, ("error", f"Une connexion nommee '{name}' existe deja.")
+            ),
+            status_code=422,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(
+            request, ("ok", f"Connexion '{name}' ajoutee. Elle sera utilisee au prochain scan.")
+        ),
+    )
+
+
+def _dropbox_redirect_uri(request: Request) -> str:
+    return f"{str(request.base_url).rstrip('/')}/admin/config/dropbox/callback"
+
+
+def _config_template_name(request: Request) -> str:
+    """Pleine page si navigation navigateur, partial si swap HTMX."""
+    return "partials/admin_config.html" if "HX-Request" in request.headers else "admin.html"
+
+
+@app.get("/admin/config/dropbox/connect")
+async def admin_config_connect_dropbox(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> Response:
+    """Redirige vers la page d'autorisation Dropbox (flux OAuth2 offline)."""
+    state = secrets.token_urlsafe(24)
+    # Stocke en DB : la session cookie peut etre perdue entre le depart vers
+    # Dropbox et le retour (autre hote, navigation separee, etc.)
+    set_setting("dropbox_oauth_state", state)
+    try:
+        url = build_oauth_authorize_url(_dropbox_redirect_uri(request), state)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(request, ("error", str(e))),
+            status_code=422,
+        )
+    return RedirectResponse(url=url, status_code=302)
+
+
+def _admin_config_oauth_context(
+    request: Request, refresh_token: str, account_label: str
+) -> dict[str, object]:
+    ctx = _admin_config_context(
+        request,
+        (
+            "ok",
+            "Compte Dropbox autorise. Choisissez un nom pour finaliser la connexion.",
+        ),
+    )
+    ctx["oauth_refresh_token"] = refresh_token
+    ctx["oauth_account_label"] = account_label
+    return ctx
+
+
+@app.get("/admin/config/dropbox/callback", response_class=HTMLResponse, response_model=None)
+async def admin_config_dropbox_callback(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse | RedirectResponse:
+    """Recoit le code d'autorisation Dropbox et l'echange contre un refresh token."""
+    template_name = _config_template_name(request)
+    received_state = request.query_params.get("state")
+    code = request.query_params.get("code")
+    error = request.query_params.get("error")
+
+    if error:
+        return templates.TemplateResponse(
+            request=request,
+            name=template_name,
+            context=_admin_config_context(
+                request, ("error", f"Autorisation Dropbox refusee : {error}")
+            ),
+        )
+
+    expected_state = get_setting("dropbox_oauth_state")
+    delete_setting("dropbox_oauth_state")
+
+    if not code:
+        detail = "code manquant"
+    elif not expected_state or received_state != expected_state:
+        detail = "state invalide — relancez la connexion depuis la page de configuration"
+    else:
+        detail = ""
+
+    if detail:
+        log.warning(
+            f"Dropbox OAuth callback rejected: {detail} "
+            f"(received state present: {bool(received_state)})"
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name=template_name,
+            context=_admin_config_context(
+                request, ("error", f"Reponse Dropbox invalide ({detail}).")
+            ),
+            status_code=422,
+        )
+
+    try:
+        refresh_token = exchange_authorization_code(str(code), _dropbox_redirect_uri(request))
+        try:
+            account_label = verify_connection_credentials(refresh_token)
+        except Exception as e:
+            log.warning(f"Could not fetch account label after OAuth: {e}")
+            account_label = ""
+    except Exception as e:
+        log.error(f"Dropbox OAuth code exchange failed: {e}")
+        return templates.TemplateResponse(
+            request=request,
+            name=template_name,
+            context=_admin_config_context(request, ("error", f"Echange du code echoue : {e}")),
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name=template_name,
+        context=_admin_config_oauth_context(request, refresh_token, account_label),
+    )
+
+
+def _toggle_response(
+    request: Request, label: str, active: bool, visible: bool | None = None
+) -> HTMLResponse:
+    if visible is None:
+        etat = "demarree" if active else "arretee"
+    else:
+        etat = "visible" if visible else "masquee"
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(request, ("ok", f"Synchronisation '{label}' {etat}.")),
+    )
+
+
+@app.post("/admin/config/dropbox/default/toggle-active", response_class=HTMLResponse)
+async def admin_config_toggle_default_active(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    new_active = not is_default_account_active()
+    set_default_account_active(new_active)
+    return _toggle_response(request, "Défaut (.env)", new_active)
+
+
+@app.post("/admin/config/dropbox/default/toggle-visible", response_class=HTMLResponse)
+async def admin_config_toggle_default_visible(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    new_visible = not is_default_account_visible()
+    set_default_account_visible(new_visible)
+    return _toggle_response(request, "Défaut (.env)", True, visible=new_visible)
+
+
+@app.post("/admin/config/dropbox/default/delete", response_class=HTMLResponse)
+async def admin_config_delete_default(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(
+            request,
+            ("error", "Le compte par defaut (.env) ne peut pas etre supprime ici."),
+        ),
+    )
+
+
+@app.post("/admin/config/dropbox/{connection_id}/toggle-active", response_class=HTMLResponse)
+async def admin_config_toggle_active(
+    request: Request,
+    connection_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    conn = get_dropbox_connection_credentials(connection_id)
+    if not conn:
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(request, ("error", "Connexion introuvable.")),
+            status_code=404,
+        )
+    connections = {c["id"]: c for c in get_dropbox_connections()}
+    new_active = not bool(connections[connection_id]["active"])
+    set_dropbox_connection_active(connection_id, new_active)
+    return _toggle_response(request, str(conn["name"]), new_active)
+
+
+@app.post("/admin/config/dropbox/{connection_id}/toggle-visible", response_class=HTMLResponse)
+async def admin_config_toggle_visible(
+    request: Request,
+    connection_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    conn = get_dropbox_connection_credentials(connection_id)
+    if not conn:
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(request, ("error", "Connexion introuvable.")),
+            status_code=404,
+        )
+    connections = {c["id"]: c for c in get_dropbox_connections()}
+    new_visible = not bool(connections[connection_id]["visible"])
+    set_dropbox_connection_visible(connection_id, new_visible)
+    return _toggle_response(request, str(conn["name"]), True, visible=new_visible)
+
+
+@app.post("/admin/config/dropbox/{connection_id}/delete", response_class=HTMLResponse)
+async def admin_config_delete_dropbox(
+    request: Request,
+    connection_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    if delete_dropbox_connection(connection_id):
+        forget_connection_client(connection_id)
+        message = (
+            "ok",
+            "Connexion supprimee, ainsi que ses recettes et fichiers associes.",
+        )
+    else:
+        message = ("error", "Connexion introuvable.")
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(request, message),
+    )
+
+
+@app.post("/admin/config/dropbox/{connection_id}/test", response_class=HTMLResponse)
+async def admin_config_test_dropbox(
+    request: Request,
+    connection_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    conn = get_dropbox_connection_credentials(connection_id)
+    if not conn:
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(request, ("error", "Connexion introuvable.")),
+            status_code=404,
+        )
+
+    try:
+        account_label = verify_connection_credentials(str(conn["refresh_token"]))
+    except Exception as e:
+        log.error(f"Dropbox connection test failed for '{conn['name']}': {e}")
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(
+                request, ("error", f"Echec de connexion pour '{conn['name']}' : {e}")
+            ),
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(
+            request, ("ok", f"Connexion '{conn['name']}' validee : {account_label}")
+        ),
     )
 
 

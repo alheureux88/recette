@@ -26,6 +26,7 @@
     <thead>
         <tr>
             <th>Recette</th>
+            <th>Provenance</th>
             <th>Date d'ingestion</th>
             <th>Date du fichier</th>
             <th>Categorie</th>
@@ -42,6 +43,7 @@
                 <span class="manual-badge" title="Modifiee manuellement — les mises a jour Dropbox sont ignorees">Manuel</span>
                 {% endif %}
             </td>
+            <td><span class="card-provenance">{{ recipe.provenance }}</span></td>
             <td>{{ recipe.created_at }}</td>
             <td>{{ recipe.file_modified_at or "—" }}</td>
             <td>
@@ -72,7 +74,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="6" class="empty">
+            <td colspan="7" class="empty">
                 {% if filter == 'no_tags' %}
                 Aucune recette sans étiquettes
                 {% elif filter == 'no_category' %}
@@ -91,6 +93,7 @@
     <thead>
         <tr>
             <th>Chemin</th>
+            <th>Provenance</th>
             <th>Date</th>
             <th></th>
         </tr>
@@ -99,6 +102,7 @@
         {% for item in blacklisted %}
         <tr>
             <td class="path-cell">{{ item.path }}</td>
+            <td><span class="card-provenance">{{ item.provenance }}</span></td>
             <td>{{ item.blacklisted_at }}</td>
             <td>
                 <button class="btn-restore"
@@ -111,7 +115,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="3" class="empty">Aucun fichier blackliste</td>
+            <td colspan="4" class="empty">Aucun fichier blackliste</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -122,6 +126,7 @@
     <thead>
         <tr>
             <th>Chemin</th>
+            <th>Provenance</th>
             <th>Erreur</th>
             <th>Date</th>
             <th></th>
@@ -131,6 +136,7 @@
         {% for item in failed %}
         <tr>
             <td class="path-cell">{{ item.path }}</td>
+            <td><span class="card-provenance">{{ item.provenance }}</span></td>
             <td class="error-cell">{{ item.error }}</td>
             <td>{{ item.failed_at }}</td>
             <td>
@@ -144,7 +150,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="4" class="empty">Aucun fichier en erreur</td>
+            <td colspan="5" class="empty">Aucun fichier en erreur</td>
         </tr>
         {% endfor %}
     </tbody>

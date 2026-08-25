@@ -17,6 +17,9 @@
     {% if recipe.category %}
     <span class="category-badge">{{ recipe.category.display_name }}</span>
     {% endif %}
+    {% if show_provenance and recipe.provenance %}
+    <span class="category-badge provenance-badge">{{ recipe.provenance.name }}</span>
+    {% endif %}
 
     {% if recipe.description %}
     <p class="lead">{{ recipe.description }}</p>

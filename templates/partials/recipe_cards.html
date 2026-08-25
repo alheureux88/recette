@@ -21,6 +21,9 @@
             {% if recipe.category %}
             <span class="card-category">{{ recipe.category.display_name }}</span>
             {% endif %}
+            {% if show_provenance and recipe.provenance %}
+            <span class="card-provenance">{{ recipe.provenance.name }}</span>
+            {% endif %}
             <p class="description">{{ recipe.description }}</p>
             <div class="card-tags">
                 {% for tag in recipe.tags %}
