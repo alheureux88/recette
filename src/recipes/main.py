@@ -24,20 +24,28 @@ from recipes.auth import (
     authorize_redirect,
     fetch_token,
     get_user,
+    is_admin,
     login_url,
     logout_url,
+    require_admin,
     require_user,
 )
 from recipes.db import (
     add_favorite,
+    blacklist_and_delete_recipe,
     get_all_categories,
+    get_all_recipes_admin,
     get_all_tags_grouped,
+    get_blacklisted_files,
+    get_failed_files,
     get_favorite_recipes,
     get_or_create_user,
     get_recipe,
     get_user_favorite_ids,
     init_db,
+    remove_failed_file,
     remove_favorite,
+    remove_from_blacklist,
     search_recipes,
 )
 from recipes.poller import IMAGES_DIR
@@ -103,6 +111,7 @@ def _base_context(request: Request, **extra: object) -> dict[str, object]:
         "auth_enabled": OIDC_ENABLED,
         "login_url": login_url(request),
         "logout_url": logout_url(request),
+        "is_admin": is_admin(request),
     }
     ctx.update(extra)
     return ctx
@@ -208,7 +217,13 @@ async def auth_callback(request: Request) -> RedirectResponse:
         email=userinfo.get("email"),
         name=userinfo.get("name"),
     )
-    request.session["user"] = {"id": user_id, "sub": subject, "name": userinfo.get("name")}
+    groups = userinfo.get("groups", [])
+    request.session["user"] = {
+        "id": user_id,
+        "sub": subject,
+        "name": userinfo.get("name"),
+        "groups": groups,
+    }
     return RedirectResponse(url="/", status_code=302)
 
 
@@ -264,4 +279,70 @@ async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
             recipes=recipes,
             favorite_ids=favorite_ids,
         ),
+    )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    recipes = get_all_recipes_admin()
+    blacklisted = get_blacklisted_files()
+    failed = get_failed_files()
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+    )
+
+
+@app.post("/admin/blacklist/{recipe_id}")
+async def admin_blacklist(
+    request: Request,
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    blacklist_and_delete_recipe(recipe_id)
+    recipes = get_all_recipes_admin()
+    blacklisted = get_blacklisted_files()
+    failed = get_failed_files()
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_table.html",
+        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+    )
+
+
+@app.post("/admin/unblacklist")
+async def admin_unblacklist(
+    request: Request,
+    path: str = Query(...),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    remove_from_blacklist(path)
+    recipes = get_all_recipes_admin()
+    blacklisted = get_blacklisted_files()
+    failed = get_failed_files()
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_table.html",
+        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+    )
+
+
+@app.post("/admin/retry-failed")
+async def admin_retry_failed(
+    request: Request,
+    path: str = Query(...),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    remove_failed_file(path)
+    recipes = get_all_recipes_admin()
+    blacklisted = get_blacklisted_files()
+    failed = get_failed_files()
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_table.html",
+        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
     )

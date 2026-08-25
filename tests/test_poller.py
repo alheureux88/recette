@@ -282,6 +282,7 @@ class TestProcessFile:
         mock_entry = MagicMock()
         mock_entry.name = "DESSERT Tarte aux pommes.txt"
         mock_entry.path_lower = "/recipes/tarte.txt"
+        mock_entry.client_modified = None
 
         with (
             patch("recipes.poller.extract_text", return_value="Tarte aux pommes recipe"),

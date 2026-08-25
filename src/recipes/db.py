@@ -206,6 +206,17 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, recipe_id)
         );
+
+        CREATE TABLE IF NOT EXISTS blacklist (
+            path         TEXT PRIMARY KEY,
+            blacklisted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS failed_files (
+            path         TEXT PRIMARY KEY,
+            error        TEXT NOT NULL,
+            failed_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
 
@@ -219,6 +230,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
     if "category_id" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN category_id INTEGER REFERENCES categories(id)")
+
+    if "file_modified_at" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN file_modified_at DATETIME")
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -328,6 +342,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                 UPDATE recipes SET
                     title=?, description=?, ingredients=?, instructions=?,
                     category_id=?, source_url=?, dropbox_url=?, file_hash=?,
+                    file_modified_at=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
             """,
@@ -340,6 +355,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                     data.get("source_url"),
                     data.get("dropbox_url"),
                     data["file_hash"],
+                    data.get("file_modified_at"),
                     data["source_file"],
                 ),
             )
@@ -349,8 +365,8 @@ def upsert_recipe(data: dict[str, object]) -> int:
                 """
                 INSERT INTO recipes
                     (title, description, ingredients, instructions, category_id,
-                     source_url, dropbox_url, source_file, file_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_url, dropbox_url, source_file, file_hash, file_modified_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     data["title"],
@@ -362,6 +378,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                     data.get("dropbox_url"),
                     data["source_file"],
                     data["file_hash"],
+                    data.get("file_modified_at"),
                 ),
             )
             assert cur.lastrowid is not None
@@ -773,3 +790,106 @@ def get_favorite_recipes(user_id: int) -> list[dict[str, object]]:
             results.append(d)
 
         return results
+
+
+def get_all_recipes_admin() -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.id, r.title, r.source_file, r.created_at, r.updated_at,
+                   r.file_modified_at,
+                   c.name AS category_name, c.display_name AS category_display_name
+            FROM recipes r
+            LEFT JOIN categories c ON r.category_id = c.id
+            ORDER BY r.created_at DESC
+        """
+        ).fetchall()
+
+        results = []
+        for row in rows:
+            d: dict[str, object] = dict(row)
+            if d.get("category_name"):
+                d["category"] = {
+                    "name": d["category_name"],
+                    "display_name": d["category_display_name"],
+                }
+            else:
+                d["category"] = None
+
+            tag_rows = conn.execute(
+                """
+                SELECT t.id, t.name, t.display_name, tf.name AS family
+                FROM recipe_tags rt
+                JOIN tags t ON rt.tag_id = t.id
+                JOIN tag_families tf ON t.family_id = tf.id
+                WHERE rt.recipe_id = ?
+                ORDER BY tf.sort_order, t.display_name
+            """,
+                (row["id"],),
+            ).fetchall()
+            d["tags"] = [dict(tr) for tr in tag_rows]
+            results.append(d)
+
+        return results
+
+
+def blacklist_and_delete_recipe(recipe_id: int) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT source_file FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if not row:
+            return None
+        source_file = str(row["source_file"])
+
+        conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+        conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
+        conn.execute(
+            """
+            INSERT INTO blacklist (path) VALUES (?)
+            ON CONFLICT(path) DO UPDATE SET blacklisted_at=CURRENT_TIMESTAMP
+        """,
+            (source_file,),
+        )
+        return source_file
+
+
+def is_blacklisted(path: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM blacklist WHERE path = ?", (path,)).fetchone()
+        return row is not None
+
+
+def get_blacklisted_files() -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT path, blacklisted_at FROM blacklist ORDER BY blacklisted_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def remove_from_blacklist(path: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM blacklist WHERE path = ?", (path,))
+
+
+def record_failed_file(path: str, error: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO failed_files (path, error) VALUES (?, ?)
+            ON CONFLICT(path) DO UPDATE SET error=excluded.error, failed_at=CURRENT_TIMESTAMP
+        """,
+            (path, error),
+        )
+
+
+def get_failed_files() -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT path, error, failed_at FROM failed_files ORDER BY failed_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def remove_failed_file(path: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM failed_files WHERE path = ?", (path,))

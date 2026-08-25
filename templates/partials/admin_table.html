@@ -1,0 +1,110 @@
+<h2 class="admin-section-title">Recettes</h2>
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>Recette</th>
+            <th>Date d'ingestion</th>
+            <th>Date du fichier</th>
+            <th>Categorie</th>
+            <th>Tags</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for recipe in recipes %}
+        <tr>
+            <td>{{ recipe.title }}</td>
+            <td>{{ recipe.created_at }}</td>
+            <td>{{ recipe.file_modified_at or "—" }}</td>
+            <td>
+                {% if recipe.category %}
+                <span class="category-badge">{{ recipe.category.display_name }}</span>
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            <td>
+                {% for tag in recipe.tags %}
+                <span class="tag">{{ tag.display_name }}</span>
+                {% endfor %}
+            </td>
+            <td>
+                <button class="btn-blacklist"
+                        hx-post="/admin/blacklist/{{ recipe.id }}"
+                        hx-target="#admin-content"
+                        hx-confirm="Supprimer cette recette et l'empecher d'etre re-importee ?">
+                    Blacklister
+                </button>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" class="empty">Aucune recette</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2 class="admin-section-title">Fichiers blacklister</h2>
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>Chemin</th>
+            <th>Date</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in blacklisted %}
+        <tr>
+            <td class="path-cell">{{ item.path }}</td>
+            <td>{{ item.blacklisted_at }}</td>
+            <td>
+                <button class="btn-restore"
+                        hx-post="/admin/unblacklist?path={{ item.path | urlencode }}"
+                        hx-target="#admin-content"
+                        hx-confirm="Retirer ce fichier de la blacklist ? Il sera re-importe au prochain scan.">
+                    Retablir
+                </button>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="3" class="empty">Aucun fichier blackliste</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2 class="admin-section-title">Fichiers en erreur</h2>
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>Chemin</th>
+            <th>Erreur</th>
+            <th>Date</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in failed %}
+        <tr>
+            <td class="path-cell">{{ item.path }}</td>
+            <td class="error-cell">{{ item.error }}</td>
+            <td>{{ item.failed_at }}</td>
+            <td>
+                <button class="btn-retry"
+                        hx-post="/admin/retry-failed?path={{ item.path | urlencode }}"
+                        hx-target="#admin-content"
+                        hx-confirm="Retirer ce fichier de la liste d'erreurs ? Il sera re-essayee au prochain scan.">
+                    Reessayer
+                </button>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="empty">Aucun fichier en erreur</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

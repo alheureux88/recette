@@ -21,7 +21,10 @@ from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 from recipes.db import (
     get_processed_hash,
     init_db,
+    is_blacklisted,
     mark_processed,
+    record_failed_file,
+    remove_failed_file,
     save_recipe_images,
     sync_recipe_tags,
     upsert_recipe,
@@ -182,6 +185,22 @@ def list_recipe_files(dbx: dropbox.Dropbox) -> list[dropbox.files.FileMetadata]:
     return files
 
 
+def list_unsupported_files(dbx: dropbox.Dropbox) -> list[dropbox.files.FileMetadata]:
+    """Return all files with unsupported extensions in the Dropbox folder."""
+    result = dbx.files_list_folder(DROPBOX_FOLDER)
+    entries = result.entries[:]
+    while result.has_more:
+        result = dbx.files_list_folder_continue(result.cursor)
+        entries.extend(result.entries)
+
+    return [
+        e
+        for e in entries
+        if isinstance(e, dropbox.files.FileMetadata)
+        and Path(e.name).suffix.lower() not in SUPPORTED_EXTS
+    ]
+
+
 def download_file(dbx: dropbox.Dropbox, path: str) -> bytes:
     _, response = dbx.files_download(path)
     return bytes(response.content)
@@ -245,6 +264,11 @@ def _save_images(recipe_id: int, filename: str, content: bytes) -> None:
 
 def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> None:
     path = entry.path_lower
+
+    if is_blacklisted(path):
+        log.info(f"  Skipping (blacklisted): {path}")
+        return
+
     log.info(f"Downloading: {path}")
     content = download_file(dbx, path)
     content_hash = file_hash(content)
@@ -259,10 +283,14 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
         raw_text = extract_text(entry.name, content)
     except Exception as e:
         log.error(f"  Parse failed for {entry.name}: {e}")
+        with _DB_LOCK:
+            record_failed_file(path, f"Parse error: {e}")
         return
 
     if not raw_text.strip():
         log.warning(f"  Empty text extracted from {entry.name}, skipping.")
+        with _DB_LOCK:
+            record_failed_file(path, "Empty text extracted")
         return
 
     default_title = extract_title_from_filename(entry.name)
@@ -271,6 +299,8 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
         structured = tag_recipe(raw_text, default_title=default_title)
     except Exception as e:
         log.error(f"  Tagging failed for {entry.name}: {e}")
+        with _DB_LOCK:
+            record_failed_file(path, f"Tagging error: {e}")
         return
 
     log.info("  Fetching Dropbox shared link...")
@@ -279,6 +309,9 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
     structured["source_file"] = path
     structured["file_hash"] = content_hash
     structured["dropbox_url"] = dropbox_url
+    structured["file_modified_at"] = (
+        entry.client_modified.isoformat() if entry.client_modified else None
+    )
 
     with _DB_LOCK:
         recipe_id = upsert_recipe(structured)
@@ -290,6 +323,7 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
             )
         _save_images(recipe_id, entry.name, content)
         mark_processed(path, content_hash)
+        remove_failed_file(path)
 
     log.info(
         f"  Saved recipe #{recipe_id}: '{structured['title']}' "
@@ -307,6 +341,7 @@ def run() -> None:
     log.info(f"Checking Dropbox folder: '{DROPBOX_FOLDER or '/'}'")
     try:
         files = list_recipe_files(dbx)
+        unsupported = list_unsupported_files(dbx)
     except AuthError as e:
         log.error(f"Dropbox authentication error: {e}")
         log.info("Token may have expired. Please refresh your Dropbox credentials.")
@@ -314,6 +349,11 @@ def run() -> None:
     except ApiError as e:
         log.error(f"Dropbox API error: {e}")
         return
+
+    for entry in unsupported:
+        ext = Path(entry.name).suffix.lower()
+        with _DB_LOCK:
+            record_failed_file(entry.path_lower, f"Unsupported file extension: {ext}")
 
     log.info(f"Found {len(files)} recipe file(s).")
     max_workers = int(os.environ.get("POLL_WORKERS", "5"))

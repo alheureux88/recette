@@ -15,6 +15,9 @@
                 {% if auth_enabled %}
                     {% if user %}
                         <a href="/favorites" class="nav-link">Mes favoris</a>
+                        {% if is_admin %}
+                        <a href="/admin" class="nav-link">Administration</a>
+                        {% endif %}
                         <span class="nav-user">{{ user.name or user.sub }}</span>
                         <a href="{{ logout_url }}" class="nav-link nav-logout">Déconnexion</a>
                     {% else %}

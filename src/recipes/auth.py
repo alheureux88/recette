@@ -13,6 +13,7 @@ OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
 OIDC_REDIRECT_URI = os.environ.get("OIDC_REDIRECT_URI", "http://localhost:8000/auth/callback")
+ADMIN_GROUP = os.environ.get("ADMIN_GROUP", "owner")
 
 OIDC_ENABLED = bool(OIDC_ISSUER and OIDC_CLIENT_ID)
 
@@ -36,6 +37,21 @@ def require_user(request: Request) -> dict[str, Any]:
     user = get_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def is_admin(request: Request) -> bool:
+    user = get_user(request)
+    if not user:
+        return False
+    groups = user.get("groups", [])
+    return ADMIN_GROUP in groups
+
+
+def require_admin(request: Request) -> dict[str, Any]:
+    user = require_user(request)
+    if not is_admin(request):
+        raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 
