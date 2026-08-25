@@ -59,14 +59,7 @@
     {% endif %}
 
     <div class="recipe-body">
-        <section class="ingredients">
-            <h2>Ingrédients</h2>
-            <ul>
-                {% for item in recipe.ingredients %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-        </section>
+        {% include "partials/ingredients.html" %}
 
         <section class="instructions">
             <h2>Instructions</h2>

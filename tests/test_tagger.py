@@ -13,6 +13,22 @@ from recipes.tagger import (
 )
 
 
+def _mock_openai_response(json_str: str) -> MagicMock:
+    mock_response = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = json_str
+    mock_response.choices = [mock_choice]
+    return mock_response
+
+
+def _mock_anthropic_response(json_str: str) -> MagicMock:
+    mock_response = MagicMock()
+    mock_content = MagicMock()
+    mock_content.text = json_str
+    mock_response.content = [mock_content]
+    return mock_response
+
+
 @pytest.fixture(autouse=True)
 def setup(temp_db):
     init_db()
@@ -46,28 +62,42 @@ class TestBuildSystemPrompt:
         assert '"category"' in prompt
         assert '"tags"' in prompt
 
+    def test_contains_structured_ingredient_format(self):
+        prompt = build_system_prompt()
+        assert '"servings"' in prompt
+        assert '"food"' in prompt
+        assert '"quantity_min"' in prompt
+        assert '"quantity_max"' in prompt
+        assert '"unit"' in prompt
+        assert '"tasse"' in prompt
+        assert '"c. à soupe"' in prompt
+
+    def test_contains_servings_instructions(self):
+        prompt = build_system_prompt()
+        assert "portions" in prompt
+        assert "personnes" in prompt
+        assert "explicite" in prompt
+        assert "NE DEVINE PAS" in prompt
+        assert "N'ESTIME PAS" in prompt
+
 
 class TestTagRecipe:
     def _mock_openai_response(self, json_str: str) -> MagicMock:
-        mock_response = MagicMock()
-        mock_choice = MagicMock()
-        mock_choice.message.content = json_str
-        mock_response.choices = [mock_choice]
-        return mock_response
+        return _mock_openai_response(json_str)
 
     def _mock_anthropic_response(self, json_str: str) -> MagicMock:
-        mock_response = MagicMock()
-        mock_content = MagicMock()
-        mock_content.text = json_str
-        mock_response.content = [mock_content]
-        return mock_response
+        return _mock_anthropic_response(json_str)
 
     def test_parses_valid_json(self):
         recipe_json = json.dumps(
             {
                 "title": "Tarte Tatin",
                 "description": "Classic French tart",
-                "ingredients": ["apples", "butter"],
+                "servings": 6,
+                "ingredients": [
+                    {"food": "apples", "quantity_min": 4, "quantity_max": None, "unit": None},
+                    {"food": "butter", "quantity_min": 100, "quantity_max": None, "unit": "g"},
+                ],
                 "instructions": "Step 1\nStep 2",
                 "category": "dessert",
                 "tags": {"origin": ["francais"]},
@@ -83,7 +113,11 @@ class TestTagRecipe:
 
         assert result["title"] == "Tarte Tatin"
         assert result["category"] == "dessert"
+        assert result["servings"] == 6
         assert "origin" in result["tags"]
+        assert result["ingredients"][0]["food"] == "apples"
+        assert result["ingredients"][0]["quantity_min"] == 4.0
+        assert result["ingredients"][1]["unit"] == "g"
 
     def test_strips_markdown_code_blocks(self):
         recipe_json = json.dumps({"title": "Test Recipe", "tags": {}})
@@ -207,6 +241,7 @@ class TestTagRecipe:
 
         assert result["description"] == ""
         assert result["ingredients"] == []
+        assert result["servings"] is None
         assert result["instructions"] == ""
         assert result["tags"] == {}
         assert result["category"] is None
@@ -273,3 +308,85 @@ class TestTagRecipe:
         call_args = mock_client.chat.completions.create.call_args
         user_content = call_args.kwargs["messages"][1]["content"]
         assert len(user_content) == 10000
+
+
+class TestIngredientNormalization:
+    def _tag(self, ingredients: object) -> list[dict[str, object]]:
+        recipe_json = json.dumps({"title": "Test", "ingredients": ingredients, "tags": {}})
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(recipe_json)
+        with patch("recipes.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+        value = result["ingredients"]
+        assert isinstance(value, list)
+        return value
+
+    def test_string_quantities_parsed(self):
+        ingredients = [
+            {"food": "farine", "quantity_min": "1/2", "quantity_max": None, "unit": "tasse"},
+            {"food": "sucre", "quantity_min": "1 1/2", "quantity_max": "2", "unit": "tasse"},
+        ]
+        result = self._tag(ingredients)
+        assert result[0]["quantity_min"] == 0.5
+        assert result[1]["quantity_min"] == 1.5
+        assert result[1]["quantity_max"] == 2.0
+
+    def test_string_ingredients_fallback(self):
+        result = self._tag(["sel au goût", "poivre"])
+        assert result == [
+            {"food": "sel au goût", "quantity_min": None, "quantity_max": None, "unit": None},
+            {"food": "poivre", "quantity_min": None, "quantity_max": None, "unit": None},
+        ]
+
+    def test_name_field_fallback(self):
+        result = self._tag([{"name": "farine", "quantity": 2, "unit": "tasse"}])
+        assert result == [
+            {"food": "farine", "quantity_min": 2.0, "quantity_max": None, "unit": "tasse"}
+        ]
+
+    def test_invalid_entries_dropped(self):
+        result = self._tag(["", 42, None, {"food": "sel"}])
+        assert result == [{"food": "sel", "quantity_min": None, "quantity_max": None, "unit": None}]
+
+    def test_non_list_returns_empty(self):
+        assert self._tag("not a list") == []
+
+    def test_invalid_quantities_become_none(self):
+        result = self._tag(
+            [{"food": "sel", "quantity_min": "beaucoup", "quantity_max": -1, "unit": "  "}]
+        )
+        assert result == [{"food": "sel", "quantity_min": None, "quantity_max": None, "unit": None}]
+
+
+class TestServingsParsing:
+    def _tag(self, servings: object) -> object:
+        recipe_json = json.dumps({"title": "Test", "servings": servings, "tags": {}})
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(recipe_json)
+        with patch("recipes.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+        return result["servings"]
+
+    def test_int_servings(self):
+        assert self._tag(4) == 4
+
+    def test_string_servings(self):
+        assert self._tag("6") == 6
+
+    def test_float_whole_servings(self):
+        assert self._tag(4.0) == 4
+
+    def test_fraction_servings(self):
+        assert self._tag(4.5) == 4.5
+
+    def test_text_servings_rejected(self):
+        assert self._tag("pour 4 personnes") is None
+
+    def test_zero_servings_rejected(self):
+        assert self._tag(0) is None
+
+    def test_negative_servings_rejected(self):
+        assert self._tag(-2) is None
+
+    def test_missing_servings(self):
+        assert self._tag(None) is None

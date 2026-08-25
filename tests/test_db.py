@@ -17,8 +17,14 @@ from recipes.db import (
 SAMPLE = {
     "title": "Tarte Tatin",
     "description": "Classic French upside-down apple tart.",
-    "ingredients": ["apples", "butter", "sugar", "puff pastry"],
+    "ingredients": [
+        {"food": "apple", "quantity_min": 4, "quantity_max": None, "unit": None},
+        {"food": "butter", "quantity_min": 100, "quantity_max": None, "unit": "g"},
+        {"food": "sugar", "quantity_min": 1, "quantity_max": 2, "unit": "tasse"},
+        {"food": "puff pastry", "quantity_min": 1, "quantity_max": None, "unit": None},
+    ],
     "instructions": "Caramelise apples. Top with pastry. Bake. Flip.",
+    "servings": 6,
     "category": "dessert",
     "tags": {
         "origin": ["francais"],
@@ -59,13 +65,44 @@ def test_get_recipe_roundtrip():
     assert "francais" in tag_names
 
 
+def test_get_recipe_structured_ingredients_roundtrip():
+    recipe_id = _insert_sample()
+    row = get_recipe(recipe_id)
+    assert row is not None
+    assert row["servings"] == 6
+    ingredients = row["ingredients"]
+    assert isinstance(ingredients, list)
+    assert ingredients[0] == {
+        "food": "apple",
+        "quantity_min": 4.0,
+        "quantity_max": None,
+        "unit": None,
+    }
+    assert ingredients[2]["quantity_max"] == 2.0
+    assert ingredients[2]["unit"] == "tasse"
+
+
+def test_upsert_servings_coerced_to_none():
+    recipe_id = _insert_sample({**SAMPLE, "servings": "beaucoup"})
+    row = get_recipe(recipe_id)
+    assert row is not None
+    assert row["servings"] is None
+
+
 def test_upsert_update():
     recipe_id = _insert_sample()
-    updated = {**SAMPLE, "title": "Tarte Tatin Updated", "file_hash": "def456"}
+    updated = {
+        **SAMPLE,
+        "title": "Tarte Tatin Updated",
+        "file_hash": "def456",
+        "servings": 8,
+    }
     new_id = upsert_recipe(updated)
     assert new_id == recipe_id
     row = get_recipe(recipe_id)
+    assert row is not None
     assert row["title"] == "Tarte Tatin Updated"
+    assert row["servings"] == 8
 
 
 def test_search_by_keyword():

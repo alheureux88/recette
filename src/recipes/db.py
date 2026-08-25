@@ -141,6 +141,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             description  TEXT,
             ingredients  TEXT,
             instructions TEXT,
+            servings     REAL,
             source_url   TEXT,
             dropbox_url  TEXT,
             source_file  TEXT NOT NULL UNIQUE,
@@ -335,13 +336,16 @@ def upsert_recipe(data: dict[str, object]) -> int:
         category_id = _resolve_category(
             conn, str(data["category"]) if data.get("category") else None
         )
+        servings = data.get("servings")
+        if isinstance(servings, bool) or not isinstance(servings, (int, float)):
+            servings = None
 
         if existing:
             conn.execute(
                 """
                 UPDATE recipes SET
                     title=?, description=?, ingredients=?, instructions=?,
-                    category_id=?, source_url=?, dropbox_url=?, file_hash=?,
+                    servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
                     file_modified_at=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
@@ -351,6 +355,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                     data.get("description"),
                     ingredients_json,
                     data.get("instructions"),
+                    servings,
                     category_id,
                     data.get("source_url"),
                     data.get("dropbox_url"),
@@ -364,15 +369,16 @@ def upsert_recipe(data: dict[str, object]) -> int:
             cur = conn.execute(
                 """
                 INSERT INTO recipes
-                    (title, description, ingredients, instructions, category_id,
+                    (title, description, ingredients, instructions, servings, category_id,
                      source_url, dropbox_url, source_file, file_hash, file_modified_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     data["title"],
                     data.get("description"),
                     ingredients_json,
                     data.get("instructions"),
+                    servings,
                     category_id,
                     data.get("source_url"),
                     data.get("dropbox_url"),

@@ -9,6 +9,7 @@ import threading
 from typing import Any
 
 from recipes.db import get_all_categories, get_existing_tags_for_prompt
+from recipes.units import parse_quantity
 
 _client: Any = None
 _client_lock = threading.Lock()
@@ -122,12 +123,44 @@ def build_system_prompt() -> str:
             "NE mets PAS tout dans un seul paragraphe. Chaque étape doit être séparée par '\\n'.",
             'Exemple: "Étape 1.\\nÉtape 2.\\nÉtape 3."',
             "",
+            "=== IMPORTANT pour les ingrédients ===",
+            "",
+            "Chaque ingrédient est un objet avec les champs 'food', 'quantity_min', 'quantity_max' et 'unit'.",
+            "",
+            "'food' : l'aliment seul, sans quantité ni unité, avec sa préparation ou ses qualificatifs",
+            '(ex: "oignon rouge, haché finement", "boeuf haché").',
+            "",
+            "'quantity_min' et 'quantity_max' : des nombres décimaux (0.5 pour 1/2, 1.5 pour 1 1/2).",
+            "Si l'ingrédient a une plage (ex: \"1 à 2 tasses\"), mets le minimum dans 'quantity_min' et le",
+            "maximum dans 'quantity_max'. S'il n'a qu'une seule quantité, mets-la dans 'quantity_min' et null",
+            "dans 'quantity_max'. S'il n'a pas de quantité (ex: \"sel au goût\"), mets null dans les deux.",
+            "",
+            "'unit' : l'unité de mesure, au singulier. Utilise une de ces unités canoniques quand",
+            'possible : "g", "kg", "oz", "lb", "ml", "l", "tasse", "c. à soupe", "c. à thé", "oz liquide".',
+            'Si l\'unité n\'est pas convertible (ex: "pincée", "gousse", "boîte", "tranche", "botte"),',
+            "garde l'unité du texte original. null s'il n'y a pas d'unité.",
+            'Si le texte donne la même quantité dans deux systèmes (ex: "450 g / 1 lb"), garde la première.',
+            "",
+            "=== IMPORTANT pour les portions ===",
+            "",
+            "'servings' : le nombre de portions que la recette produit, SEULEMENT si le texte le",
+            'mentionne explicitement (ex: "pour 4 personnes", "4 portions", "serves 4",',
+            '"yield: 4"). Si le texte ne mentionne PAS explicitement un nombre de portions,',
+            "retourne null. N'ESTIME PAS et NE DEVINE PAS le nombre de portions à partir des",
+            "quantités : retourne null plutôt que d'inventer une valeur.",
+            "La valeur doit être un nombre, pas du texte.",
+            "",
             "=== Format de sortie JSON ===",
             "",
             "{",
             '  "title": "Nom de la recette",',
             '  "description": "Résumé en une ou deux phrases",',
-            '  "ingredients": ["ingrédient 1", "ingrédient 2"],',
+            '  "servings": 4,',
+            '  "ingredients": [',
+            '    {"food": "farine", "quantity_min": 1.5, "quantity_max": 2, "unit": "tasse"},',
+            '    {"food": "oeufs", "quantity_min": 2, "quantity_max": null, "unit": null},',
+            '    {"food": "sel au goût", "quantity_min": null, "quantity_max": null, "unit": null}',
+            "  ],",
             '  "instructions": "Étape 1.\\nÉtape 2.\\nÉtape 3.",',
             '  "category": "plat-principal",',
             '  "tags": {',
@@ -155,7 +188,7 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
     if _get_provider() == "anthropic":
         response = _get_client().messages.create(
             model=_get_model(),
-            max_tokens=1000,
+            max_tokens=4000,
             system=system_prompt,
             messages=[
                 {"role": "user", "content": raw_text},
@@ -165,7 +198,7 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
     else:
         response = _get_client().chat.completions.create(
             model=_get_model(),
-            max_tokens=1000,
+            max_tokens=4000,
             temperature=0.2,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -192,7 +225,8 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
         data["title"] = title
 
     data.setdefault("description", "")
-    data.setdefault("ingredients", [])
+    data["ingredients"] = _normalize_ingredients(data.get("ingredients"))
+    data["servings"] = _parse_servings(data.get("servings"))
     data.setdefault("instructions", "")
     data.setdefault("tags", {})
     data.setdefault("category", None)
@@ -220,3 +254,55 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
         data["category"] = None
 
     return dict(data)
+
+
+def _clean_unit(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _normalize_ingredients(raw: object) -> list[dict[str, object]]:
+    """Normalise la liste d'ingrédients retournée par le LLM.
+
+    Accepte des objets {food, quantity_min, quantity_max, unit} (avec quelques
+    variantes tolérées comme "name" ou "quantity") et, en repli, des chaînes
+    simples stockées telles quelles dans "food".
+    """
+    if not isinstance(raw, list):
+        return []
+
+    normalized: list[dict[str, object]] = []
+    for item in raw:
+        if isinstance(item, dict):
+            food = item.get("food")
+            if not isinstance(food, str) or not food.strip():
+                alias = item.get("name")
+                food = alias if isinstance(alias, str) else ""
+
+            qmin = parse_quantity(item.get("quantity_min"))
+            if qmin is None and "quantity_min" not in item:
+                qmin = parse_quantity(item.get("quantity"))
+
+            entry: dict[str, object] = {
+                "food": food.strip(),
+                "quantity_min": qmin,
+                "quantity_max": parse_quantity(item.get("quantity_max")),
+                "unit": _clean_unit(item.get("unit")),
+            }
+            if entry["food"] or entry["quantity_min"] is not None:
+                normalized.append(entry)
+        elif isinstance(item, str) and item.strip():
+            normalized.append(
+                {"food": item.strip(), "quantity_min": None, "quantity_max": None, "unit": None}
+            )
+    return normalized
+
+
+def _parse_servings(value: object) -> int | float | None:
+    parsed = parse_quantity(value)
+    if parsed is None or parsed <= 0:
+        return None
+    if parsed == int(parsed):
+        return int(parsed)
+    return parsed

@@ -50,6 +50,7 @@ from recipes.db import (
 )
 from recipes.poller import IMAGES_DIR
 from recipes.poller import run as poll_dropbox
+from recipes.units import format_ingredient
 
 log = logging.getLogger(__name__)
 
@@ -174,8 +175,87 @@ async def search(
     )
 
 
+SYSTEMES_UNITES = ("original", "metric", "imperial")
+
+
+def _parse_servings_param(raw: str | None) -> int | None:
+    if raw is None:
+        return None
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _parse_multiplier_param(raw: str | None) -> float | None:
+    if raw is None:
+        return None
+    try:
+        value = float(raw.strip().replace(",", "."))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _ingredient_context(
+    recipe: dict[str, object],
+    servings: int | None,
+    units: str,
+    multiplier: float | None = None,
+) -> dict[str, object]:
+    """Construit le contexte d'affichage des ingrédients.
+
+    Si la recette a un nombre de portions connu, l'ajustement se fait par portions
+    (multiplicateur = portions demandées / portions de base). Sinon, l'usager peut
+    multiplier directement la recette sans notion de portions.
+    """
+    brut = recipe.get("servings")
+    base_servings: float | None = None
+    if isinstance(brut, (int, float)) and not isinstance(brut, bool) and brut > 0:
+        base_servings = float(brut)
+
+    if base_servings and servings and servings > 0:
+        multiplicateur = servings / base_servings
+    elif not base_servings and multiplier and multiplier > 0:
+        multiplicateur = multiplier
+    else:
+        multiplicateur = 1.0
+
+    systeme = units if units in SYSTEMES_UNITES else "original"
+
+    ingredients_bruts = recipe.get("ingredients")
+    items = ingredients_bruts if isinstance(ingredients_bruts, list) else []
+    display_ingredients = [format_ingredient(item, multiplicateur, systeme) for item in items]
+
+    current_servings: int | float | None
+    if servings and servings > 0:
+        current_servings = servings
+    elif base_servings is not None:
+        current_servings = (
+            int(base_servings) if base_servings == int(base_servings) else base_servings
+        )
+    else:
+        current_servings = None
+
+    return {
+        "base_servings": base_servings,
+        "current_servings": current_servings,
+        "current_multiplier": multiplicateur,
+        "units_system": systeme,
+        "display_ingredients": display_ingredients,
+        "ingredients_structures": any(isinstance(item, dict) for item in items),
+    }
+
+
 @app.get("/recipe/{recipe_id}", response_class=HTMLResponse)
-async def recipe_detail(request: Request, recipe_id: int = Path(gt=0)) -> HTMLResponse:
+async def recipe_detail(
+    request: Request,
+    recipe_id: int = Path(gt=0),
+    servings: str | None = Query(default=None),
+    units: str = Query(default="original"),
+    multiplier: str | None = Query(default=None),
+) -> HTMLResponse:
     recipe = get_recipe(recipe_id)
     if not recipe:
         return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
@@ -192,7 +272,37 @@ async def recipe_detail(request: Request, recipe_id: int = Path(gt=0)) -> HTMLRe
             request,
             recipe=recipe,
             is_favorite=is_fav,
+            **_ingredient_context(
+                recipe, _parse_servings_param(servings), units, _parse_multiplier_param(multiplier)
+            ),
         ),
+    )
+
+
+@app.get("/recipe/{recipe_id}/ingredients", response_class=HTMLResponse)
+async def recipe_ingredients(
+    request: Request,
+    recipe_id: int = Path(gt=0),
+    servings: str | None = Query(default=None),
+    units: str = Query(default="original"),
+    multiplier: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
+    recipe = get_recipe(recipe_id)
+    if not recipe:
+        return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/ingredients.html",
+        context={
+            "recipe": recipe,
+            **_ingredient_context(
+                recipe,
+                _parse_servings_param(servings),
+                units,
+                _parse_multiplier_param(multiplier),
+            ),
+        },
     )
 
 

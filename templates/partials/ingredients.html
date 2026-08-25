@@ -1,0 +1,39 @@
+<section class="ingredients" id="ingredients-section">
+    <h2>Ingrédients</h2>
+
+    {% if ingredients_structures %}
+    <form class="ingredient-controls"
+          hx-get="/recipe/{{ recipe.id }}/ingredients"
+          hx-target="#ingredients-section"
+          hx-swap="outerHTML"
+          hx-trigger="change">
+        {% if base_servings %}
+        <label class="servings-field">
+            <span>Portions</span>
+            <input type="number" name="servings" min="1" max="99" step="1"
+                   value="{{ current_servings if current_servings is not none else '' }}">
+        </label>
+        {% else %}
+        <label class="servings-field">
+            <span>Multiplicateur</span>
+            <input type="number" name="multiplier" min="0.25" max="99" step="0.25"
+                   value="{{ '%g'|format(current_multiplier) }}">
+        </label>
+        {% endif %}
+        <label class="units-field">
+            <span>Unités</span>
+            <select name="units">
+                <option value="original"{% if units_system == "original" %} selected{% endif %}>Recette originale</option>
+                <option value="metric"{% if units_system == "metric" %} selected{% endif %}>Métrique</option>
+                <option value="imperial"{% if units_system == "imperial" %} selected{% endif %}>Impérial</option>
+            </select>
+        </label>
+    </form>
+    {% endif %}
+
+    <ul>
+        {% for item in display_ingredients %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+</section>
