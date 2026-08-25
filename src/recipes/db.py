@@ -146,6 +146,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             dropbox_url  TEXT,
             source_file  TEXT NOT NULL UNIQUE,
             file_hash    TEXT NOT NULL,
+            manually_edited INTEGER NOT NULL DEFAULT 0,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -234,6 +235,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
     if "file_modified_at" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN file_modified_at DATETIME")
+
+    if "manually_edited" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -470,6 +474,57 @@ def _add_ancestors(conn: sqlite3.Connection, tag_id: int, collected: set[int]) -
             _add_ancestors(conn, parent_id, collected)
 
 
+def is_manually_edited(source_file: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM recipes WHERE source_file = ? AND manually_edited = 1",
+            (source_file,),
+        ).fetchone()
+        return row is not None
+
+
+def update_recipe_manual(recipe_id: int, data: dict[str, object]) -> bool:
+    """Met à jour une recette modifiée via l'écran d'administration.
+
+    Marque la recette comme modifiée manuellement : le poller Dropbox ignorera
+    alors les futures mises à jour du fichier source et les signalera dans
+    les fichiers en erreur.
+    """
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if not row:
+            return False
+
+        ingredients_json = json.dumps(data.get("ingredients", []))
+        category_id = _resolve_category(
+            conn, str(data["category"]) if data.get("category") else None
+        )
+        servings = data.get("servings")
+        if isinstance(servings, bool) or not isinstance(servings, (int, float)):
+            servings = None
+
+        conn.execute(
+            """
+            UPDATE recipes SET
+                title=?, description=?, ingredients=?, instructions=?,
+                servings=?, category_id=?, source_url=?,
+                manually_edited=1, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        """,
+            (
+                data["title"],
+                data.get("description"),
+                ingredients_json,
+                data.get("instructions"),
+                servings,
+                category_id,
+                data.get("source_url"),
+                recipe_id,
+            ),
+        )
+        return True
+
+
 def get_recipe(recipe_id: int) -> dict[str, object] | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
@@ -629,16 +684,21 @@ def get_all_tags_grouped() -> dict[str, dict[str, Any]]:
     return result
 
 
-def get_all_categories() -> list[dict[str, object]]:
+def get_all_categories(only_used: bool = True) -> list[dict[str, object]]:
     with get_conn() as conn:
-        rows = conn.execute(
+        if only_used:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT c.id, c.name, c.display_name
+                FROM categories c
+                JOIN recipes r ON c.id = r.category_id
+                ORDER BY c.sort_order
             """
-            SELECT DISTINCT c.id, c.name, c.display_name
-            FROM categories c
-            JOIN recipes r ON c.id = r.category_id
-            ORDER BY c.sort_order
-        """
-        ).fetchall()
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, display_name FROM categories ORDER BY sort_order"
+            ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -798,15 +858,22 @@ def get_favorite_recipes(user_id: int) -> list[dict[str, object]]:
         return results
 
 
-def get_all_recipes_admin() -> list[dict[str, object]]:
+def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
+    where = ""
+    if filter == "no_tags":
+        where = "WHERE NOT EXISTS (SELECT 1 FROM recipe_tags rt WHERE rt.recipe_id = r.id)"
+    elif filter == "no_category":
+        where = "WHERE r.category_id IS NULL"
+
     with get_conn() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT r.id, r.title, r.source_file, r.created_at, r.updated_at,
-                   r.file_modified_at,
+                   r.file_modified_at, r.manually_edited,
                    c.name AS category_name, c.display_name AS category_display_name
             FROM recipes r
             LEFT JOIN categories c ON r.category_id = c.id
+            {where}
             ORDER BY r.created_at DESC
         """
         ).fetchall()

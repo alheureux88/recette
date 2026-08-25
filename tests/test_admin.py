@@ -9,12 +9,15 @@ from recipes.db import (
     get_all_recipes_admin,
     get_blacklisted_files,
     get_failed_files,
+    get_recipe,
     init_db,
     is_blacklisted,
+    is_manually_edited,
     record_failed_file,
     remove_failed_file,
     remove_from_blacklist,
     sync_recipe_tags,
+    update_recipe_manual,
     upsert_recipe,
 )
 
@@ -151,6 +154,304 @@ class TestAdminRoutes:
         resp = client.post(f"/admin/blacklist/{recipe_id}")
         assert resp.status_code == 200
         assert is_blacklisted("/recipes/poulet.docx")
+
+
+class TestUpdateRecipeManual:
+    def test_updates_fields_and_sets_manual_flag(self):
+        recipe_id = _insert_sample()
+        assert not is_manually_edited("/recipes/poulet.docx")
+
+        update_recipe_manual(
+            recipe_id,
+            {
+                "title": "Poulet Rôti modifié",
+                "description": "Nouvelle description",
+                "ingredients": [
+                    {"food": "poulet", "quantity_min": 1.5, "quantity_max": None, "unit": "kg"}
+                ],
+                "instructions": "Nouvelles instructions",
+                "servings": 6,
+                "category": "dessert",
+                "source_url": "https://example.com",
+            },
+        )
+
+        recipe = get_recipe(recipe_id)
+        assert recipe["title"] == "Poulet Rôti modifié"
+        assert recipe["description"] == "Nouvelle description"
+        assert recipe["instructions"] == "Nouvelles instructions"
+        assert recipe["servings"] == 6
+        assert recipe["category"]["name"] == "dessert"
+        assert recipe["source_url"] == "https://example.com"
+        assert recipe["ingredients"] == [
+            {"food": "poulet", "quantity_min": 1.5, "quantity_max": None, "unit": "kg"}
+        ]
+        assert is_manually_edited("/recipes/poulet.docx")
+
+    def test_invalid_servings_becomes_none(self):
+        recipe_id = _insert_sample()
+        update_recipe_manual(
+            recipe_id,
+            {"title": "T", "ingredients": [], "servings": "abc", "category": None},
+        )
+        assert get_recipe(recipe_id)["servings"] is None
+
+    def test_nonexistent_recipe_returns_false(self):
+        assert update_recipe_manual(9999, {"title": "T", "ingredients": []}) is False
+
+    def test_admin_query_exposes_manual_flag(self):
+        recipe_id = _insert_sample()
+        assert get_all_recipes_admin()[0]["manually_edited"] == 0
+        update_recipe_manual(recipe_id, {"title": "T", "ingredients": []})
+        assert get_all_recipes_admin()[0]["manually_edited"] == 1
+
+
+class TestPollerManualEditCheck:
+    def _make_entry(self):
+        entry = MagicMock()
+        entry.name = "poulet.docx"
+        entry.path_lower = "/recipes/poulet.docx"
+        entry.client_modified = None
+        return entry
+
+    def test_skips_manually_edited_recipe(self):
+        from recipes.poller import process_file
+
+        recipe_id = _insert_sample()
+        update_recipe_manual(recipe_id, {"title": "Manuel", "ingredients": []})
+
+        mock_dbx = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = b"changed content"
+        mock_dbx.files_download.return_value = (None, mock_response)
+
+        with patch("recipes.poller.tag_recipe") as mock_tag:
+            process_file(mock_dbx, self._make_entry())
+            mock_tag.assert_not_called()
+
+        failed = get_failed_files()
+        assert any("manuellement" in f["error"] for f in failed)
+        assert get_recipe(recipe_id)["title"] == "Manuel"
+
+    def test_non_manual_recipe_still_processed(self):
+        from recipes.poller import process_file
+
+        _insert_sample()
+
+        mock_dbx = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = b"changed content"
+        mock_dbx.files_download.return_value = (None, mock_response)
+        mock_dbx.sharing_list_shared_links.return_value = MagicMock(links=[])
+
+        with (
+            patch("recipes.poller.extract_text", return_value="Recipe text"),
+            patch(
+                "recipes.poller.tag_recipe",
+                return_value={
+                    "title": "Poulet Rôti",
+                    "description": None,
+                    "ingredients": [],
+                    "instructions": None,
+                    "category": None,
+                    "tags": {},
+                    "source_url": None,
+                },
+            ) as mock_tag,
+        ):
+            process_file(mock_dbx, self._make_entry())
+            mock_tag.assert_called_once()
+
+
+class TestAdminEditRoutes:
+    def test_edit_form_requires_admin(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": []},
+        )
+        resp = client.get("/admin/edit/1")
+        assert resp.status_code == 403
+
+    def test_edit_form_shows_recipe(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        recipe_id = _insert_sample()
+        resp = client.get(f"/admin/edit/{recipe_id}")
+        assert resp.status_code == 200
+        assert "Poulet Rôti" in resp.text
+        assert "ing_food" in resp.text
+
+    def test_edit_form_unknown_recipe(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        resp = client.get("/admin/edit/9999")
+        assert resp.status_code == 404
+
+    def test_edit_save_updates_and_marks_manual(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        recipe_id = _insert_sample()
+
+        resp = client.post(
+            f"/admin/edit/{recipe_id}",
+            data={
+                "title": "Poulet modifié",
+                "description": "Desc",
+                "instructions": "Étape 1.\nÉtape 2.",
+                "servings": "4",
+                "category": "dessert",
+                "source_url": "https://example.com",
+                "ing_min": ["1,5", ""],
+                "ing_max": ["2", ""],
+                "ing_unit": ["tasse", ""],
+                "ing_food": ["farine", "sel au goût"],
+                "tags_origin": ["francais"],
+                "tags_protein": ["poulet"],
+            },
+        )
+        assert resp.status_code == 200
+
+        recipe = get_recipe(recipe_id)
+        assert recipe["title"] == "Poulet modifié"
+        assert recipe["servings"] == 4
+        assert recipe["category"]["name"] == "dessert"
+        assert recipe["ingredients"] == [
+            {"food": "farine", "quantity_min": 1.5, "quantity_max": 2.0, "unit": "tasse"},
+            {"food": "sel au goût", "quantity_min": None, "quantity_max": None, "unit": None},
+        ]
+        assert is_manually_edited("/recipes/poulet.docx")
+        origin_names = [t["name"] for t in recipe["tags"]["origin"]["tags"]]
+        assert "francais" in origin_names
+
+    def test_edit_save_requires_title(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        recipe_id = _insert_sample()
+        resp = client.post(f"/admin/edit/{recipe_id}", data={"title": ""})
+        assert resp.status_code == 422
+
+
+class TestAdminQuickFilters:
+    def _insert(self, **overrides):
+        data = {**SAMPLE, **overrides}
+        recipe_id = upsert_recipe(data)
+        sync_recipe_tags(recipe_id, data.get("tags", {}))
+        return recipe_id
+
+    def test_filter_no_tags(self):
+        self._insert()
+        self._insert(
+            title="Sans tags",
+            source_file="/r/sans_tags.docx",
+            file_hash="ccc",
+            tags={},
+        )
+        recipes = get_all_recipes_admin("no_tags")
+        assert [r["title"] for r in recipes] == ["Sans tags"]
+
+    def test_filter_no_category(self):
+        self._insert()
+        self._insert(
+            title="Sans catégorie",
+            source_file="/r/sans_cat.docx",
+            file_hash="ddd",
+            category=None,
+        )
+        recipes = get_all_recipes_admin("no_category")
+        assert [r["title"] for r in recipes] == ["Sans catégorie"]
+
+    def test_filter_no_tags_keeps_categorized(self):
+        self._insert(title="Catégorisée sans tags", tags={}, category="dessert")
+        recipes = get_all_recipes_admin("no_tags")
+        assert [r["title"] for r in recipes] == ["Catégorisée sans tags"]
+
+    def test_invalid_filter_returns_all(self):
+        self._insert()
+        assert len(get_all_recipes_admin("bogus")) == 1
+
+    def test_filter_route_no_tags(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        self._insert()
+        self._insert(title="Sans tags", source_file="/r/sans.docx", file_hash="ccc", tags={})
+        resp = client.get("/admin?filter=no_tags")
+        assert resp.status_code == 200
+        assert "Sans tags" in resp.text
+        assert "Poulet Rôti" not in resp.text
+
+    def test_filter_route_invalid_falls_back_to_all(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        self._insert()
+        resp = client.get("/admin?filter=bogus")
+        assert resp.status_code == 200
+        assert "Poulet Rôti" in resp.text
+
+    def test_filter_chips_rendered(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        self._insert()
+        resp = client.get("/admin")
+        assert "Sans étiquettes" in resp.text
+        assert "Sans catégorie" in resp.text
+
+    def test_edit_form_and_save_preserve_filter(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        self._insert(title="Sans tags", source_file="/r/sans.docx", file_hash="ccc", tags={})
+        recipe_id = _insert_sample()
+
+        edit_url = f"/admin/edit/{recipe_id}?filter=no_tags"
+        resp = client.get(edit_url)
+        assert resp.status_code == 200
+        assert edit_url in resp.text
+
+        resp = client.post(
+            f"/admin/edit/{recipe_id}?filter=no_tags",
+            data={"title": "Poulet Rôti", "ingredients": [], "tags_protein": ["poulet"]},
+        )
+        assert resp.status_code == 200
+        # La recette a maintenant un tag : elle disparaît du filtre actif
+        assert "Poulet Rôti" not in resp.text
+        assert "Sans tags" in resp.text
+
+    def test_blacklist_preserves_filter(self, client, monkeypatch):
+        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr(
+            "recipes.auth.get_user",
+            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+        )
+        recipe_id = _insert_sample()
+        self._insert(title="Sans tags", source_file="/r/sans.docx", file_hash="ccc", tags={})
+        resp = client.post(f"/admin/blacklist/{recipe_id}?filter=no_tags")
+        assert resp.status_code == 200
+        assert "Poulet Rôti" not in resp.text
+        assert "Sans tags" in resp.text
 
 
 class TestBlacklistManagement:

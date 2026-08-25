@@ -1,4 +1,27 @@
 <h2 class="admin-section-title">Recettes</h2>
+<div class="admin-filters">
+    <button class="filter-chip{% if not filter %} active{% endif %}"
+            hx-get="/admin"
+            hx-select="#admin-content"
+            hx-target="#admin-content"
+            hx-push-url="true">
+        Toutes
+    </button>
+    <button class="filter-chip{% if filter == 'no_tags' %} active{% endif %}"
+            hx-get="/admin?filter=no_tags"
+            hx-select="#admin-content"
+            hx-target="#admin-content"
+            hx-push-url="true">
+        Sans étiquettes
+    </button>
+    <button class="filter-chip{% if filter == 'no_category' %} active{% endif %}"
+            hx-get="/admin?filter=no_category"
+            hx-select="#admin-content"
+            hx-target="#admin-content"
+            hx-push-url="true">
+        Sans catégorie
+    </button>
+</div>
 <table class="admin-table">
     <thead>
         <tr>
@@ -13,7 +36,12 @@
     <tbody>
         {% for recipe in recipes %}
         <tr>
-            <td>{{ recipe.title }}</td>
+            <td>
+                {{ recipe.title }}
+                {% if recipe.manually_edited %}
+                <span class="manual-badge" title="Modifiee manuellement — les mises a jour Dropbox sont ignorees">Manuel</span>
+                {% endif %}
+            </td>
             <td>{{ recipe.created_at }}</td>
             <td>{{ recipe.file_modified_at or "—" }}</td>
             <td>
@@ -28,9 +56,14 @@
                 <span class="tag">{{ tag.display_name }}</span>
                 {% endfor %}
             </td>
-            <td>
+            <td class="admin-actions">
+                <button class="btn-edit"
+                        hx-get="/admin/edit/{{ recipe.id }}{% if filter %}?filter={{ filter }}{% endif %}"
+                        hx-target="#admin-content">
+                    Modifier
+                </button>
                 <button class="btn-blacklist"
-                        hx-post="/admin/blacklist/{{ recipe.id }}"
+                        hx-post="/admin/blacklist/{{ recipe.id }}{% if filter %}?filter={{ filter }}{% endif %}"
                         hx-target="#admin-content"
                         hx-confirm="Supprimer cette recette et l'empecher d'etre re-importee ?">
                     Blacklister
@@ -39,7 +72,15 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="6" class="empty">Aucune recette</td>
+            <td colspan="6" class="empty">
+                {% if filter == 'no_tags' %}
+                Aucune recette sans étiquettes
+                {% elif filter == 'no_category' %}
+                Aucune recette sans catégorie
+                {% else %}
+                Aucune recette
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>
@@ -61,7 +102,7 @@
             <td>{{ item.blacklisted_at }}</td>
             <td>
                 <button class="btn-restore"
-                        hx-post="/admin/unblacklist?path={{ item.path | urlencode }}"
+                        hx-post="/admin/unblacklist?path={{ item.path | urlencode }}{% if filter %}&filter={{ filter }}{% endif %}"
                         hx-target="#admin-content"
                         hx-confirm="Retirer ce fichier de la blacklist ? Il sera re-importe au prochain scan.">
                     Retablir
@@ -94,7 +135,7 @@
             <td>{{ item.failed_at }}</td>
             <td>
                 <button class="btn-retry"
-                        hx-post="/admin/retry-failed?path={{ item.path | urlencode }}"
+                        hx-post="/admin/retry-failed?path={{ item.path | urlencode }}{% if filter %}&filter={{ filter }}{% endif %}"
                         hx-target="#admin-content"
                         hx-confirm="Retirer ce fichier de la liste d'erreurs ? Il sera re-essayee au prochain scan.">
                     Reessayer

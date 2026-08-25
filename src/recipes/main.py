@@ -37,6 +37,7 @@ from recipes.db import (
     get_all_recipes_admin,
     get_all_tags_grouped,
     get_blacklisted_files,
+    get_existing_tags_for_prompt,
     get_failed_files,
     get_favorite_recipes,
     get_or_create_user,
@@ -47,10 +48,12 @@ from recipes.db import (
     remove_favorite,
     remove_from_blacklist,
     search_recipes,
+    sync_recipe_tags,
+    update_recipe_manual,
 )
 from recipes.poller import IMAGES_DIR
 from recipes.poller import run as poll_dropbox
-from recipes.units import format_ingredient
+from recipes.units import format_ingredient, parse_quantity
 
 log = logging.getLogger(__name__)
 
@@ -395,15 +398,132 @@ async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(
     request: Request,
+    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    recipes = get_all_recipes_admin()
+    filter = _normalize_admin_filter(filter)
+    recipes = get_all_recipes_admin(filter)
     blacklisted = get_blacklisted_files()
     failed = get_failed_files()
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+        context=_base_context(
+            request, recipes=recipes, blacklisted=blacklisted, failed=failed, filter=filter
+        ),
+    )
+
+
+TAG_FAMILIES = ("origin", "diet", "protein", "cooking_method")
+
+ADMIN_RECIPE_FILTERS = ("no_tags", "no_category")
+
+
+def _normalize_admin_filter(raw: str) -> str:
+    return raw if raw in ADMIN_RECIPE_FILTERS else ""
+
+
+def _admin_table_context(request: Request, filter: str = "") -> dict[str, object]:
+    filter = _normalize_admin_filter(filter)
+    return _base_context(
+        request,
+        recipes=get_all_recipes_admin(filter),
+        blacklisted=get_blacklisted_files(),
+        failed=get_failed_files(),
+        filter=filter,
+    )
+
+
+def _ingredients_from_form(form: Any) -> list[dict[str, object]]:
+    """Construit la liste d'ingrédients à partir des rangées du formulaire
+    (ing_min / ing_max / ing_unit / ing_food soumis en listes parallèles)."""
+    foods = form.getlist("ing_food")
+    mins = form.getlist("ing_min")
+    maxs = form.getlist("ing_max")
+    units = form.getlist("ing_unit")
+
+    ingredients: list[dict[str, object]] = []
+    for i, food in enumerate(foods):
+        qmin = parse_quantity(mins[i]) if i < len(mins) else None
+        qmax = parse_quantity(maxs[i]) if i < len(maxs) else None
+        unit = units[i].strip() if i < len(units) else ""
+        name = food.strip()
+        if not name and qmin is None:
+            continue
+        ingredients.append(
+            {
+                "food": name,
+                "quantity_min": qmin,
+                "quantity_max": qmax,
+                "unit": unit or None,
+            }
+        )
+    return ingredients
+
+
+def _tags_from_form(form: Any) -> dict[str, list[str]]:
+    return {
+        family: [name for name in form.getlist(f"tags_{family}") if name] for family in TAG_FAMILIES
+    }
+
+
+@app.get("/admin/edit/{recipe_id}", response_class=HTMLResponse)
+async def admin_edit_form(
+    request: Request,
+    recipe_id: int = Path(gt=0),
+    filter: str = Query(default=""),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    recipe = get_recipe(recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_edit.html",
+        context=_base_context(
+            request,
+            recipe=recipe,
+            all_categories=get_all_categories(only_used=False),
+            all_tags=get_existing_tags_for_prompt(),
+            filter=_normalize_admin_filter(filter),
+        ),
+    )
+
+
+@app.post("/admin/edit/{recipe_id}", response_class=HTMLResponse)
+async def admin_edit_save(
+    request: Request,
+    recipe_id: int = Path(gt=0),
+    filter: str = Query(default=""),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    recipe = get_recipe(recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    form = await request.form()
+    title = str(form.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="title is required")
+
+    data: dict[str, object] = {
+        "title": title,
+        "description": str(form.get("description") or "").strip(),
+        "instructions": str(form.get("instructions") or "").strip(),
+        "ingredients": _ingredients_from_form(form),
+        "servings": parse_quantity(form.get("servings")),
+        "category": str(form.get("category") or "").strip() or None,
+        "source_url": str(form.get("source_url") or "").strip() or None,
+    }
+
+    if not update_recipe_manual(recipe_id, data):
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    sync_recipe_tags(recipe_id, _tags_from_form(form))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_table.html",
+        context=_admin_table_context(request, filter),
     )
 
 
@@ -411,16 +531,14 @@ async def admin_page(
 async def admin_blacklist(
     request: Request,
     recipe_id: int = Path(gt=0),
+    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     blacklist_and_delete_recipe(recipe_id)
-    recipes = get_all_recipes_admin()
-    blacklisted = get_blacklisted_files()
-    failed = get_failed_files()
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+        context=_admin_table_context(request, filter),
     )
 
 
@@ -428,16 +546,14 @@ async def admin_blacklist(
 async def admin_unblacklist(
     request: Request,
     path: str = Query(...),
+    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     remove_from_blacklist(path)
-    recipes = get_all_recipes_admin()
-    blacklisted = get_blacklisted_files()
-    failed = get_failed_files()
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+        context=_admin_table_context(request, filter),
     )
 
 
@@ -445,14 +561,12 @@ async def admin_unblacklist(
 async def admin_retry_failed(
     request: Request,
     path: str = Query(...),
+    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     remove_failed_file(path)
-    recipes = get_all_recipes_admin()
-    blacklisted = get_blacklisted_files()
-    failed = get_failed_files()
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_base_context(request, recipes=recipes, blacklisted=blacklisted, failed=failed),
+        context=_admin_table_context(request, filter),
     )

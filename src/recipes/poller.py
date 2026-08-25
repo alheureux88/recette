@@ -22,6 +22,7 @@ from recipes.db import (
     get_processed_hash,
     init_db,
     is_blacklisted,
+    is_manually_edited,
     mark_processed,
     record_failed_file,
     remove_failed_file,
@@ -276,6 +277,12 @@ def process_file(dbx: dropbox.Dropbox, entry: dropbox.files.FileMetadata) -> Non
     existing_hash = get_processed_hash(path)
     if existing_hash == content_hash:
         log.info(f"  Skipping (unchanged): {path}")
+        return
+
+    if is_manually_edited(path):
+        log.warning(f"  Skipping (manually edited recipe): {path}")
+        with _DB_LOCK:
+            record_failed_file(path, "Recette modifiee manuellement — mise a jour Dropbox ignoree")
         return
 
     log.info(f"  Parsing: {entry.name}")
