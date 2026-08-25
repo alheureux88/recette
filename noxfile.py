@@ -2,11 +2,11 @@
 noxfile.py — Build pipeline for the recipes project.
 
 Commands:
-    nox                  # run the full pipeline (lint → typecheck → test → docker)
+    nox                  # run lint → typecheck → test
     nox -s lint          # just lint + format check
     nox -s typecheck     # just mypy
     nox -s test          # just pytest
-    nox -s docker        # just build the Docker image
+    nox -s docker        # build the Docker image
     nox -s fmt           # auto-fix formatting in place (not part of default pipeline)
 """
 
@@ -18,7 +18,7 @@ import nox
 nox.options.default_venv_backend = "uv"
 
 # Sessions that run when you call bare `nox`
-nox.options.sessions = ["lint", "typecheck", "test", "docker"]
+nox.options.sessions = ["lint", "typecheck", "test"]
 
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "recipes")
 IMAGE_TAG = os.environ.get("IMAGE_TAG", "latest")

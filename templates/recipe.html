@@ -5,7 +5,14 @@
 <div class="recipe-detail">
     <a href="/" class="back">← Toutes les recettes</a>
 
-    <h1>{{ recipe.title }}</h1>
+    <div class="recipe-header">
+        <h1>{{ recipe.title }}</h1>
+        {% if auth_enabled and user %}
+            {% with recipe_id=recipe.id, is_favorite=is_favorite %}
+                {% include "partials/favorite_button.html" %}
+            {% endwith %}
+        {% endif %}
+    </div>
 
     {% if recipe.category %}
     <span class="category-badge">{{ recipe.category.display_name }}</span>

@@ -139,6 +139,55 @@ Alternative: static token (expires after ~4 hours, not recommended for productio
 
 ---
 
+## OIDC Authentication (Optional)
+
+The app supports optional OIDC authentication via Authelia (or any compatible provider). When enabled, users can log in to favorite recipes. If not configured, the app works without authentication.
+
+### Setup
+
+1. Register a client in Authelia's configuration:
+
+```yaml
+identity_providers:
+  oidc:
+    clients:
+      - client_id: 'recettes'
+        client_name: 'Recettes Merizzi'
+        client_secret: '$pbkdf2-sha512$...'  # generate with: authelia crypto hash generate --random --length 64
+        public: false
+        redirect_uris:
+          - 'http://localhost:8000/auth/callback'  # or your production URL
+        scopes:
+          - 'openid'
+          - 'email'
+          - 'profile'
+          - 'groups'
+        grant_types:
+          - 'authorization_code'
+        response_types:
+          - 'code'
+        token_endpoint_auth_method: 'client_secret_basic'
+```
+
+2. Add to `.env`:
+
+```bash
+OIDC_ISSUER=https://authelia.example.com
+OIDC_CLIENT_ID=recettes
+OIDC_CLIENT_SECRET=your_client_secret
+OIDC_REDIRECT_URI=http://localhost:8000/auth/callback
+SESSION_SECRET=your_random_session_secret  # generate with: openssl rand -hex 32
+```
+
+### Features
+
+- **Login/Logout**: Header shows login button when OIDC is configured
+- **Favorites**: Logged-in users can star/unstar recipes
+- **Favorites page**: `/favorites` shows all favorited recipes
+- **Graceful fallback**: Without OIDC vars, the app works as before (no auth UI)
+
+---
+
 ## Adding a recipe
 
 Drop any `.txt`, `.docx`, `.pdf`, or `.odt` file into the Dropbox folder.

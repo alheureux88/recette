@@ -1,0 +1,8 @@
+<button
+    class="fav-btn {% if is_favorite %}is-favorite{% endif %}"
+    hx-post="/favorites/{{ recipe_id }}"
+    hx-swap="outerHTML"
+    title="{% if is_favorite %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}"
+>
+    <span class="fav-icon">{% if is_favorite %}★{% else %}☆{% endif %}</span>
+</button>

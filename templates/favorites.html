@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Mes favoris — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<h1 class="page-title">Mes favoris</h1>
+
+<div id="recipe-grid">
+    {% include "partials/recipe_cards.html" %}
+</div>
+
+{% endblock %}

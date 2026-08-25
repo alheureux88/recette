@@ -9,7 +9,20 @@
 </head>
 <body>
     <header>
-        <a href="/" class="site-title">🍲 Recettes Merizzi</a>
+        <div class="header-inner">
+            <a href="/" class="site-title">🍲 Recettes Merizzi</a>
+            <nav class="header-nav">
+                {% if auth_enabled %}
+                    {% if user %}
+                        <a href="/favorites" class="nav-link">Mes favoris</a>
+                        <span class="nav-user">{{ user.name or user.sub }}</span>
+                        <a href="{{ logout_url }}" class="nav-link nav-logout">Déconnexion</a>
+                    {% else %}
+                        <a href="{{ login_url }}" class="nav-link nav-login">Connexion</a>
+                    {% endif %}
+                {% endif %}
+            </nav>
+        </div>
     </header>
     <main>
         {% block content %}{% endblock %}

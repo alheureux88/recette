@@ -191,6 +191,21 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             sort_order   INTEGER NOT NULL DEFAULT 0,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject      TEXT NOT NULL UNIQUE,
+            email        TEXT,
+            name         TEXT,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS favorites (
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, recipe_id)
+        );
     """)
 
 
@@ -668,3 +683,93 @@ def get_recipe_images(recipe_id: int) -> list[dict[str, object]]:
             (recipe_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_or_create_user(subject: str, email: str | None, name: str | None) -> int:
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM users WHERE subject = ?", (subject,)).fetchone()
+        if row:
+            return int(row["id"])
+        cur = conn.execute(
+            "INSERT INTO users (subject, email, name) VALUES (?, ?, ?)",
+            (subject, email, name),
+        )
+        assert cur.lastrowid is not None
+        return int(cur.lastrowid)
+
+
+def is_favorite(user_id: int, recipe_id: int) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM favorites WHERE user_id = ? AND recipe_id = ?",
+            (user_id, recipe_id),
+        ).fetchone()
+        return row is not None
+
+
+def add_favorite(user_id: int, recipe_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO favorites (user_id, recipe_id) VALUES (?, ?)",
+            (user_id, recipe_id),
+        )
+
+
+def remove_favorite(user_id: int, recipe_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM favorites WHERE user_id = ? AND recipe_id = ?",
+            (user_id, recipe_id),
+        )
+
+
+def get_user_favorite_ids(user_id: int) -> set[int]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT recipe_id FROM favorites WHERE user_id = ?", (user_id,)
+        ).fetchall()
+        return {int(r["recipe_id"]) for r in rows}
+
+
+def get_favorite_recipes(user_id: int) -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.*, c.name AS category_name, c.display_name AS category_display_name
+            FROM favorites f
+            JOIN recipes r ON f.recipe_id = r.id
+            LEFT JOIN categories c ON r.category_id = c.id
+            WHERE f.user_id = ?
+            ORDER BY f.created_at DESC
+        """,
+            (user_id,),
+        ).fetchall()
+
+        results = []
+        for row in rows:
+            d: dict[str, object] = dict(row)
+            d["ingredients"] = json.loads(str(d.get("ingredients") or "[]"))
+            if d.get("category_name"):
+                d["category"] = {
+                    "name": d["category_name"],
+                    "display_name": d["category_display_name"],
+                }
+            else:
+                d["category"] = None
+
+            tag_rows = conn.execute(
+                """
+                SELECT t.id, t.name, t.display_name, tf.name AS family
+                FROM recipe_tags rt
+                JOIN tags t ON rt.tag_id = t.id
+                JOIN tag_families tf ON t.family_id = tf.id
+                WHERE rt.recipe_id = ?
+                ORDER BY tf.sort_order, t.display_name
+            """,
+                (row["id"],),
+            ).fetchall()
+            d["tags"] = [dict(tr) for tr in tag_rows]
+            d["images"] = get_recipe_images(row["id"])
+            results.append(d)
+
+        return results
