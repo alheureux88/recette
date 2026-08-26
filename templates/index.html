@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 
+<section class="hero">
+    <h1 class="hero-title">Recettes <span>Merizzi</span></h1>
+    <p class="hero-subtitle">
+        {% if recipes|length == 1 %}
+            1 recette à découvrir
+        {% else %}
+            {{ recipes|length }} recettes à découvrir
+        {% endif %}
+    </p>
+</section>
+
 <div class="search-bar">
     <input
         type="search"
@@ -15,103 +26,120 @@
     >
 </div>
 
-<div class="filters">
-    <div class="filter-group">
-        <h3 class="filter-title">Catégorie</h3>
-        <div class="category-filters">
-            <label class="tag-pill {% if not active_category_id %}active{% endif %}">
-                <input
-                    type="radio"
-                    name="category"
-                    value=""
-                    {% if not active_category_id %}checked{% endif %}
-                    hx-get="/search"
-                    hx-trigger="change"
-                    hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='account']"
-                >
-                Toutes
-            </label>
-            {% for cat in all_categories %}
-            <label class="tag-pill {% if active_category_id == cat.id %}active{% endif %}">
-                <input
-                    type="radio"
-                    name="category"
-                    value="{{ cat.id }}"
-                    {% if active_category_id == cat.id %}checked{% endif %}
-                    hx-get="/search"
-                    hx-trigger="change"
-                    hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='account']"
-                >
-                {{ cat.display_name }}
-            </label>
-            {% endfor %}
-        </div>
-    </div>
+<button type="button" class="filter-toggle" id="filter-toggle" aria-expanded="false" aria-controls="filter-panel">
+    <span class="filter-toggle-icon" aria-hidden="true">⚙</span>
+    <span>Filtres</span>
+    <span class="filter-count" id="filter-count" hidden>0</span>
+</button>
 
-    {% if show_provenance and provenances %}
-    <div class="filter-group">
-        <h3 class="filter-title">Provenance</h3>
-        <div class="category-filters">
-            <label class="tag-pill active">
-                <input
-                    type="radio"
-                    name="account"
-                    value=""
-                    checked
-                    hx-get="/search"
-                    hx-trigger="change"
-                    hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='category']"
-                >
-                Toutes
-            </label>
-            {% for prov in provenances %}
-            <label class="tag-pill">
-                <input
-                    type="radio"
-                    name="account"
-                    value="{{ prov.id }}"
-                    hx-get="/search"
-                    hx-trigger="change"
-                    hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='category']"
-                >
-                {{ prov.name }} ({{ prov.count }})
-            </label>
-            {% endfor %}
+<div class="index-layout">
+    <aside class="filter-panel" id="filter-panel" aria-label="Filtres">
+        <div class="filter-panel-header">
+            <h2 class="filter-panel-title">Filtres</h2>
+            <button type="button" class="filter-close" id="filter-close" aria-label="Fermer les filtres">✕</button>
         </div>
-    </div>
-    {% endif %}
 
-    {% for family_key, family in all_tags.items() %}
-    <div class="filter-group">
-        <h3 class="filter-title">{{ family.display_name }}</h3>
-        <div class="tag-filters">
-            {% for tag in family.tags %}
-            <label class="tag-pill {% if tag.id in active_tag_ids %}active{% endif %}">
-                <input
-                    type="checkbox"
-                    name="tags"
-                    value="{{ tag.id }}"
-                    {% if tag.id in active_tag_ids %}checked{% endif %}
-                    hx-get="/search"
-                    hx-trigger="change"
-                    hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='category'], [name='tags']"
-                >
-                {{ tag.display_name }}
-            </label>
-            {% endfor %}
+        <div class="filter-group">
+            <h3 class="filter-title">Catégorie</h3>
+            <div class="category-filters">
+                <label class="tag-pill {% if not active_category_id %}active{% endif %}">
+                    <input
+                        type="radio"
+                        name="category"
+                        value=""
+                        {% if not active_category_id %}checked{% endif %}
+                        hx-get="/search"
+                        hx-trigger="change"
+                        hx-target="#recipe-grid"
+                        hx-include="[name='q'], [name='tags'], [name='account']"
+                    >
+                    Toutes
+                </label>
+                {% for cat in all_categories %}
+                <label class="tag-pill {% if active_category_id == cat.id %}active{% endif %}">
+                    <input
+                        type="radio"
+                        name="category"
+                        value="{{ cat.id }}"
+                        {% if active_category_id == cat.id %}checked{% endif %}
+                        hx-get="/search"
+                        hx-trigger="change"
+                        hx-target="#recipe-grid"
+                        hx-include="[name='q'], [name='tags'], [name='account']"
+                    >
+                    {{ cat.display_name }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        {% if show_provenance and provenances %}
+        <div class="filter-group">
+            <h3 class="filter-title">Provenance</h3>
+            <div class="category-filters">
+                <label class="tag-pill active">
+                    <input
+                        type="radio"
+                        name="account"
+                        value=""
+                        checked
+                        hx-get="/search"
+                        hx-trigger="change"
+                        hx-target="#recipe-grid"
+                        hx-include="[name='q'], [name='tags'], [name='category']"
+                    >
+                    Toutes
+                </label>
+                {% for prov in provenances %}
+                <label class="tag-pill">
+                    <input
+                        type="radio"
+                        name="account"
+                        value="{{ prov.id }}"
+                        hx-get="/search"
+                        hx-trigger="change"
+                        hx-target="#recipe-grid"
+                        hx-include="[name='q'], [name='tags'], [name='category']"
+                    >
+                    {{ prov.name }} ({{ prov.count }})
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% for family_key, family in all_tags.items() %}
+        <div class="filter-group">
+            <h3 class="filter-title">{{ family.display_name }}</h3>
+            <div class="tag-filters">
+                {% for tag in family.tags %}
+                <label class="tag-pill {% if tag.id in active_tag_ids %}active{% endif %}">
+                    <input
+                        type="checkbox"
+                        name="tags"
+                        value="{{ tag.id }}"
+                        {% if tag.id in active_tag_ids %}checked{% endif %}
+                        hx-get="/search"
+                        hx-trigger="change"
+                        hx-target="#recipe-grid"
+                        hx-include="[name='q'], [name='category'], [name='tags']"
+                    >
+                    {{ tag.display_name }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </aside>
+
+    <div class="recipe-results">
+        <div id="recipe-grid">
+            {% include "partials/recipe_cards.html" %}
         </div>
     </div>
-    {% endfor %}
 </div>
 
-<div id="recipe-grid">
-    {% include "partials/recipe_cards.html" %}
-</div>
+<div class="filter-backdrop" id="filter-backdrop" hidden></div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -126,8 +154,52 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 label.classList.add('active');
             }
+            updateFilterCount();
         });
     });
+
+    function updateFilterCount() {
+        var checked = document.querySelectorAll('#filter-panel .tag-pill input:checked');
+        var count = 0;
+        checked.forEach(function(input) {
+            if (input.value !== '' && input.value !== null) {
+                count += 1;
+            }
+        });
+        var badge = document.getElementById('filter-count');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = String(count);
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+
+    var toggle = document.getElementById('filter-toggle');
+    var panel = document.getElementById('filter-panel');
+    var closeBtn = document.getElementById('filter-close');
+    var backdrop = document.getElementById('filter-backdrop');
+
+    function openFilters() {
+        if (!panel) return;
+        panel.classList.add('open');
+        if (backdrop) backdrop.hidden = false;
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('filters-open');
+    }
+    function closeFilters() {
+        if (!panel) return;
+        panel.classList.remove('open');
+        if (backdrop) backdrop.hidden = true;
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('filters-open');
+    }
+    if (toggle) toggle.addEventListener('click', openFilters);
+    if (closeBtn) closeBtn.addEventListener('click', closeFilters);
+    if (backdrop) backdrop.addEventListener('click', closeFilters);
+
+    updateFilterCount();
 });
 </script>
 

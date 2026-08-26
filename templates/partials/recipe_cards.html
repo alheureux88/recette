@@ -1,3 +1,14 @@
+{% set emoji_map = {
+    'entree': '🥗',
+    'plat-principal': '🍝',
+    'salade': '🥗',
+    'soupe': '🍲',
+    'sauce': '🫕',
+    'dessert': '🍰',
+    'accompagnement': '🥔',
+    'collation': '🍪',
+    'aperitif': '🧀',
+} %}
 {% if recipes %}
     {% for recipe in recipes %}
     <div class="recipe-card-wrapper">
@@ -11,10 +22,16 @@
             <span class="fav-icon">{% if recipe.id in favorite_ids %}★{% else %}☆{% endif %}</span>
         </button>
         {% endif %}
-        <a href="/recipe/{{ recipe.id }}" class="recipe-card">
+        <a href="/recipe/{{ recipe.id }}" class="recipe-card card-emoji-cat-{{ recipe.category.name if recipe.category else 'default' }}">
             {% if recipe.images %}
             <div class="card-image">
                 <img src="/images/{{ recipe.id }}/{{ recipe.images[0].filename }}" alt="{{ recipe.title }}" loading="lazy">
+            </div>
+            {% else %}
+            {% set cat_key = recipe.category.name if recipe.category else 'default' %}
+            {% set emoji = emoji_map.get(cat_key, '🍽️') %}
+            <div class="card-image card-image-placeholder" aria-hidden="true">
+                <span>{{ emoji }}</span>
             </div>
             {% endif %}
             <h2>{{ recipe.title }}</h2>
