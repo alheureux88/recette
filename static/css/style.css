@@ -307,6 +307,34 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
 }
 .ingredients ul { padding-left: 1.25rem; line-height: 2; font-size: 0.95rem; }
 .instructions p { margin-bottom: 0.75rem; line-height: 1.7; }
+.instruction-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: instruction;
+}
+.instruction-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+    line-height: 1.65;
+}
+.instruction-number {
+    flex-shrink: 0;
+    width: 1.8rem;
+    height: 1.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--accent-dk);
+    background: var(--accent-soft);
+    border-radius: 50%;
+    margin-top: 0.1rem;
+}
+.instruction-text { flex: 1; }
 
 /* Ingredient scaling controls (portions / unités) */
 .ingredient-controls {

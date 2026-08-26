@@ -81,11 +81,16 @@
 
         <section class="instructions">
             <h2>Instructions</h2>
-            {% for step in recipe.instructions.split('\n') %}
-                {% if step.strip() %}
-                <p>{{ step }}</p>
-                {% endif %}
-            {% endfor %}
+            <ol class="instruction-list">
+                {% for step in recipe.instructions.split('\n') %}
+                    {% if step.strip() %}
+                    <li class="instruction-step">
+                        <span class="instruction-number" aria-hidden="true">{{ loop.index }}</span>
+                        <span class="instruction-text">{{ step }}</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+            </ol>
         </section>
     </div>
 </div>
