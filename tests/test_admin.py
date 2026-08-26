@@ -5,10 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from recipes.db import (
+    add_favorite,
     blacklist_and_delete_recipe,
+    bulk_update_category,
+    bulk_update_tags,
     get_all_recipes_admin,
     get_blacklisted_files,
     get_failed_files,
+    get_or_create_user,
     get_recipe,
     init_db,
     is_blacklisted,
@@ -17,7 +21,9 @@ from recipes.db import (
     remove_failed_file,
     remove_from_blacklist,
     sync_recipe_tags,
+    update_recipe_category,
     update_recipe_manual,
+    update_recipe_tags,
     upsert_recipe,
 )
 
@@ -40,6 +46,26 @@ SAMPLE = {
 @pytest.fixture(autouse=True)
 def setup(temp_db):
     init_db()
+
+
+@pytest.fixture()
+def as_admin(client, monkeypatch):
+    monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+    monkeypatch.setattr(
+        "recipes.auth.get_user",
+        lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
+    )
+    return client
+
+
+@pytest.fixture()
+def as_user(client, monkeypatch):
+    monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+    monkeypatch.setattr(
+        "recipes.auth.get_user",
+        lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": []},
+    )
+    return client
 
 
 def _insert_sample(data=None):
@@ -142,7 +168,8 @@ class TestAdminRoutes:
         _insert_sample()
         resp = client.get("/admin")
         assert resp.status_code == 200
-        assert "Poulet Rôti" in resp.text
+        # Les recettes sont rendues cote client (Tabulator) via /admin/recipes.json
+        assert 'id="recipes-table"' in resp.text
 
     def test_blacklist_endpoint(self, client, monkeypatch):
         monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
@@ -382,76 +409,177 @@ class TestAdminQuickFilters:
         self._insert()
         assert len(get_all_recipes_admin("bogus")) == 1
 
-    def test_filter_route_no_tags(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
-        monkeypatch.setattr(
-            "recipes.auth.get_user",
-            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
-        )
-        self._insert()
-        self._insert(title="Sans tags", source_file="/r/sans.docx", file_hash="ccc", tags={})
-        resp = client.get("/admin?filter=no_tags")
-        assert resp.status_code == 200
-        assert "Sans tags" in resp.text
-        assert "Poulet Rôti" not in resp.text
-
-    def test_filter_route_invalid_falls_back_to_all(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
-        monkeypatch.setattr(
-            "recipes.auth.get_user",
-            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
-        )
-        self._insert()
-        resp = client.get("/admin?filter=bogus")
-        assert resp.status_code == 200
-        assert "Poulet Rôti" in resp.text
-
-    def test_filter_chips_rendered(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
-        monkeypatch.setattr(
-            "recipes.auth.get_user",
-            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
-        )
-        self._insert()
-        resp = client.get("/admin")
+    def test_filter_chips_rendered(self, as_admin):
+        _insert_sample()
+        resp = as_admin.get("/admin")
         assert "Sans étiquettes" in resp.text
         assert "Sans catégorie" in resp.text
 
-    def test_edit_form_and_save_preserve_filter(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
-        monkeypatch.setattr(
-            "recipes.auth.get_user",
-            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
-        )
-        self._insert(title="Sans tags", source_file="/r/sans.docx", file_hash="ccc", tags={})
+
+class TestRecipeAdminData:
+    def test_recipes_json_payload(self, as_admin):
+        get_or_create_user("test", "test@example.com", "Test")
         recipe_id = _insert_sample()
+        add_favorite(1, recipe_id)
 
-        edit_url = f"/admin/edit/{recipe_id}?filter=no_tags"
-        resp = client.get(edit_url)
+        resp = as_admin.get("/admin/recipes.json")
         assert resp.status_code == 200
-        assert edit_url in resp.text
 
-        resp = client.post(
-            f"/admin/edit/{recipe_id}?filter=no_tags",
-            data={"title": "Poulet Rôti", "ingredients": [], "tags_protein": ["poulet"]},
-        )
+        data = resp.json()
+        row = next(r for r in data["recipes"] if r["id"] == recipe_id)
+        assert row["title"] == "Poulet Rôti"
+        assert row["category_name"] == "plat-principal"
+        assert row["category_display_name"]
+        assert row["favorite_count"] == 1
+        assert row["manually_edited"] is False
+        assert {"family": "origin", "name": "francais"} in [
+            {"family": t["family"], "name": t["name"]} for t in row["tags"]
+        ]
+        assert [c["name"] for c in data["categories"]]
+        assert "origin" in data["tags"]
+
+    def test_recipes_json_requires_admin(self, as_user):
+        resp = as_user.get("/admin/recipes.json")
+        assert resp.status_code == 403
+
+    def test_files_json_payload(self, as_admin):
+        record_failed_file("/r/bad.xyz", "unsupported")
+        _insert_sample()
+        blacklist_and_delete_recipe(1)
+
+        resp = as_admin.get("/admin/files.json")
         assert resp.status_code == 200
-        # La recette a maintenant un tag : elle disparaît du filtre actif
-        assert "Poulet Rôti" not in resp.text
-        assert "Sans tags" in resp.text
 
-    def test_blacklist_preserves_filter(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
-        monkeypatch.setattr(
-            "recipes.auth.get_user",
-            lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
-        )
+        data = resp.json()
+        assert data["blacklisted"][0]["path"] == "/recipes/poulet.docx"
+        assert data["blacklisted"][0]["provenance"] == "Défaut"
+        assert data["failed"][0]["path"] == "/r/bad.xyz"
+        assert data["failed"][0]["error"] == "unsupported"
+        assert data["failed"][0]["provenance"] == "Défaut"
+
+    def test_files_json_requires_admin(self, as_user):
+        resp = as_user.get("/admin/files.json")
+        assert resp.status_code == 403
+
+
+class TestUpdateCategoryAndTags:
+    def test_update_category_sets_manual_flag(self):
         recipe_id = _insert_sample()
-        self._insert(title="Sans tags", source_file="/r/sans.docx", file_hash="ccc", tags={})
-        resp = client.post(f"/admin/blacklist/{recipe_id}?filter=no_tags")
+        assert update_recipe_category(recipe_id, "dessert")
+        recipe = get_recipe(recipe_id)
+        assert recipe["category"]["name"] == "dessert"
+        assert is_manually_edited("/recipes/poulet.docx")
+
+    def test_update_category_none_clears_category(self):
+        recipe_id = _insert_sample()
+        update_recipe_category(recipe_id, None)
+        assert get_recipe(recipe_id)["category"] is None
+
+    def test_update_category_unknown_recipe(self):
+        assert update_recipe_category(9999, "dessert") is False
+
+    def test_update_tags_replaces_and_marks_manual(self):
+        recipe_id = _insert_sample()
+        assert update_recipe_tags(recipe_id, {"protein": ["boeuf"]})
+        tags = get_recipe(recipe_id)["tags"]
+        assert set(tags.keys()) == {"protein"}
+        protein_names = {t["name"] for t in tags["protein"]["tags"]}
+        assert protein_names == {"boeuf"}
+        assert is_manually_edited("/recipes/poulet.docx")
+
+    def test_update_tags_unknown_recipe(self):
+        assert update_recipe_tags(9999, {"protein": ["boeuf"]}) is False
+
+
+class TestBulkOperations:
+    def test_bulk_update_category(self):
+        r1 = _insert_sample()
+        r2 = _insert_sample(
+            {**SAMPLE, "title": "Tarte", "source_file": "/r/tarte.docx", "file_hash": "bbb"}
+        )
+        assert bulk_update_category([r1, r2], "soupe") == 2
+        for rid in (r1, r2):
+            recipe = get_recipe(rid)
+            assert recipe["category"]["name"] == "soupe"
+            assert recipe["manually_edited"] == 1
+
+    def test_bulk_update_category_empty_ids(self):
+        assert bulk_update_category([], "soupe") == 0
+
+    def test_bulk_add_and_remove_tags(self):
+        r1 = _insert_sample()
+        r2 = _insert_sample(
+            {**SAMPLE, "title": "Tarte", "source_file": "/r/tarte.docx", "file_hash": "bbb"}
+        )
+        assert (
+            bulk_update_tags(
+                [r1, r2],
+                {"diet": ["vegetarien"]},
+                {"protein": ["poulet"]},
+            )
+            == 2
+        )
+
+        for rid in (r1, r2):
+            tags = get_recipe(rid)["tags"]
+            family_names = {f: {t["name"] for t in info["tags"]} for f, info in tags.items()}
+            assert "vegetarien" in family_names.get("diet", set())
+            assert "poulet" not in family_names.get("protein", set())
+            assert "francais" in family_names.get("origin", set())
+
+    def test_bulk_unknown_tags_touches_nothing(self):
+        r1 = _insert_sample()
+        assert bulk_update_tags([r1], {}, {"diet": ["inexistant"]}) == 0
+        assert get_recipe(r1)["manually_edited"] == 0
+
+
+class TestInlineAndBulkRoutes:
+    def test_inline_category_route(self, as_admin):
+        recipe_id = _insert_sample()
+        resp = as_admin.post(f"/admin/inline/{recipe_id}/category", json={"category": "soupe"})
         assert resp.status_code == 200
-        assert "Poulet Rôti" not in resp.text
-        assert "Sans tags" in resp.text
+        assert resp.json() == {"ok": True}
+        assert get_recipe(recipe_id)["category"]["name"] == "soupe"
+        assert is_manually_edited("/recipes/poulet.docx")
+
+    def test_inline_tags_route(self, as_admin):
+        recipe_id = _insert_sample()
+        resp = as_admin.post(f"/admin/inline/{recipe_id}/tags", json={"tags": ["protein:porc"]})
+        assert resp.status_code == 200
+        tags = get_recipe(recipe_id)["tags"]
+        assert set(tags.keys()) == {"protein"}
+        assert {t["name"] for t in tags["protein"]["tags"]} == {"porc"}
+
+    def test_inline_unknown_recipe_404(self, as_admin):
+        resp = as_admin.post("/admin/inline/9999/category", json={"category": "soupe"})
+        assert resp.status_code == 404
+
+    def test_inline_requires_admin(self, as_user):
+        resp = as_user.post("/admin/inline/1/category", json={"category": "soupe"})
+        assert resp.status_code == 403
+
+    def test_bulk_routes(self, as_admin):
+        r1 = _insert_sample()
+        r2 = _insert_sample(
+            {**SAMPLE, "title": "Tarte", "source_file": "/r/tarte.docx", "file_hash": "bbb"}
+        )
+        resp = as_admin.post("/admin/bulk/category", json={"ids": [r1, r2], "category": "entree"})
+        assert resp.status_code == 200
+        assert resp.json()["updated"] == 2
+
+        resp = as_admin.post(
+            "/admin/bulk/tags",
+            json={"ids": [r1], "add": ["diet:paleo"], "remove": []},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        assert "paleo" in {
+            t["name"] for t in get_recipe(r1)["tags"].get("diet", {}).get("tags", [])
+        }
+
+    def test_bulk_requires_admin(self, as_user):
+        resp = as_user.post("/admin/bulk/category", json={"ids": [1], "category": None})
+        assert resp.status_code == 403
 
 
 class TestBlacklistManagement:

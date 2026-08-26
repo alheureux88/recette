@@ -11,6 +11,7 @@ from recipes.db import (
     delete_dropbox_connection,
     delete_setting,
     get_all_recipes_admin,
+    get_blacklisted_files,
     get_dropbox_connection_credentials,
     get_dropbox_connections,
     get_failed_files,
@@ -249,9 +250,20 @@ class TestAdminProvenanceColumns:
         blacklist_and_delete_recipe(1)
 
         resp = admin.get("/admin")
-        assert "Provenance" in resp.text
-        assert ">Défaut</span>" in resp.text
-        assert "Famille" in resp.text
+        assert resp.status_code == 200
+        assert 'id="recipes-table"' in resp.text
+
+        # Les recettes sont rendues cote client via /admin/recipes.json
+        data = admin.get("/admin/recipes.json").json()
+        provenances = [r["provenance"] for r in data["recipes"]]
+        assert provenances == ["Famille"]
+
+        # La recette Defaut a ete blacklistee : sa trace reste en provenance Defaut
+        blacklisted = {b["path"]: b["provenance"] for b in get_blacklisted_files()}
+        assert list(blacklisted.values()) == ["Défaut"]
+
+        failed = {f["path"]: f["provenance"] for f in get_failed_files()}
+        assert failed[f"account:{conn_id}:bad.xyz"] == "Famille"
 
     def test_failed_files_provenance(self):
         conn_id = add_dropbox_connection(**CONN_FORM)

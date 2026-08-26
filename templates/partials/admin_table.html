@@ -1,157 +1,490 @@
-<h2 class="admin-section-title">Recettes</h2>
-<div class="admin-filters">
-    <button class="filter-chip{% if not filter %} active{% endif %}"
-            hx-get="/admin"
-            hx-select="#admin-content"
-            hx-target="#admin-content"
-            hx-push-url="true">
-        Toutes
-    </button>
-    <button class="filter-chip{% if filter == 'no_tags' %} active{% endif %}"
-            hx-get="/admin?filter=no_tags"
-            hx-select="#admin-content"
-            hx-target="#admin-content"
-            hx-push-url="true">
-        Sans étiquettes
-    </button>
-    <button class="filter-chip{% if filter == 'no_category' %} active{% endif %}"
-            hx-get="/admin?filter=no_category"
-            hx-select="#admin-content"
-            hx-target="#admin-content"
-            hx-push-url="true">
-        Sans catégorie
-    </button>
-</div>
-<table class="admin-table">
-    <thead>
-        <tr>
-            <th>Recette</th>
-            <th>Provenance</th>
-            <th>Date d'ingestion</th>
-            <th>Date du fichier</th>
-            <th>Categorie</th>
-            <th>Tags</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for recipe in recipes %}
-        <tr>
-            <td>
-                {{ recipe.title }}
-                {% if recipe.manually_edited %}
-                <span class="manual-badge" title="Modifiee manuellement — les mises a jour Dropbox sont ignorees">Manuel</span>
-                {% endif %}
-            </td>
-            <td><span class="card-provenance">{{ recipe.provenance }}</span></td>
-            <td>{{ recipe.created_at }}</td>
-            <td>{{ recipe.file_modified_at or "—" }}</td>
-            <td>
-                {% if recipe.category %}
-                <span class="category-badge">{{ recipe.category.display_name }}</span>
-                {% else %}
-                —
-                {% endif %}
-            </td>
-            <td>
-                {% for tag in recipe.tags %}
-                <span class="tag">{{ tag.display_name }}</span>
+<div class="admin-toolbar">
+    <div class="admin-filters recipes-filters">
+        <button type="button" class="filter-chip active" data-filter-key="">Toutes</button>
+        <button type="button" class="filter-chip" data-filter-key="no_tags">Sans étiquettes</button>
+        <button type="button" class="filter-chip" data-filter-key="no_category">Sans catégorie</button>
+    </div>
+    <div class="bulk-edit">
+        <span class="selection-count"><span id="selection-count">0</span> sélectionnée(s)</span>
+        <label class="bulk-field">
+            <span>Catégorie</span>
+            <select id="bulk-category">
+                <option value="">(aucune)</option>
+                {% for cat in all_categories %}
+                <option value="{{ cat.name }}">{{ cat.display_name }}</option>
                 {% endfor %}
-            </td>
-            <td class="admin-actions">
-                <button class="btn-edit"
-                        hx-get="/admin/edit/{{ recipe.id }}{% if filter %}?filter={{ filter }}{% endif %}"
-                        hx-target="#admin-content">
-                    Modifier
-                </button>
-                <button class="btn-blacklist"
-                        hx-post="/admin/blacklist/{{ recipe.id }}{% if filter %}?filter={{ filter }}{% endif %}"
-                        hx-target="#admin-content"
-                        hx-confirm="Supprimer cette recette et l'empecher d'etre re-importee ?">
-                    Blacklister
-                </button>
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="7" class="empty">
-                {% if filter == 'no_tags' %}
-                Aucune recette sans étiquettes
-                {% elif filter == 'no_category' %}
-                Aucune recette sans catégorie
-                {% else %}
-                Aucune recette
-                {% endif %}
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+            </select>
+        </label>
+        <button type="button" class="btn-apply" onclick="recetteBulkCategory()">Appliquer</button>
+        <label class="bulk-field">
+            <span>Ajouter étiquettes</span>
+            <select id="bulk-tags-add" multiple size="3">
+                {% for family, tags in all_tags.items() %}
+                <optgroup label="{{ family }}">
+                    {% for tag in tags %}
+                    <option value="{{ family }}:{{ tag.name }}">{{ tag.display_name }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="button" class="btn-apply" onclick="recetteBulkTags('add')">Ajouter</button>
+        <label class="bulk-field">
+            <span>Retirer étiquettes</span>
+            <select id="bulk-tags-remove" multiple size="3">
+                {% for family, tags in all_tags.items() %}
+                <optgroup label="{{ family }}">
+                    {% for tag in tags %}
+                    <option value="{{ family }}:{{ tag.name }}">{{ tag.display_name }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="button" class="btn-cancel" onclick="recetteBulkTags('remove')">Retirer</button>
+    </div>
+</div>
+<div id="recipes-table"></div>
 
 <h2 class="admin-section-title">Fichiers blacklister</h2>
-<table class="admin-table">
-    <thead>
-        <tr>
-            <th>Chemin</th>
-            <th>Provenance</th>
-            <th>Date</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in blacklisted %}
-        <tr>
-            <td class="path-cell">{{ item.path }}</td>
-            <td><span class="card-provenance">{{ item.provenance }}</span></td>
-            <td>{{ item.blacklisted_at }}</td>
-            <td>
-                <button class="btn-restore"
-                        hx-post="/admin/unblacklist?path={{ item.path | urlencode }}{% if filter %}&filter={{ filter }}{% endif %}"
-                        hx-target="#admin-content"
-                        hx-confirm="Retirer ce fichier de la blacklist ? Il sera re-importe au prochain scan.">
-                    Retablir
-                </button>
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="4" class="empty">Aucun fichier blackliste</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div id="blacklist-table"></div>
 
 <h2 class="admin-section-title">Fichiers en erreur</h2>
-<table class="admin-table">
-    <thead>
-        <tr>
-            <th>Chemin</th>
-            <th>Provenance</th>
-            <th>Erreur</th>
-            <th>Date</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in failed %}
-        <tr>
-            <td class="path-cell">{{ item.path }}</td>
-            <td><span class="card-provenance">{{ item.provenance }}</span></td>
-            <td class="error-cell">{{ item.error }}</td>
-            <td>{{ item.failed_at }}</td>
-            <td>
-                <button class="btn-retry"
-                        hx-post="/admin/retry-failed?path={{ item.path | urlencode }}{% if filter %}&filter={{ filter }}{% endif %}"
-                        hx-target="#admin-content"
-                        hx-confirm="Retirer ce fichier de la liste d'erreurs ? Il sera re-essayee au prochain scan.">
-                    Reessayer
-                </button>
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="5" class="empty">Aucun fichier en erreur</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div id="failed-table"></div>
+
+<script>
+    window.recetteEscape = function (value) {
+        return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    };
+
+    async function recettePostJson(url, payload) {
+        var res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+    }
+
+    window.recetteApplyFilter = function (key) {
+        window.__recetteFilterKey = key;
+        document.querySelectorAll(".recipes-filters .filter-chip").forEach(function (chip) {
+            chip.classList.toggle("active", (chip.dataset.filterKey || "") === key);
+        });
+        var table = window.__recetteTable;
+        if (!table) return;
+        if (key === "no_tags") {
+            table.setFilter(function (data) { return !data.tags || data.tags.length === 0; });
+        } else if (key === "no_category") {
+            table.setFilter(function (data) { return !data.category_name; });
+        } else {
+            table.clearFilter();
+        }
+    };
+
+    function recetteUpdateSelectionCount(count) {
+        var counter = document.getElementById("selection-count");
+        if (counter) counter.textContent = String(count);
+    }
+
+    window.recetteRefreshTable = async function () {
+        if (!window.__recetteTable) return;
+        await window.__recetteTable.replaceData();
+        recetteUpdateSelectionCount(0);
+    };
+
+    window.recetteAdminEdit = function (id) {
+        htmx.ajax("GET", "/admin/edit/" + id, "#admin-content");
+    };
+
+    window.recetteAdminBlacklist = function (id) {
+        if (!confirm("Supprimer cette recette et l'empecher d'etre re-importee ?")) return;
+        htmx.ajax("POST", "/admin/blacklist/" + id, "#admin-content");
+    };
+
+    window.recetteUnblacklist = function (encodedPath) {
+        if (!confirm("Retirer ce fichier de la blacklist ? Il sera re-importe au prochain scan.")) return;
+        htmx.ajax("POST", "/admin/unblacklist?path=" + encodedPath, "#admin-content");
+    };
+
+    window.recetteRetryFailed = function (encodedPath) {
+        if (!confirm("Retirer ce fichier de la liste d'erreurs ? Il sera re-essayee au prochain scan.")) return;
+        htmx.ajax("POST", "/admin/retry-failed?path=" + encodedPath, "#admin-content");
+    };
+
+    window.recetteCellSaved = async function (cell) {
+        var id = cell.getData().id;
+        try {
+            if (cell.getField() === "category_name") {
+                await recettePostJson("/admin/inline/" + id + "/category",
+                    { category: cell.getValue() || null });
+            } else if (cell.getField() === "tags") {
+                await recettePostJson("/admin/inline/" + id + "/tags",
+                    { tags: cell.getValue() || [] });
+            }
+        } catch (e) {
+            alert("Erreur lors de la sauvegarde.");
+        }
+        recetteRefreshTable();
+    };
+
+    window.recetteTagEditor = function (cell, onRendered, success, cancel) {
+        var container = document.createElement("div");
+        container.className = "tag-editor";
+        var current = {};
+        (cell.getValue() || []).forEach(function (t) { current[t.family + ":" + t.name] = true; });
+
+        var select = document.createElement("select");
+        select.multiple = true;
+        var groups = window.__recetteTags || {};
+        Object.keys(groups).forEach(function (family) {
+            var group = document.createElement("optgroup");
+            group.label = family;
+            groups[family].forEach(function (t) {
+                var opt = document.createElement("option");
+                opt.value = family + ":" + t.name;
+                opt.textContent = t.display_name;
+                if (current[opt.value]) opt.selected = true;
+                group.appendChild(opt);
+            });
+            select.appendChild(group);
+        });
+
+        var actions = document.createElement("div");
+        actions.className = "tag-editor-actions";
+        var okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = "tag-editor-ok";
+        okBtn.textContent = "OK";
+        okBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            success(Array.prototype.map.call(select.selectedOptions, function (o) { return o.value; }));
+        });
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "tag-editor-cancel";
+        cancelBtn.textContent = "Annuler";
+        cancelBtn.addEventListener("click", function (e) { e.stopPropagation(); cancel(); });
+        actions.appendChild(okBtn);
+        actions.appendChild(cancelBtn);
+
+        container.appendChild(select);
+        container.appendChild(actions);
+        onRendered(function () { select.focus(); });
+        return container;
+    };
+
+    window.recetteBulkCategory = async function () {
+        var table = window.__recetteTable;
+        if (!table) return;
+        var ids = table.getSelectedData().map(function (r) { return r.id; });
+        if (!ids.length) { alert("Selectionnez d'abord des recettes."); return; }
+        if (!confirm("Appliquer cette categorie a " + ids.length + " recette(s) ?")) return;
+        try {
+            await recettePostJson("/admin/bulk/category", {
+                ids: ids,
+                category: document.getElementById("bulk-category").value || null,
+            });
+        } catch (e) {
+            alert("Erreur lors de la mise a jour.");
+            return;
+        }
+        table.deselectRow();
+        recetteRefreshTable();
+    };
+
+    window.recetteBulkTags = async function (mode) {
+        var table = window.__recetteTable;
+        if (!table) return;
+        var ids = table.getSelectedData().map(function (r) { return r.id; });
+        if (!ids.length) { alert("Selectionnez d'abord des recettes."); return; }
+        var sel = document.getElementById(mode === "add" ? "bulk-tags-add" : "bulk-tags-remove");
+        var keys = Array.prototype.map.call(sel.selectedOptions, function (o) { return o.value; });
+        if (!keys.length) { alert("Choisissez au moins une etiquette."); return; }
+        var verbe = mode === "add" ? "Ajouter" : "Retirer";
+        if (!confirm(verbe + " " + keys.length + " etiquette(s) pour " + ids.length + " recette(s) ?")) return;
+        try {
+            await recettePostJson("/admin/bulk/tags", mode === "add"
+                ? { ids: ids, add: keys, remove: [] }
+                : { ids: ids, add: [], remove: keys });
+        } catch (e) {
+            alert("Erreur lors de la mise a jour.");
+            return;
+        }
+        table.deselectRow();
+        recetteRefreshTable();
+    };
+
+    (function () {
+        var el = document.getElementById("recipes-table");
+        if (!el || typeof Tabulator === "undefined") return;
+        if (window.__recetteTable) {
+            try { window.__recetteTable.destroy(); } catch (e) { /* ignore */ }
+            window.__recetteTable = null;
+        }
+
+        function categoryValues() {
+            var values = [{ label: "(aucune)", value: "" }];
+            (window.__recetteCategories || []).forEach(function (c) {
+                values.push({ label: c.display_name, value: c.name });
+            });
+            return values;
+        }
+
+        function tagsSorter(a, b) {
+            var sa = (a || []).map(function (t) { return t.display_name; }).join(", ").toLowerCase();
+            var sb = (b || []).map(function (t) { return t.display_name; }).join(", ").toLowerCase();
+            return sa === sb ? 0 : sa < sb ? -1 : 1;
+        }
+
+        var table = new Tabulator(el, {
+            layout: "fitColumns",
+            placeholder: "Aucune recette",
+            selectableRows: true,
+            index: "id",
+            initialSort: [{ column: "created_at", dir: "desc" }],
+            ajaxURL: "/admin/recipes.json",
+            ajaxResponse: function (url, params, response) {
+                window.__recetteCategories = response.categories;
+                window.__recetteTags = response.tags;
+                return response.recipes;
+            },
+            columns: [
+                {
+                    formatter: "rowSelection",
+                    titleFormatter: "rowSelection",
+                    titleFormatterParams: { rowRange: "active" },
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 40,
+                },
+                {
+                    title: "Recette",
+                    field: "title",
+                    minWidth: 170,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) {
+                        var d = cell.getData();
+                        return '<a href="/recipe/' + d.id + '" target="_blank">'
+                            + recetteEscape(d.title) + "</a>";
+                    },
+                },
+                {
+                    title: "Provenance",
+                    field: "provenance",
+                    width: 110,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) {
+                        return '<span class="card-provenance">'
+                            + recetteEscape(cell.getValue()) + "</span>";
+                    },
+                },
+                {
+                    title: "Ingestion",
+                    field: "created_at",
+                    width: 145,
+                    sorter: "string",
+                    headerFilter: "input",
+                },
+                {
+                    title: "Fichier",
+                    field: "file_modified_at",
+                    width: 145,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) { return recetteEscape(cell.getValue()) || "—"; },
+                },
+                {
+                    title: "Categorie",
+                    field: "category_name",
+                    width: 150,
+                    sorter: "string",
+                    headerFilter: "list",
+                    headerFilterParams: function () { return { values: categoryValues() }; },
+                    formatter: function (cell) {
+                        return recetteEscape(cell.getData().category_display_name) || "—";
+                    },
+                    editor: "list",
+                    editorParams: function () {
+                        return { values: categoryValues(), defaultValue: "", emptyValue: "" };
+                    },
+                    cellEdited: function (cell) { recetteCellSaved(cell); },
+                },
+                {
+                    title: "Étiquettes",
+                    field: "tags",
+                    minWidth: 230,
+                    sorter: tagsSorter,
+                    headerFilter: "input",
+                    headerFilterFunc: function (term, val) {
+                        if (!term) return true;
+                        term = term.toLowerCase();
+                        return (val || []).some(function (t) {
+                            return t.display_name.toLowerCase().indexOf(term) !== -1;
+                        });
+                    },
+                    formatter: function (cell) {
+                        return (cell.getValue() || []).map(function (t) {
+                            return '<span class="tag">' + recetteEscape(t.display_name) + "</span>";
+                        }).join(" ");
+                    },
+                    editor: window.recetteTagEditor,
+                    cellEdited: function (cell) { recetteCellSaved(cell); },
+                },
+                {
+                    title: "Manuel",
+                    field: "manually_edited",
+                    width: 85,
+                    hozAlign: "center",
+                    sorter: "boolean",
+                    formatter: "tickCross",
+                    headerFilter: "tickCross",
+                    headerFilterParams: { tristate: true },
+                },
+                {
+                    title: "Favoris",
+                    field: "favorite_count",
+                    width: 90,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerFilter: "number",
+                },
+                {
+                    title: "",
+                    headerSort: false,
+                    width: 190,
+                    formatter: function (cell) {
+                        var d = cell.getData();
+                        return '<button class="btn-edit" onclick="event.stopPropagation();'
+                            + 'recetteAdminEdit(' + d.id + ')">Modifier</button>'
+                            + '<button class="btn-blacklist" onclick="event.stopPropagation();'
+                            + 'recetteAdminBlacklist(' + d.id + ')">Blacklister</button>';
+                    },
+                },
+            ],
+        });
+        window.__recetteTable = table;
+
+        table.on("rowSelectionChanged", function (data) {
+            recetteUpdateSelectionCount(data.length);
+        });
+
+        // --- Tables des fichiers (blacklist et erreurs) ---
+        if (window.__recetteBlacklistTable) {
+            try { window.__recetteBlacklistTable.destroy(); } catch (e) { /* ignore */ }
+            window.__recetteBlacklistTable = null;
+        }
+        if (window.__recetteFailedTable) {
+            try { window.__recetteFailedTable.destroy(); } catch (e) { /* ignore */ }
+            window.__recetteFailedTable = null;
+        }
+
+        function pathFormatter(cell) {
+            return '<span class="path-cell">' + recetteEscape(cell.getValue()) + "</span>";
+        }
+
+        function provenanceFormatter(cell) {
+            return '<span class="card-provenance">' + recetteEscape(cell.getValue()) + "</span>";
+        }
+
+        var filesCommonColumns = [
+            {
+                title: "Chemin",
+                field: "path",
+                minWidth: 220,
+                sorter: "string",
+                headerFilter: "input",
+                formatter: pathFormatter,
+            },
+            {
+                title: "Provenance",
+                field: "provenance",
+                width: 110,
+                sorter: "string",
+                headerFilter: "input",
+                formatter: provenanceFormatter,
+            },
+        ];
+
+        window.__recetteBlacklistTable = new Tabulator(
+            document.getElementById("blacklist-table"),
+            {
+                layout: "fitColumns",
+                placeholder: "Aucun fichier blackliste",
+                index: "path",
+                initialSort: [{ column: "date", dir: "desc" }],
+                ajaxURL: "/admin/files.json",
+                ajaxResponse: function (url, params, response) { return response.blacklisted; },
+                columns: filesCommonColumns.concat([
+                    {
+                        title: "Date",
+                        field: "date",
+                        width: 150,
+                        sorter: "string",
+                        headerFilter: "input",
+                    },
+                    {
+                        title: "",
+                        headerSort: false,
+                        width: 120,
+                        formatter: function (cell) {
+                            return '<button class="btn-restore" onclick="event.stopPropagation();'
+                                + 'recetteUnblacklist(\'' + encodeURIComponent(cell.getData().path)
+                                + '\')">Retablir</button>';
+                        },
+                    },
+                ]),
+            }
+        );
+
+        window.__recetteFailedTable = new Tabulator(document.getElementById("failed-table"), {
+            layout: "fitColumns",
+            placeholder: "Aucun fichier en erreur",
+            index: "path",
+            initialSort: [{ column: "date", dir: "desc" }],
+            ajaxURL: "/admin/files.json",
+            ajaxResponse: function (url, params, response) { return response.failed; },
+            columns: filesCommonColumns.concat([
+                {
+                    title: "Erreur",
+                    field: "error",
+                    minWidth: 200,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) {
+                        return '<span class="error-cell">' + recetteEscape(cell.getValue()) + "</span>";
+                    },
+                },
+                {
+                    title: "Date",
+                    field: "date",
+                    width: 145,
+                    sorter: "string",
+                    headerFilter: "input",
+                },
+                {
+                    title: "",
+                    headerSort: false,
+                    width: 120,
+                    formatter: function (cell) {
+                        return '<button class="btn-retry" onclick="event.stopPropagation();'
+                            + 'recetteRetryFailed(\'' + encodeURIComponent(cell.getData().path)
+                            + '\')">Reessayer</button>';
+                    },
+                },
+            ]),
+        });
+
+        document.querySelectorAll(".recipes-filters .filter-chip").forEach(function (chip) {
+            chip.addEventListener("click", function () {
+                recetteApplyFilter(chip.dataset.filterKey || "");
+            });
+        });
+        recetteApplyFilter(window.__recetteFilterKey || "");
+    })();
+</script>

@@ -1,6 +1,6 @@
 <h2 class="admin-section-title">Modifier la recette</h2>
 <form class="admin-edit-form"
-      hx-post="/admin/edit/{{ recipe.id }}{% if filter %}?filter={{ filter }}{% endif %}"
+      hx-post="/admin/edit/{{ recipe.id }}"
       hx-target="#admin-content">
     <div class="form-row">
         <label class="field field-title">
@@ -113,7 +113,7 @@
     <div class="form-actions">
         <button type="submit" class="btn-restore">Sauvegarder</button>
         <button type="button" class="btn-cancel"
-                hx-get="/admin{% if filter %}?filter={{ filter }}{% endif %}"
+                hx-get="/admin"
                 hx-select="#admin-content"
                 hx-target="#admin-content">
             Annuler

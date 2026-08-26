@@ -547,6 +547,131 @@ def update_recipe_manual(recipe_id: int, data: dict[str, object]) -> bool:
         return True
 
 
+def update_recipe_category(recipe_id: int, category: str | None) -> bool:
+    """Édition inline de la catégorie. Marque la recette comme modifiée manuellement."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if not row:
+            return False
+        category_id = _resolve_category(conn, category or None)
+        conn.execute(
+            """
+            UPDATE recipes SET category_id=?, manually_edited=1,
+                   updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        """,
+            (category_id, recipe_id),
+        )
+        return True
+
+
+def update_recipe_tags(recipe_id: int, tags_by_family: dict[str, list[str]]) -> bool:
+    """Édition inline des étiquettes (remplacement complet). Marque la recette manuelle."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "UPDATE recipes SET manually_edited=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (recipe_id,),
+        )
+    sync_recipe_tags(recipe_id, tags_by_family)
+    return True
+
+
+def bulk_update_category(recipe_ids: list[int], category: str | None) -> int:
+    """Change la catégorie d'un lot de recettes et les marque comme modifiées."""
+    if not recipe_ids:
+        return 0
+    with get_conn() as conn:
+        category_id = _resolve_category(conn, category or None)
+        placeholders = ", ".join("?" for _ in recipe_ids)
+        cur = conn.execute(
+            f"""
+            UPDATE recipes SET category_id=?, manually_edited=1,
+                   updated_at=CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """,
+            (category_id, *recipe_ids),
+        )
+        return cur.rowcount
+
+
+def _resolve_tag_ids(
+    conn: sqlite3.Connection,
+    tags_by_family: dict[str, list[str]],
+    create: bool,
+) -> set[int]:
+    """Résout des clés family/noms en ids d'étiquettes. Crée si `create`, sinon ignore."""
+    tag_ids: set[int] = set()
+    for family_name, names in tags_by_family.items():
+        family = conn.execute(
+            "SELECT id FROM tag_families WHERE name = ?", (family_name,)
+        ).fetchone()
+        if not family:
+            continue
+        family_id = int(family["id"])
+        for name in names:
+            if create:
+                tag_id = _resolve_tag(conn, family_id, name)
+            else:
+                row = conn.execute(
+                    "SELECT id FROM tags WHERE family_id = ? AND name = ?",
+                    (family_id, name),
+                ).fetchone()
+                tag_id = int(row["id"]) if row else None
+            if tag_id is not None:
+                tag_ids.add(tag_id)
+    return tag_ids
+
+
+def bulk_update_tags(
+    recipe_ids: list[int],
+    add_by_family: dict[str, list[str]],
+    remove_by_family: dict[str, list[str]],
+) -> int:
+    """Ajoute/retire des étiquettes sur un lot de recettes et les marque comme modifiées.
+
+    Retourne le nombre de recettes touchées (0 si aucune étiquette valide).
+    """
+    if not recipe_ids:
+        return 0
+    with get_conn() as conn:
+        add_ids = _resolve_tag_ids(conn, add_by_family, create=True)
+        remove_ids = _resolve_tag_ids(conn, remove_by_family, create=False)
+
+        placeholders = ", ".join("?" for _ in recipe_ids)
+        for tag_id in add_ids:
+            conn.execute(
+                f"""
+                INSERT OR IGNORE INTO recipe_tags (recipe_id, tag_id)
+                SELECT r.id, ? FROM recipes r WHERE r.id IN ({placeholders})
+            """,
+                (tag_id, *recipe_ids),
+            )
+        if remove_ids:
+            tag_placeholders = ", ".join("?" for _ in remove_ids)
+            conn.execute(
+                f"""
+                DELETE FROM recipe_tags
+                WHERE tag_id IN ({tag_placeholders}) AND recipe_id IN ({placeholders})
+            """,
+                (*remove_ids, *recipe_ids),
+            )
+
+        if not add_ids and not remove_ids:
+            return 0
+
+        conn.execute(
+            f"""
+            UPDATE recipes SET manually_edited=1, updated_at=CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """,
+            (*recipe_ids,),
+        )
+        return len(recipe_ids)
+
+
 def get_recipe(recipe_id: int) -> dict[str, object] | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
@@ -927,6 +1052,8 @@ def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
             f"""
             SELECT r.id, r.title, r.source_file, r.created_at, r.updated_at,
                    r.file_modified_at, r.manually_edited,
+                   (SELECT COUNT(*) FROM favorites f WHERE f.recipe_id = r.id)
+                       AS favorite_count,
                    c.name AS category_name, c.display_name AS category_display_name,
                    pc.name AS provenance
             FROM recipes r

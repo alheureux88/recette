@@ -36,6 +36,8 @@ from recipes.db import (
     add_dropbox_connection,
     add_favorite,
     blacklist_and_delete_recipe,
+    bulk_update_category,
+    bulk_update_tags,
     delete_dropbox_connection,
     delete_setting,
     get_all_categories,
@@ -65,7 +67,15 @@ from recipes.db import (
     set_dropbox_connection_visible,
     set_setting,
     sync_recipe_tags,
+    update_recipe_category,
     update_recipe_manual,
+    update_recipe_tags,
+)
+from recipes.models import (
+    BulkCategoryUpdate,
+    BulkTagsUpdate,
+    InlineCategoryUpdate,
+    InlineTagsUpdate,
 )
 from recipes.poller import (
     DROPBOX_FOLDER,
@@ -454,11 +464,9 @@ def _normalize_admin_tab(raw: str) -> str:
 async def admin_page(
     request: Request,
     tab: str = Query(default="recipes"),
-    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     tab = _normalize_admin_tab(tab)
-    filter = _normalize_admin_filter(filter)
 
     if tab == "config":
         # Navigation pleine page : le contexte complet de l'onglet Configuration
@@ -467,42 +475,143 @@ async def admin_page(
         ctx["tab"] = tab
         return templates.TemplateResponse(request=request, name="admin.html", context=ctx)
 
-    recipes = get_all_recipes_admin(filter)
-    blacklisted = get_blacklisted_files()
-    failed = get_failed_files()
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context=_base_context(
-            request,
-            recipes=recipes,
-            blacklisted=blacklisted,
-            failed=failed,
-            filter=filter,
-            tab=tab,
-        ),
+        context=_admin_table_context(request),
     )
 
 
 TAG_FAMILIES = ("origin", "diet", "protein", "cooking_method")
 
-ADMIN_RECIPE_FILTERS = ("no_tags", "no_category")
 
-
-def _normalize_admin_filter(raw: str) -> str:
-    return raw if raw in ADMIN_RECIPE_FILTERS else ""
-
-
-def _admin_table_context(request: Request, filter: str = "") -> dict[str, object]:
-    filter = _normalize_admin_filter(filter)
+def _admin_table_context(request: Request) -> dict[str, object]:
     return _base_context(
         request,
-        recipes=get_all_recipes_admin(filter),
+        recipes=get_all_recipes_admin(),
         blacklisted=get_blacklisted_files(),
         failed=get_failed_files(),
-        filter=filter,
+        all_categories=get_all_categories(only_used=False),
+        all_tags=get_existing_tags_for_prompt(),
         tab="recipes",
     )
+
+
+def _recipe_row(recipe: dict[str, object]) -> dict[str, object]:
+    """Aplati une recette admin pour le tableau client (Tabulator)."""
+    raw_category = recipe.get("category")
+    category = raw_category if isinstance(raw_category, dict) else None
+    raw_tags = recipe.get("tags")
+    tags = [t for t in raw_tags if isinstance(t, dict)] if isinstance(raw_tags, list) else []
+    return {
+        "id": int(str(recipe["id"])),
+        "title": str(recipe["title"]),
+        "provenance": str(recipe["provenance"]) if recipe.get("provenance") else "",
+        "created_at": str(recipe["created_at"]) if recipe.get("created_at") else "",
+        "file_modified_at": str(recipe["file_modified_at"])
+        if recipe.get("file_modified_at")
+        else "",
+        "category_name": str(category["name"]) if category else "",
+        "category_display_name": str(category["display_name"]) if category else "",
+        "tags": [
+            {
+                "family": str(t["family"]),
+                "name": str(t["name"]),
+                "display_name": str(t["display_name"]),
+            }
+            for t in tags
+        ],
+        "manually_edited": bool(recipe.get("manually_edited")),
+        "favorite_count": int(str(recipe["favorite_count"])) if recipe.get("favorite_count") else 0,
+    }
+
+
+def _parse_tag_keys(keys: list[str]) -> dict[str, list[str]]:
+    """'origin:francais' -> {"origin": ["francais"]} ; familles inconnues ignorees."""
+    result: dict[str, list[str]] = {}
+    for key in keys:
+        family, _, name = key.partition(":")
+        if family in TAG_FAMILIES and name:
+            result.setdefault(family, []).append(name)
+    return result
+
+
+@app.get("/admin/recipes.json")
+async def admin_recipes_data(
+    _user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, object]:
+    """Donnees du tableau d'administration : recettes, categories et etiquettes."""
+    return {
+        "recipes": [_recipe_row(r) for r in get_all_recipes_admin()],
+        "categories": get_all_categories(only_used=False),
+        "tags": get_existing_tags_for_prompt(),
+    }
+
+
+@app.get("/admin/files.json")
+async def admin_files_data(
+    _user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, object]:
+    """Donnees des tableaux de fichiers blacklistes et en erreur."""
+    return {
+        "blacklisted": [
+            {
+                "path": str(item["path"]),
+                "provenance": str(item.get("provenance") or ""),
+                "date": str(item.get("blacklisted_at") or ""),
+            }
+            for item in get_blacklisted_files()
+        ],
+        "failed": [
+            {
+                "path": str(item["path"]),
+                "provenance": str(item.get("provenance") or ""),
+                "error": str(item.get("error") or ""),
+                "date": str(item.get("failed_at") or ""),
+            }
+            for item in get_failed_files()
+        ],
+    }
+
+
+@app.post("/admin/inline/{recipe_id}/category")
+async def admin_inline_category(
+    data: InlineCategoryUpdate,
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, object]:
+    if not update_recipe_category(recipe_id, data.category):
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return {"ok": True}
+
+
+@app.post("/admin/inline/{recipe_id}/tags")
+async def admin_inline_tags(
+    data: InlineTagsUpdate,
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, object]:
+    if not update_recipe_tags(recipe_id, _parse_tag_keys(data.tags)):
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return {"ok": True}
+
+
+@app.post("/admin/bulk/category")
+async def admin_bulk_category(
+    data: BulkCategoryUpdate,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, object]:
+    updated = bulk_update_category(data.ids, data.category)
+    return {"ok": True, "updated": updated}
+
+
+@app.post("/admin/bulk/tags")
+async def admin_bulk_tags(
+    data: BulkTagsUpdate,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, object]:
+    updated = bulk_update_tags(data.ids, _parse_tag_keys(data.add), _parse_tag_keys(data.remove))
+    return {"ok": True, "updated": updated}
 
 
 def _admin_config_context(
@@ -888,7 +997,6 @@ def _tags_from_form(form: Any) -> dict[str, list[str]]:
 async def admin_edit_form(
     request: Request,
     recipe_id: int = Path(gt=0),
-    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     recipe = get_recipe(recipe_id)
@@ -902,7 +1010,6 @@ async def admin_edit_form(
             recipe=recipe,
             all_categories=get_all_categories(only_used=False),
             all_tags=get_existing_tags_for_prompt(),
-            filter=_normalize_admin_filter(filter),
         ),
     )
 
@@ -911,7 +1018,6 @@ async def admin_edit_form(
 async def admin_edit_save(
     request: Request,
     recipe_id: int = Path(gt=0),
-    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     recipe = get_recipe(recipe_id)
@@ -940,7 +1046,7 @@ async def admin_edit_save(
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request, filter),
+        context=_admin_table_context(request),
     )
 
 
@@ -948,14 +1054,13 @@ async def admin_edit_save(
 async def admin_blacklist(
     request: Request,
     recipe_id: int = Path(gt=0),
-    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     blacklist_and_delete_recipe(recipe_id)
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request, filter),
+        context=_admin_table_context(request),
     )
 
 
@@ -963,14 +1068,13 @@ async def admin_blacklist(
 async def admin_unblacklist(
     request: Request,
     path: str = Query(...),
-    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     remove_from_blacklist(path)
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request, filter),
+        context=_admin_table_context(request),
     )
 
 
@@ -978,12 +1082,11 @@ async def admin_unblacklist(
 async def admin_retry_failed(
     request: Request,
     path: str = Query(...),
-    filter: str = Query(default=""),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     remove_failed_file(path)
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request, filter),
+        context=_admin_table_context(request),
     )

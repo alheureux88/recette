@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Administration — Recettes Merizzi{% endblock %}
+{% block main_class %}admin-main{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css">
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+{% endblock %}
 {% block content %}
 <h1 class="page-title">Administration</h1>
 <div class="admin-filters admin-tabs">
