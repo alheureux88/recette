@@ -1124,3 +1124,125 @@ main.admin-main {
 [data-theme="dark"] .error-cell {
     color: #e08a86;
 }
+
+/* Impression : barre d'outils + options + règles @media print */
+.print-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+.print-toolbar .back { margin-bottom: 0; }
+.print-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.print-options {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0.3rem 0.75rem;
+}
+.print-options summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text);
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.print-options summary::after {
+    content: "\25BE";
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+.print-options[open] summary::after { content: "\25B4"; }
+.print-options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem 1.25rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+}
+.print-options-grid label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.88rem;
+    color: var(--text);
+    cursor: pointer;
+}
+.btn-print {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: 999px;
+    padding: 0.5rem 1.1rem;
+    font-family: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(107, 127, 78, 0.35);
+    transition: background 0.15s, transform 0.1s;
+}
+.btn-print:hover { background: var(--accent-dk); }
+.btn-print:active { transform: translateY(1px); }
+
+@media print {
+    :root, [data-theme="dark"] {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --text: #1a1a1a;
+        --muted: #555555;
+        --border: #cccccc;
+    }
+    body { background: #ffffff !important; color: #1a1a1a !important; }
+    header, .print-toolbar, .recipe-header .fav-btn, .manual-badge { display: none !important; }
+    main { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+    .recipe-detail { max-width: 100% !important; }
+    .recipe-header h1 { color: #1a1a1a !important; font-size: 1.6rem; }
+    .lead { color: #333 !important; }
+    .category-badge {
+        background: transparent !important;
+        color: #1a1a1a !important;
+        border: 1px solid #999 !important;
+    }
+    .tag, a.tag {
+        background: transparent !important;
+        color: #333 !important;
+        border: 1px solid #999 !important;
+    }
+    .recipe-link, .recipe-link:hover {
+        background: transparent !important;
+        color: #1a1a1a !important;
+        border: 1px solid #999 !important;
+    }
+    .recipe-image { border: 1px solid #ddd !important; }
+    .recipe-body h2 {
+        color: #1a1a1a !important;
+        border-bottom: 1px solid #999;
+    }
+    a { color: #1a1a1a !important; text-decoration: none !important; }
+
+    /* Options d'impression : tout masquer selon la classe */
+    body.print-no-images .recipe-images { display: none !important; }
+    body.print-no-tags .detail-tags { display: none !important; }
+    body.print-no-description .lead { display: none !important; }
+    body.print-no-links .recipe-links { display: none !important; }
+
+    /* Contrôles interactifs inutiles à l'impression */
+    .ingredient-controls { display: none !important; }
+
+
+    /* Sauts de page */
+    h1, h2, .recipe-image { page-break-inside: avoid; }
+    .recipe-body { page-break-inside: auto; }
+    .recipe-body > section { page-break-inside: avoid; }
+}

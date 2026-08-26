@@ -3,7 +3,21 @@
 {% block content %}
 
 <div class="recipe-detail">
-    <a href="/" class="back">← Toutes les recettes</a>
+    <div class="print-toolbar">
+        <a href="/" class="back">← Toutes les recettes</a>
+        <div class="print-actions">
+            <details class="print-options" id="print-options">
+                <summary>Options d'impression</summary>
+                <div class="print-options-grid">
+                    <label><input type="checkbox" id="print-images"> Images</label>
+                    <label><input type="checkbox" id="print-tags"> Étiquettes</label>
+                    <label><input type="checkbox" id="print-description"> Description</label>
+                    <label><input type="checkbox" id="print-links"> Liens externes</label>
+                </div>
+            </details>
+            <button type="button" class="btn-print" onclick="recettePrint()">Imprimer</button>
+        </div>
+    </div>
 
     <div class="recipe-header">
         <h1>{{ recipe.title }}</h1>
@@ -74,5 +88,34 @@
         </section>
     </div>
 </div>
+
+<script>
+    (function () {
+        var body = document.body;
+        var checks = {
+            images: document.getElementById('print-images'),
+            tags: document.getElementById('print-tags'),
+            description: document.getElementById('print-description'),
+            links: document.getElementById('print-links'),
+        };
+        var classes = {
+            images: 'print-no-images',
+            tags: 'print-no-tags',
+            description: 'print-no-description',
+            links: 'print-no-links',
+        };
+        Object.keys(checks).forEach(function (key) {
+            checks[key].addEventListener('change', function () {
+                body.classList.toggle(classes[key], !checks[key].checked);
+            });
+        });
+        window.recettePrint = function () {
+            Object.keys(checks).forEach(function (key) {
+                body.classList.toggle(classes[key], !checks[key].checked);
+            });
+            window.print();
+        };
+    })();
+</script>
 
 {% endblock %}
