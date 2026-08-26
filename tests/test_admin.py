@@ -13,10 +13,12 @@ from recipes.db import (
     get_blacklisted_files,
     get_failed_files,
     get_or_create_user,
+    get_processed_hash,
     get_recipe,
     init_db,
     is_blacklisted,
     is_manually_edited,
+    mark_processed,
     record_failed_file,
     remove_failed_file,
     remove_from_blacklist,
@@ -596,6 +598,17 @@ class TestBlacklistManagement:
         assert is_blacklisted("/recipes/poulet.docx")
         remove_from_blacklist("/recipes/poulet.docx")
         assert not is_blacklisted("/recipes/poulet.docx")
+
+    def test_unblacklist_clears_processed_hash(self):
+        """Regression: unblacklist must drop the processed_files entry too,
+        otherwise the poller skips the re-ingestion thinking nothing changed.
+        """
+        _insert_sample()
+        mark_processed("/recipes/poulet.docx", "abc123")
+        blacklist_and_delete_recipe(1)
+        assert get_processed_hash("/recipes/poulet.docx") == "abc123"
+        remove_from_blacklist("/recipes/poulet.docx")
+        assert get_processed_hash("/recipes/poulet.docx") is None
 
     def test_unblacklist_endpoint(self, client, monkeypatch):
         monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)

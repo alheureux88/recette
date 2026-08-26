@@ -1240,6 +1240,7 @@ def get_blacklisted_files() -> list[dict[str, object]]:
 def remove_from_blacklist(path: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM blacklist WHERE path = ?", (path,))
+        conn.execute("DELETE FROM processed_files WHERE path = ?", (path,))
 
 
 def record_failed_file(path: str, error: str) -> None:
