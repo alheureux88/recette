@@ -344,6 +344,30 @@ async def recipe_detail(
     )
 
 
+@app.get("/recipe/{recipe_id}/cook", response_class=HTMLResponse)
+async def recipe_cook(
+    request: Request,
+    recipe_id: int = Path(gt=0),
+) -> HTMLResponse:
+    """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
+    recipe = get_recipe(recipe_id)
+    if not recipe:
+        return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
+    ingredient_ctx = _ingredient_context(recipe, None, "original", None)
+    raw_steps = recipe.get("instructions") or ""
+    steps = [line.strip() for line in str(raw_steps).split("\n") if line.strip()]
+    return templates.TemplateResponse(
+        request=request,
+        name="recipe_cook.html",
+        context=_base_context(
+            request,
+            recipe=recipe,
+            display_ingredients=ingredient_ctx.get("display_ingredients", []),
+            steps=steps,
+        ),
+    )
+
+
 @app.get("/recipe/{recipe_id}/ingredients", response_class=HTMLResponse)
 async def recipe_ingredients(
     request: Request,

@@ -19,7 +19,7 @@
     {% block head %}{% endblock %}
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
     <header>
         <div class="header-inner">
             <a href="/" class="site-title">Recettes <span>Merizzi</span></a>
@@ -46,6 +46,7 @@
     <script>
         (function () {
             var toggle = document.getElementById('theme-toggle');
+            if (!toggle) return;
             function refreshIcon() {
                 toggle.textContent = document.documentElement.dataset.theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
             }

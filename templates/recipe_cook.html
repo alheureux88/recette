@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Mode cuisine — {{ recipe.title }}{% endblock %}
+{% block body_class %}cook-mode{% endblock %}
+{% block content %}
+
+<div class="cook-page" data-recipe-id="{{ recipe.id }}" data-ingredient-count="{{ display_ingredients|length }}" data-step-count="{{ steps|length }}">
+    <header class="cook-bar">
+        <a href="/recipe/{{ recipe.id }}" class="cook-exit" aria-label="Retour à la recette"><span aria-hidden="true">←</span> Retour</a>
+        <h1 class="cook-title">{{ recipe.title }}</h1>
+        <button type="button" class="cook-reset" id="cook-reset">Réinitialiser</button>
+    </header>
+
+    <div class="cook-progress" id="cook-progress" aria-live="polite"></div>
+
+    {% if display_ingredients %}
+    <section class="cook-section">
+        <h2 class="cook-section-title">Ingrédients</h2>
+        <ul class="cook-list">
+            {% for ing in display_ingredients %}
+            <li>
+                <label class="cook-item">
+                    <input type="checkbox" class="cook-check" data-kind="ingredient" data-index="{{ loop.index0 }}">
+                    <span class="cook-bullet" aria-hidden="true"></span>
+                    <span class="cook-text">{{ ing }}</span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if steps %}
+    <section class="cook-section">
+        <h2 class="cook-section-title">Étapes</h2>
+        <ol class="cook-list cook-steps">
+            {% for step in steps %}
+            <li>
+                <label class="cook-item cook-step">
+                    <input type="checkbox" class="cook-check" data-kind="step" data-index="{{ loop.index0 }}">
+                    <span class="cook-step-number" aria-hidden="true">{{ loop.index }}</span>
+                    <span class="cook-text">{{ step }}</span>
+                </label>
+            </li>
+            {% endfor %}
+        </ol>
+    </section>
+    {% endif %}
+</div>
+
+<script>
+    (function () {
+        var page = document.querySelector('.cook-page');
+        if (!page) return;
+        var recipeId = page.dataset.recipeId;
+        var storageKey = 'recette:cook:' + recipeId;
+        var checks = page.querySelectorAll('.cook-check');
+        var progress = document.getElementById('cook-progress');
+        var resetBtn = document.getElementById('cook-reset');
+
+        function loadState() {
+            try {
+                var raw = localStorage.getItem(storageKey);
+                if (!raw) return null;
+                var data = JSON.parse(raw);
+                return (data && typeof data === 'object') ? data : null;
+            } catch (e) { return null; }
+        }
+        function saveState() {
+            var state = { ingredients: {}, steps: {} };
+            checks.forEach(function (cb) {
+                var kind = cb.dataset.kind;
+                var idx = cb.dataset.index;
+                if (state[kind + 's']) state[kind + 's'][idx] = cb.checked;
+            });
+            try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
+        }
+        function updateProgress() {
+            var totalIngs = page.querySelectorAll('.cook-check[data-kind="ingredient"]').length;
+            var totalSteps = page.querySelectorAll('.cook-check[data-kind="step"]').length;
+            var doneIngs = page.querySelectorAll('.cook-check[data-kind="ingredient"]:checked').length;
+            var doneSteps = page.querySelectorAll('.cook-check[data-kind="step"]:checked').length;
+            if (totalIngs + totalSteps === 0) {
+                progress.textContent = '';
+                return;
+            }
+            var parts = [];
+            if (totalIngs) parts.push(doneIngs + '/' + totalIngs + ' ingrédient' + (totalIngs > 1 ? 's' : ''));
+            if (totalSteps) parts.push(doneSteps + '/' + totalSteps + ' étape' + (totalSteps > 1 ? 's' : ''));
+            progress.textContent = parts.join(' · ');
+        }
+        function applyState(state) {
+            if (!state) return;
+            var ing = state.ingredients || {};
+            var stp = state.steps || {};
+            checks.forEach(function (cb) {
+                var kind = cb.dataset.kind;
+                var idx = cb.dataset.index;
+                var map = (kind === 'ingredient') ? ing : stp;
+                cb.checked = !!map[idx];
+            });
+        }
+        function clearAll() {
+            checks.forEach(function (cb) { cb.checked = false; });
+            try { localStorage.removeItem(storageKey); } catch (e) {}
+            updateProgress();
+        }
+        checks.forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                saveState();
+                updateProgress();
+            });
+        });
+        resetBtn.addEventListener('click', clearAll);
+        applyState(loadState());
+        updateProgress();
+    })();
+</script>
+
+{% endblock %}
