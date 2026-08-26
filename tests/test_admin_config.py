@@ -9,6 +9,7 @@ from recipes.db import (
     add_dropbox_connection,
     blacklist_and_delete_recipe,
     delete_dropbox_connection,
+    delete_setting,
     get_all_recipes_admin,
     get_dropbox_connection_credentials,
     get_dropbox_connections,
@@ -414,6 +415,39 @@ class TestOauthFlow:
         resp = admin.get("/admin/config/dropbox/callback?error=access_denied")
         assert resp.status_code == 200
         assert "refusee" in resp.text
+
+
+class TestModelOverride:
+    def test_get_model_prefers_override(self, monkeypatch):
+        from recipes.tagger import _get_model
+
+        monkeypatch.setenv("LLM_MODEL", "env-model")
+        assert _get_model() == "env-model"
+
+        set_setting("llm_model", "custom-model")
+        assert _get_model() == "custom-model"
+
+        delete_setting("llm_model")
+        assert _get_model() == "env-model"
+
+    def test_set_model_route(self, admin):
+        resp = admin.post("/admin/config/model", data={"llm_model": "gpt-5"})
+        assert resp.status_code == 200
+        assert get_setting("llm_model") == "gpt-5"
+        assert "Modele LLM defini" in resp.text
+
+    def test_reset_model_route(self, admin):
+        set_setting("llm_model", "gpt-5")
+        resp = admin.post("/admin/config/model", data={"llm_model": ""})
+        assert resp.status_code == 200
+        assert get_setting("llm_model") == ""
+        assert "Override retire" in resp.text
+
+    def test_config_shows_model_form(self, admin, monkeypatch):
+        monkeypatch.setenv("LLM_MODEL", "env-default-model")
+        resp = admin.get("/admin?tab=config")
+        assert 'name="llm_model"' in resp.text
+        assert "env-default-model" in resp.text
 
 
 class TestPollerMultiAccount:

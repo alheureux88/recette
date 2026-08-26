@@ -516,6 +516,8 @@ def _admin_config_context(
         default_active=is_default_account_active(),
         default_visible=is_default_account_visible(),
         dropbox_folder=DROPBOX_FOLDER,
+        llm_model=get_setting("llm_model", ""),
+        llm_model_default=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
         message=message,
         tab="config",
     )
@@ -677,6 +679,29 @@ async def admin_config_dropbox_callback(
         request=request,
         name=template_name,
         context=_admin_config_oauth_context(request, refresh_token, account_label),
+    )
+
+
+@app.post("/admin/config/model", response_class=HTMLResponse)
+async def admin_config_set_model(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    """Override global du modele LLM utilise pour l'analyse des recettes."""
+    form = await request.form()
+    model = str(form.get("llm_model") or "").strip()
+
+    if model:
+        set_setting("llm_model", model)
+        message = ("ok", f"Modele LLM defini : '{model}'.")
+    else:
+        delete_setting("llm_model")
+        message = ("ok", "Override retire : retour au modele du .env.")
+
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(request, message),
     )
 
 

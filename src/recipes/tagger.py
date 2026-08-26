@@ -8,7 +8,11 @@ import os
 import threading
 from typing import Any
 
-from recipes.db import get_all_categories, get_existing_tags_for_prompt
+from recipes.db import (
+    get_all_categories,
+    get_existing_tags_for_prompt,
+    get_setting,
+)
 from recipes.units import parse_quantity
 
 _client: Any = None
@@ -52,6 +56,10 @@ def _get_provider() -> str:
 
 
 def _get_model() -> str:
+    """Modele LLM : override de la Configuration (DB) sinon LLM_MODEL du .env."""
+    override = get_setting("llm_model", "").strip()
+    if override:
+        return override
     return os.environ.get("LLM_MODEL", "gpt-4o-mini")
 
 

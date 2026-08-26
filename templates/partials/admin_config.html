@@ -161,3 +161,29 @@
         <button type="submit" class="btn-edit">Ajouter la connexion</button>
     </div>
 </form>
+
+<h2 class="admin-section-title">Modèle d'analyse (LLM)</h2>
+<form class="admin-edit-form config-form"
+      hx-post="/admin/config/model"
+      hx-target="#admin-content">
+    <div class="form-row">
+        <div class="field field-title">
+            <span>Modèle (override global)</span>
+            <input type="text" name="llm_model" value="{{ llm_model }}"
+                   placeholder="{{ llm_model_default }} (défaut .env)">
+        </div>
+        <div class="form-actions field">
+            <button type="submit" class="btn-retry">Appliquer</button>
+            {% if llm_model %}
+            <button type="submit" class="btn-cancel" name="llm_model" value="">
+                Retour au défaut
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    <p class="config-hint">
+        Utilisé par l'analyse LLM des recettes importées. Laisser vide pour
+        utiliser le modèle configuré dans le .env ({{ llm_model_default }}).
+        S'applique au prochain scan.
+    </p>
+</form>
