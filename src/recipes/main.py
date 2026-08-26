@@ -361,12 +361,20 @@ async def recipe_detail(
 async def recipe_cook(
     request: Request,
     recipe_id: int = Path(gt=0),
+    servings: str | None = Query(default=None),
+    units: str = Query(default="original"),
+    multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
     recipe = get_recipe(recipe_id)
     if not recipe:
         return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
-    ingredient_ctx = _ingredient_context(recipe, None, "original", None)
+    ingredient_ctx = _ingredient_context(
+        recipe,
+        _parse_servings_param(servings),
+        units,
+        _parse_multiplier_param(multiplier),
+    )
     raw_steps = recipe.get("instructions") or ""
     steps = [line.strip() for line in str(raw_steps).split("\n") if line.strip()]
     return templates.TemplateResponse(

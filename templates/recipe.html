@@ -6,7 +6,7 @@
     <div class="print-toolbar">
         <a href="/" class="back">← Toutes les recettes</a>
         <div class="print-actions">
-            <a href="/recipe/{{ recipe.id }}/cook" class="btn-cook">Mode cuisine</a>
+            <a href="/recipe/{{ recipe.id }}/cook" class="btn-cook" id="btn-cook">Mode cuisine</a>
             <details class="print-options" id="print-options">
                 <summary>Options d'impression</summary>
                 <div class="print-options-grid">
@@ -97,6 +97,26 @@
 
 <script>
     (function () {
+        var cookLink = document.getElementById('btn-cook');
+        if (cookLink) {
+            cookLink.addEventListener('click', function (e) {
+                var form = document.querySelector('.ingredient-controls');
+                if (!form) return;
+                var params = new URLSearchParams();
+                var servings = form.querySelector('input[name="servings"]');
+                if (servings && servings.value) params.set('servings', servings.value);
+                var multiplier = form.querySelector('input[name="multiplier"]');
+                if (multiplier && multiplier.value) params.set('multiplier', multiplier.value);
+                var units = form.querySelector('select[name="units"]');
+                if (units && units.value) params.set('units', units.value);
+                var qs = params.toString();
+                if (qs) {
+                    e.preventDefault();
+                    window.location.href = cookLink.getAttribute('href') + '?' + qs;
+                }
+            });
+        }
+
         var body = document.body;
         var checks = {
             images: document.getElementById('print-images'),
