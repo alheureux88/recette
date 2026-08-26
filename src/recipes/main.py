@@ -53,6 +53,7 @@ from recipes.db import (
     get_recipe,
     get_recipe_provenances,
     get_setting,
+    get_tag_families,
     get_user_favorite_ids,
     init_db,
     is_default_account_active,
@@ -174,10 +175,13 @@ def _parse_account_param(raw: str | None) -> int | None:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
+async def index(
+    request: Request,
+    tags: list[int] = Query(default=[]),
+) -> HTMLResponse:
     all_tags = get_all_tags_grouped()
     all_categories = get_all_categories()
-    recipes = search_recipes()
+    recipes = search_recipes(tag_ids=tags)
     user = get_user(request)
     favorite_ids: set[int] = set()
     if user:
@@ -191,7 +195,7 @@ async def index(request: Request) -> HTMLResponse:
             all_tags=all_tags,
             all_categories=all_categories,
             query="",
-            active_tag_ids=[],
+            active_tag_ids=tags,
             active_category_id=None,
             favorite_ids=favorite_ids,
             **_provenance_context(),
@@ -493,6 +497,7 @@ def _admin_table_context(request: Request) -> dict[str, object]:
         failed=get_failed_files(),
         all_categories=get_all_categories(only_used=False),
         all_tags=get_existing_tags_for_prompt(),
+        all_tag_families=get_tag_families(),
         tab="recipes",
     )
 

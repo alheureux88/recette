@@ -917,6 +917,14 @@ def get_existing_tags_for_prompt() -> dict[str, list[dict[str, object]]]:
     return result
 
 
+def get_tag_families() -> list[dict[str, object]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name, display_name FROM tag_families ORDER BY sort_order"
+        ).fetchall()
+    return [{"name": r["name"], "display_name": r["display_name"]} for r in rows]
+
+
 def mark_processed(path: str, file_hash: str) -> None:
     with get_conn() as conn:
         conn.execute(

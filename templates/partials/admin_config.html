@@ -172,13 +172,16 @@
             <input type="text" name="llm_model" value="{{ llm_model }}"
                    placeholder="{{ llm_model_default }} (défaut .env)">
         </div>
-        <div class="form-actions field">
-            <button type="submit" class="btn-retry">Appliquer</button>
-            {% if llm_model %}
-            <button type="submit" class="btn-cancel" name="llm_model" value="">
-                Retour au défaut
-            </button>
-            {% endif %}
+        <div class="field">
+            <span>&nbsp;</span>
+            <div class="form-actions">
+                <button type="submit" class="btn-retry">Appliquer</button>
+                {% if llm_model %}
+                <button type="submit" class="btn-cancel" name="llm_model" value="">
+                    Retour au défaut
+                </button>
+                {% endif %}
+            </div>
         </div>
     </div>
     <p class="config-hint">

@@ -975,6 +975,10 @@ main.admin-main {
     border-right: none;
     padding: 0.6rem 0.75rem;
 }
+.tabulator .tabulator-header .tabulator-col:hover,
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover {
+    background: var(--tag-bg) !important;
+}
 .tabulator .tabulator-col-title {
     font-weight: 600;
     color: var(--muted);
@@ -1011,6 +1015,7 @@ main.admin-main {
     border-right: none;
     vertical-align: middle;
     white-space: normal;
+    color: var(--text);
 }
 .tabulator .tabulator-cell a {
     color: var(--accent);
@@ -1113,4 +1118,9 @@ main.admin-main {
 .theme-toggle:hover {
     transform: scale(1.15);
     background: var(--accent-soft);
+}
+
+/* Dark mode : cellules Tabulator et textes d'erreur */
+[data-theme="dark"] .error-cell {
+    color: #e08a86;
 }

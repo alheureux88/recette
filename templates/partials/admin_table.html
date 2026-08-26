@@ -3,6 +3,9 @@
         <button type="button" class="filter-chip active" data-filter-key="">Toutes</button>
         <button type="button" class="filter-chip" data-filter-key="no_tags">Sans étiquettes</button>
         <button type="button" class="filter-chip" data-filter-key="no_category">Sans catégorie</button>
+        {% for fam in all_tag_families %}
+        <button type="button" class="filter-chip" data-filter-key="no_family:{{ fam.name }}">Sans {{ fam.display_name|lower }}</button>
+        {% endfor %}
     </div>
     <div class="bulk-edit">
         <span class="selection-count"><span id="selection-count">0</span> sélectionnée(s)</span>
@@ -80,6 +83,11 @@
             table.setFilter(function (data) { return !data.tags || data.tags.length === 0; });
         } else if (key === "no_category") {
             table.setFilter(function (data) { return !data.category_name; });
+        } else if (key && key.indexOf("no_family:") === 0) {
+            var fam = key.slice("no_family:".length);
+            table.setFilter(function (data) {
+                return !(data.tags || []).some(function (t) { return t.family === fam; });
+            });
         } else {
             table.clearFilter();
         }
