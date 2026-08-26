@@ -134,6 +134,19 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/images", StaticFiles(directory=str(IMAGES_DIR), check_dir=False), name="images")
 
+
+@app.middleware("http")
+async def pwa_headers(request: Request, call_next: Any) -> Response:
+    response: Response = await call_next(request)
+    path = request.url.path
+    if path == "/static/sw.js":
+        response.headers["Service-Worker-Allowed"] = "/"
+        response.headers["Cache-Control"] = "no-cache"
+    elif path == "/static/manifest.webmanifest":
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 templates = Jinja2Templates(directory="templates")
 
 

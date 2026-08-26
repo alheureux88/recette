@@ -1,0 +1,20 @@
+{
+  "name": "Recettes Merizzi",
+  "short_name": "Recettes",
+  "description": "Les recettes de la famille Merizzi",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf7f2",
+  "theme_color": "#8a3324",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
