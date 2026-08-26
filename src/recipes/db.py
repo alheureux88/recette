@@ -256,6 +256,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "manually_edited" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
 
+    if "connection_id" not in cols:
+        conn.execute(
+            "ALTER TABLE recipes ADD COLUMN connection_id INTEGER REFERENCES dropbox_connections(id)"
+        )
+
 
 def _create_fts(conn: sqlite3.Connection) -> None:
     fts_exists = conn.execute(

@@ -1,20 +1,46 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    --bg:        #fdf8f3;
+    color-scheme: light;
+    --bg:        #ffffff;
     --surface:   #ffffff;
-    --border:    #e8ddd0;
-    --accent:    #c0714a;
-    --accent-dk: #a05a38;
-    --text:      #2c2218;
-    --muted:     #7a6a5a;
-    --tag-bg:    #f0e8df;
-    --tag-active:#c0714a;
-    --radius:    10px;
+    --surface-alt:#f6f7f4;
+    --border:    #e5e8e2;
+    --accent:    #6b7f4e;
+    --accent-dk: #55663d;
+    --accent-soft:#eef1e8;
+    --text:      #1f2419;
+    --muted:     #7c8272;
+    --tag-bg:    #f6f7f4;
+    --tag-active:#6b7f4e;
+    --header-bg: rgba(255, 255, 255, 0.92);
+    --fav-bg:    rgba(255, 255, 255, 0.95);
+    --on-accent: #ffffff;
+    --radius:    14px;
+}
+
+[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:        #171b13;
+    --surface:   #1f251b;
+    --surface-alt:#272e21;
+    --border:    #363e2e;
+    --accent:    #9db07a;
+    --accent-dk: #b3c493;
+    --accent-soft:#2b3423;
+    --text:      #edefe8;
+    --muted:     #9aa38e;
+    --tag-bg:    #272e21;
+    --tag-active:#9db07a;
+    --header-bg: rgba(23, 27, 19, 0.88);
+    --fav-bg:    rgba(31, 37, 27, 0.95);
+    --on-accent: #1c2314;
 }
 
 body {
-    font-family: Georgia, 'Times New Roman', serif;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 400;
+    line-height: 1.5;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -22,8 +48,12 @@ body {
 
 /* Header */
 header {
-    background: var(--surface);
-    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--header-bg);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
     padding: 1rem 2rem;
 }
 .header-inner {
@@ -34,29 +64,30 @@ header {
     margin: 0 auto;
 }
 .site-title {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: var(--accent);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
     text-decoration: none;
 }
-.site-title:hover { color: var(--accent-dk); }
+.site-title span { color: var(--accent); }
+.site-title:hover { color: var(--text); }
 .header-nav {
     display: flex;
     align-items: center;
     gap: 1rem;
-    font-family: sans-serif;
     font-size: 0.88rem;
 }
 .nav-link {
-    color: var(--accent);
+    color: var(--muted);
+    font-weight: 500;
     text-decoration: none;
     padding: 0.3rem 0.75rem;
-    border-radius: var(--radius);
+    border-radius: 999px;
     transition: all 0.15s;
 }
 .nav-link:hover {
-    background: var(--tag-bg);
-    color: var(--accent-dk);
+    color: var(--text);
 }
 .nav-user {
     color: var(--muted);
@@ -74,18 +105,20 @@ main {
 .search-bar { margin-bottom: 1.25rem; }
 .search-bar input {
     width: 100%;
-    padding: 0.75rem 1rem;
-    font-size: 1rem;
-    border: 2px solid var(--border);
+    padding: 0.9rem 1.25rem;
+    font-size: 1.05rem;
+    border: 1.5px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
+    background: var(--surface-alt);
     color: var(--text);
     font-family: inherit;
-    transition: border-color 0.2s;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 .search-bar input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+    background: var(--surface);
 }
 
 /* Tag filter pills */
@@ -99,24 +132,24 @@ main {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    padding: 0.3rem 0.75rem;
-    background: var(--tag-bg);
+    padding: 0.4rem 0.95rem;
+    background: var(--surface);
     border: 1.5px solid var(--border);
     border-radius: 999px;
-    font-size: 0.82rem;
+    font-size: 0.88rem;
+    font-weight: 500;
     cursor: pointer;
     user-select: none;
     transition: all 0.15s;
-    font-family: sans-serif;
 }
 .tag-pill input { display: none; }
-.tag-pill:hover { border-color: var(--accent); color: var(--accent); }
+.tag-pill:hover { border-color: var(--accent); color: var(--accent-dk); }
 .tag-pill.active {
     background: var(--accent);
     border-color: var(--accent);
-    color: white;
+    color: var(--on-accent);
     font-weight: 600;
-    box-shadow: 0 2px 6px rgba(192, 113, 74, 0.3);
+    box-shadow: 0 2px 8px rgba(107, 127, 78, 0.35);
 }
 .tag-pill.active:hover {
     background: var(--accent-dk);
@@ -127,7 +160,7 @@ main {
 #recipe-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
+    gap: 1.75rem;
 }
 
 /* Recipe card wrapper (for fav button positioning) */
@@ -138,11 +171,11 @@ main {
 /* Favorite button */
 .fav-btn {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    top: 0.75rem;
+    right: 0.75rem;
     z-index: 2;
-    background: var(--surface);
-    border: 1.5px solid var(--border);
+    background: var(--fav-bg);
+    border: none;
     border-radius: 50%;
     width: 2rem;
     height: 2rem;
@@ -151,23 +184,23 @@ main {
     justify-content: center;
     cursor: pointer;
     font-size: 1.1rem;
-    transition: all 0.15s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    transition: transform 0.15s, color 0.15s;
     padding: 0;
     line-height: 1;
 }
 .fav-btn:hover {
-    border-color: var(--accent);
     transform: scale(1.1);
+    color: var(--accent-dk);
 }
 .fav-btn.is-favorite {
-    background: var(--accent);
-    border-color: var(--accent);
+    color: #d4a017;
 }
 .fav-btn.is-favorite .fav-icon {
-    color: white;
+    color: inherit;
 }
 .fav-icon {
-    color: var(--accent);
+    color: var(--muted);
     line-height: 1;
 }
 
@@ -175,18 +208,20 @@ main {
 .recipe-card {
     display: block;
     background: var(--surface);
-    border: 1.5px solid var(--border);
+    border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.25rem;
     text-decoration: none;
     color: inherit;
-    transition: box-shadow 0.15s, border-color 0.15s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.15s;
+    height: 100%;
 }
 .recipe-card:hover {
-    border-color: var(--accent);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    transform: translateY(-4px);
+    border-color: var(--border);
+    box-shadow: 0 12px 32px rgba(31, 36, 25, 0.10);
 }
-.recipe-card h2 { font-size: 1.1rem; margin-bottom: 0.4rem; color: var(--accent); }
+.recipe-card h2 { font-size: 1.15rem; margin-bottom: 0.4rem; color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
 .recipe-card .description {
     font-size: 0.88rem;
     color: var(--muted);
@@ -207,10 +242,9 @@ main {
     border-radius: 999px;
     font-size: 0.75rem;
     color: var(--muted);
-    font-family: sans-serif;
     text-decoration: none;
 }
-a.tag:hover { background: var(--accent); color: white; }
+a.tag:hover { background: var(--accent); color: var(--on-accent); }
 
 /* Empty state */
 .empty {
@@ -228,7 +262,6 @@ a.tag:hover { background: var(--accent); color: white; }
     margin-bottom: 1.5rem;
     color: var(--accent);
     text-decoration: none;
-    font-family: sans-serif;
     font-size: 0.9rem;
 }
 .back:hover { color: var(--accent-dk); }
@@ -281,7 +314,6 @@ a.tag:hover { background: var(--accent); color: white; }
     flex-wrap: wrap;
     gap: 0.75rem;
     margin-bottom: 1rem;
-    font-family: sans-serif;
 }
 .ingredient-controls label {
     display: flex;
@@ -328,7 +360,6 @@ a.tag:hover { background: var(--accent); color: white; }
     padding: 0.45rem 1rem;
     border: 1.5px solid var(--border);
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.88rem;
     color: var(--accent);
     text-decoration: none;
@@ -338,7 +369,7 @@ a.tag:hover { background: var(--accent); color: white; }
 .recipe-link:hover {
     background: var(--accent);
     border-color: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 .link-icon { font-size: 1rem; }
 
@@ -346,7 +377,6 @@ a.tag:hover { background: var(--accent); color: white; }
 .filters { margin-bottom: 2rem; }
 .filter-group { margin-bottom: 1rem; }
 .filter-title {
-    font-family: sans-serif;
     font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -366,20 +396,21 @@ a.tag:hover { background: var(--accent); color: white; }
     display: inline-block;
     padding: 0.2rem 0.7rem;
     background: var(--accent);
-    color: white;
+    color: var(--on-accent);
     border-radius: 999px;
     font-size: 0.8rem;
-    font-family: sans-serif;
     margin-bottom: 0.75rem;
 }
 .card-category {
     display: inline-block;
-    padding: 0.1rem 0.5rem;
-    background: var(--accent);
-    color: white;
+    padding: 0.15rem 0.6rem;
+    background: var(--accent-soft);
+    color: var(--accent-dk);
     border-radius: 999px;
     font-size: 0.7rem;
-    font-family: sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     margin-bottom: 0.4rem;
 }
 
@@ -388,7 +419,6 @@ a.tag:hover { background: var(--accent); color: white; }
     margin-bottom: 0.5rem;
 }
 .detail-tag-family-name {
-    font-family: sans-serif;
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--muted);
@@ -441,7 +471,6 @@ a.tag:hover { background: var(--accent); color: white; }
 .admin-table {
     width: 100%;
     border-collapse: collapse;
-    font-family: sans-serif;
     font-size: 0.88rem;
 }
 .admin-table th,
@@ -468,18 +497,17 @@ a.tag:hover { background: var(--accent); color: white; }
 }
 .btn-edit {
     padding: 0.35rem 0.75rem;
-    background: #5cb85c;
+    background: #6b7f4e;
     color: white;
     border: none;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     transition: background 0.15s;
     white-space: nowrap;
 }
 .btn-edit:hover {
-    background: #449d44;
+    background: #55663d;
 }
 .btn-blacklist {
     padding: 0.35rem 0.75rem;
@@ -487,7 +515,6 @@ a.tag:hover { background: var(--accent); color: white; }
     color: white;
     border: none;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     transition: background 0.15s;
@@ -502,7 +529,6 @@ a.tag:hover { background: var(--accent); color: white; }
     color: white;
     border: none;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     transition: background 0.15s;
@@ -517,7 +543,6 @@ a.tag:hover { background: var(--accent); color: white; }
     color: white;
     border: none;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     transition: background 0.15s;
@@ -561,7 +586,6 @@ a.tag:hover { background: var(--accent); color: white; }
     padding: 0.4rem 1.1rem;
 }
 .flash {
-    font-family: sans-serif;
     font-size: 0.85rem;
     border-radius: var(--radius);
     padding: 0.6rem 0.9rem;
@@ -569,7 +593,7 @@ a.tag:hover { background: var(--accent); color: white; }
 }
 .flash-ok {
     background: #e8f5e9;
-    border: 1px solid #5cb85c;
+    border: 1px solid #6b7f4e;
     color: #2e7d32;
 }
 .flash-error {
@@ -579,7 +603,6 @@ a.tag:hover { background: var(--accent); color: white; }
 }
 .config-note,
 .config-hint {
-    font-family: sans-serif;
     font-size: 0.82rem;
     color: var(--muted);
     margin-bottom: 1rem;
@@ -597,7 +620,7 @@ a.tag:hover { background: var(--accent); color: white; }
 .env-badge {
     display: inline-block;
     padding: 0.05rem 0.45rem;
-    background: #5cb85c;
+    background: #6b7f4e;
     color: white;
     border-radius: var(--radius);
     font-size: 0.72rem;
@@ -609,12 +632,11 @@ a.tag:hover { background: var(--accent); color: white; }
     border-radius: 999px;
     font-size: 0.72rem;
     font-weight: 600;
-    font-family: sans-serif;
 }
 .status-on {
     background: #e8f5e9;
     color: #2e7d32;
-    border: 1px solid #5cb85c;
+    border: 1px solid #6b7f4e;
 }
 .status-off {
     background: var(--tag-bg);
@@ -632,7 +654,6 @@ a.tag:hover { background: var(--accent); color: white; }
     color: var(--muted);
     border-radius: 999px;
     font-size: 0.7rem;
-    font-family: sans-serif;
 }
 .provenance-badge {
     background: var(--muted);
@@ -643,7 +664,6 @@ a.tag:hover { background: var(--accent); color: white; }
     color: var(--muted);
     border: 1px solid var(--border);
     border-radius: 999px;
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.15s;
@@ -656,7 +676,7 @@ a.tag:hover { background: var(--accent); color: white; }
 .filter-chip.active {
     background: var(--accent);
     border-color: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 .admin-actions {
     white-space: nowrap;
@@ -672,7 +692,6 @@ a.tag:hover { background: var(--accent); color: white; }
     background: #f0ad4e;
     color: white;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -683,7 +702,6 @@ a.tag:hover { background: var(--accent); color: white; }
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    font-family: sans-serif;
     font-size: 0.9rem;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -719,7 +737,6 @@ a.tag:hover { background: var(--accent); color: white; }
     padding: 0.45rem 0.6rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.9rem;
     background: var(--bg);
     color: var(--text);
@@ -794,7 +811,6 @@ a.tag:hover { background: var(--accent); color: white; }
     padding: 0.4rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.88rem;
     background: var(--bg);
     color: var(--text);
@@ -824,13 +840,12 @@ a.tag:hover { background: var(--accent); color: white; }
     color: var(--accent);
     border: 1px dashed var(--accent);
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
 }
 .btn-add-row:hover {
     background: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 .hidden {
     display: none;
@@ -853,7 +868,6 @@ a.tag:hover { background: var(--accent); color: white; }
     color: var(--muted);
     border: none;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     white-space: nowrap;
@@ -875,7 +889,6 @@ a.tag:hover { background: var(--accent); color: white; }
     align-items: flex-end;
     gap: 0.75rem;
     margin-bottom: 0.75rem;
-    font-family: sans-serif;
 }
 .recipes-filters {
     margin: 0;
@@ -907,24 +920,22 @@ a.tag:hover { background: var(--accent); color: white; }
     padding: 0.35rem 0.4rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     background: var(--surface);
     color: var(--text);
 }
 .btn-apply {
     padding: 0.35rem 0.7rem;
-    background: #5cb85c;
+    background: #6b7f4e;
     color: white;
     border: none;
     border-radius: var(--radius);
-    font-family: sans-serif;
     font-size: 0.8rem;
     cursor: pointer;
     white-space: nowrap;
 }
 .btn-apply:hover {
-    background: #449d44;
+    background: #55663d;
 }
 
 /* Tabulator restyle pour coller au style .admin-table */
@@ -944,7 +955,6 @@ main.admin-main {
     background: transparent !important;
     border: none;
     border-radius: 0;
-    font-family: sans-serif;
     font-size: 0.88rem;
     color: var(--text);
     overflow: visible;
@@ -978,7 +988,6 @@ main.admin-main {
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
-    font-family: sans-serif;
     font-size: 0.75rem;
     color: var(--text);
 }
@@ -995,7 +1004,7 @@ main.admin-main {
 }
 .tabulator .tabulator-row.tabulator-selected,
 .tabulator .tabulator-row.tabulator-selected .tabulator-cell {
-    background: #f5e9dc !important;
+    background: var(--accent-soft) !important;
 }
 .tabulator .tabulator-cell {
     padding: 0.6rem 0.75rem;
@@ -1035,7 +1044,6 @@ main.admin-main {
     height: 160px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    font-family: sans-serif;
     font-size: 0.8rem;
     background: var(--bg);
     color: var(--text);
@@ -1051,13 +1059,12 @@ main.admin-main {
     padding: 0.25rem 0.7rem;
     border: none;
     border-radius: 8px;
-    font-family: sans-serif;
     font-size: 0.75rem;
     cursor: pointer;
 }
 .tag-editor-ok {
     background: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 .tag-editor-ok:hover {
     background: var(--accent-dk);
@@ -1068,4 +1075,42 @@ main.admin-main {
 }
 .tag-editor-cancel:hover {
     color: var(--text);
+}
+
+/* Dark mode : ajustements des couleurs fonctionnelles */
+[data-theme="dark"] .flash-ok {
+    background: #1d2b1d;
+    border-color: #5f7a52;
+    color: #a9c79b;
+}
+[data-theme="dark"] .flash-error {
+    background: #331f1e;
+    border-color: #a0524e;
+    color: #e0a49f;
+}
+[data-theme="dark"] .status-on {
+    background: #1d2b1d;
+    color: #a9c79b;
+    border-color: #5f7a52;
+}
+[data-theme="dark"] .manual-warning {
+    background: #33291a;
+    border-color: #a3813f;
+    color: #d9bd85;
+}
+
+/* Bouton de bascule clair / sombre */
+.theme-toggle {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1.05rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    line-height: 1;
+    transition: transform 0.15s, background 0.15s;
+}
+.theme-toggle:hover {
+    transform: scale(1.15);
+    background: var(--accent-soft);
 }

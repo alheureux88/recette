@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Recettes Merizzi{% endblock %}</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>
+        (function () {
+            var saved = localStorage.getItem('theme');
+            var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.dataset.theme = theme;
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     {% block head %}{% endblock %}
     <link rel="stylesheet" href="/static/css/style.css">
@@ -12,8 +22,9 @@
 <body>
     <header>
         <div class="header-inner">
-            <a href="/" class="site-title">🍲 Recettes Merizzi</a>
+            <a href="/" class="site-title">Recettes <span>Merizzi</span></a>
             <nav class="header-nav">
+                <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Basculer clair / sombre"></button>
                 {% if auth_enabled %}
                     {% if user %}
                         <a href="/favorites" class="nav-link">Mes favoris</a>
@@ -32,5 +43,20 @@
     <main class="{% block main_class %}{% endblock %}">
         {% block content %}{% endblock %}
     </main>
+    <script>
+        (function () {
+            var toggle = document.getElementById('theme-toggle');
+            function refreshIcon() {
+                toggle.textContent = document.documentElement.dataset.theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+            }
+            refreshIcon();
+            toggle.addEventListener('click', function () {
+                var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+                document.documentElement.dataset.theme = next;
+                try { localStorage.setItem('theme', next); } catch (e) {}
+                refreshIcon();
+            });
+        })();
+    </script>
 </body>
 </html>
