@@ -10,6 +10,7 @@ Tag system:
 
 import json
 import os
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -733,6 +734,77 @@ def get_recipe(recipe_id: int) -> dict[str, object] | None:
         return result
 
 
+_FTS_STOPWORDS = frozenset(
+    [
+        "le",
+        "la",
+        "les",
+        "de",
+        "des",
+        "du",
+        "un",
+        "une",
+        "et",
+        "ou",
+        "au",
+        "aux",
+        "en",
+        "dans",
+        "sur",
+        "avec",
+        "sans",
+        "pour",
+        "par",
+        "est",
+        "ce",
+        "sa",
+        "son",
+        "ma",
+        "ta",
+        "l",
+        "d",
+        "n",
+        "s",
+        "c",
+        "j",
+        "m",
+        "t",
+        "qu",
+        "qui",
+        "que",
+        "quoi",
+        "dont",
+        "ne",
+        "pas",
+        "plus",
+        "moins",
+        "tres",
+        "trop",
+        "aussi",
+        "comme",
+        "si",
+        "oui",
+        "non",
+    ]
+)
+
+
+def _fts_query(query: str) -> str:
+    """Convertit une saisie utilisateur en requete FTS5 souple.
+
+    Chaque mot significatif (>= 2 caracteres, hors stop-words francais) devient
+    un terme de prefixe ("tarte aux po" -> '"tarte"* "po"*'), combine en AND
+    implicite : correspondances partielles, pluriels et accents de syntaxe
+    (apostrophes, tirets) sont geres.
+    """
+    words = [
+        w
+        for w in re.findall(r"\w+", query, re.UNICODE)
+        if len(w) >= 2 and w.lower() not in _FTS_STOPWORDS
+    ]
+    return " ".join(f'"{word}"*' for word in words)
+
+
 def search_recipes(
     query: str = "",
     tag_ids: list[int] | None = None,
@@ -757,9 +829,16 @@ def search_recipes(
             conditions.append("r.connection_id IS NOT NULL")
         params: list[object] = []
 
-        if query:
-            conditions.append("r.id IN (SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH ?)")
-            params.append(query)
+        if query.strip():
+            fts_q = _fts_query(query)
+            if fts_q:
+                conditions.append(
+                    "r.id IN (SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH ?)"
+                )
+                params.append(fts_q)
+            else:
+                # Saisie non vide mais sans mot exploitable (ponctuation seule)
+                conditions.append("0")
 
         if tag_ids:
             # Group tags by family for OR-within-family, AND-between-families logic

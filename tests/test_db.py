@@ -112,6 +112,31 @@ def test_search_by_keyword():
     assert results[0]["title"] == "Tarte Tatin"
 
 
+def test_search_prefix_matches_partial_word():
+    _insert_sample()
+    results = search_recipes(query="tart")
+    assert len(results) == 1
+    assert results[0]["title"] == "Tarte Tatin"
+
+
+def test_search_prefix_matches_earlier_chars():
+    _insert_sample()
+    results = search_recipes(query="tar")
+    assert len(results) == 1
+
+
+def test_search_multi_word_implicit_and():
+    _insert_sample()
+    assert search_recipes(query="tarte apple")
+    assert not search_recipes(query="tarte chicken")
+
+
+def test_search_punctuation_is_safe():
+    _insert_sample()
+    assert search_recipes(query="l'apple tart!")
+    assert not search_recipes(query="!!!")
+
+
 def test_search_by_tag_id():
     _insert_sample()
     tags_grouped = get_all_tags_grouped()
