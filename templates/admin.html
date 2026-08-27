@@ -6,25 +6,9 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 {% endblock %}
 {% block content %}
-<h1 class="page-title">Administration</h1>
-<div class="admin-filters admin-tabs">
-    <button class="filter-chip{% if tab != 'config' %} active{% endif %}"
-            hx-get="/admin"
-            hx-select="#admin-content"
-            hx-target="#admin-content"
-            hx-push-url="true">
-        Recettes
-    </button>
-    <button class="filter-chip{% if tab == 'config' %} active{% endif %}"
-            hx-get="/admin?tab=config"
-            hx-select="#admin-content"
-            hx-target="#admin-content"
-            hx-push-url="true">
-        Configuration
-    </button>
-</div>
+<h1 class="page-title">{% if connections is defined %}Administration système{% else %}Administration des recettes{% endif %}</h1>
 <div id="admin-content">
-    {% if tab == 'config' %}
+    {% if connections is defined %}
     {% include "partials/admin_config.html" %}
     {% else %}
     {% include "partials/admin_table.html" %}

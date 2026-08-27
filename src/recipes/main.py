@@ -497,32 +497,27 @@ async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
     )
 
 
-ADMIN_TABS = ("recipes", "config")
-
-
-def _normalize_admin_tab(raw: str) -> str:
-    return raw if raw in ADMIN_TABS else "recipes"
-
-
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(
     request: Request,
-    tab: str = Query(default="recipes"),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    tab = _normalize_admin_tab(tab)
-
-    if tab == "config":
-        # Navigation pleine page : le contexte complet de l'onglet Configuration
-        # (connexions, statuts, etc.) doit etre fourni, sinon le tableau est vide.
-        ctx = _admin_config_context(request)
-        ctx["tab"] = tab
-        return templates.TemplateResponse(request=request, name="admin.html", context=ctx)
-
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
         context=_admin_table_context(request),
+    )
+
+
+@app.get("/admin/config", response_class=HTMLResponse)
+async def admin_config_page(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context=_admin_config_context(request),
     )
 
 
@@ -538,7 +533,6 @@ def _admin_table_context(request: Request) -> dict[str, object]:
         all_categories=get_all_categories(only_used=False),
         all_tags=get_existing_tags_for_prompt(),
         all_tag_families=get_tag_families(),
-        tab="recipes",
     )
 
 
@@ -673,7 +667,6 @@ def _admin_config_context(
         llm_model=get_setting("llm_model", ""),
         llm_model_default=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
         message=message,
-        tab="config",
     )
 
 

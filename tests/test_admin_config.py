@@ -166,9 +166,10 @@ class TestProvenanceRoutes:
         admin.post("/admin/config/dropbox/default/toggle-visible")
         assert is_default_account_visible() is False
 
-    def test_config_shows_toggles(self, admin):
+    def test_config_shows_toggles(self, admin, monkeypatch):
+        monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "rt-env")
         add_dropbox_connection(**CONN_FORM)
-        resp = admin.get("/admin?tab=config")
+        resp = admin.get("/admin/config")
         assert "Defaut" in resp.text or "Défaut" in resp.text
         assert "Arreter" in resp.text
         assert "Masquer les recettes" in resp.text
@@ -281,26 +282,26 @@ class TestAdminProvenanceColumns:
 
 
 class TestConfigRoutes:
-    def test_config_tab_rendered(self, admin):
-        resp = admin.get("/admin?tab=config")
+    def test_config_page_rendered(self, admin):
+        resp = admin.get("/admin/config")
         assert resp.status_code == 200
         assert "Connexions Dropbox" in resp.text
 
     def test_full_page_navigation_lists_connections(self, admin):
         """Regression : la navigation pleine page doit afficher les connexions."""
         add_dropbox_connection(**CONN_FORM)
-        resp = admin.get("/admin?tab=config")
+        resp = admin.get("/admin/config")
         assert "Famille" in resp.text
         assert "/Recettes" in resp.text
 
-    def test_recipes_tab_is_default(self, admin):
+    def test_recipes_page_default(self, admin):
         resp = admin.get("/admin")
         assert resp.status_code == 200
         assert "Connexions Dropbox" not in resp.text
 
-    def test_invalid_tab_falls_back(self, admin):
-        resp = admin.get("/admin?tab=bogus")
-        assert resp.status_code == 200
+    def test_unknown_admin_path_returns_404(self, admin):
+        resp = admin.get("/admin/bogus")
+        assert resp.status_code == 404
 
     def test_add_connection(self, admin):
         resp = admin.post("/admin/config/dropbox", data=CONN_FORM)
@@ -457,7 +458,7 @@ class TestModelOverride:
 
     def test_config_shows_model_form(self, admin, monkeypatch):
         monkeypatch.setenv("LLM_MODEL", "env-default-model")
-        resp = admin.get("/admin?tab=config")
+        resp = admin.get("/admin/config")
         assert 'name="llm_model"' in resp.text
         assert "env-default-model" in resp.text
 

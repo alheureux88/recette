@@ -37,11 +37,19 @@
                 {% if auth_enabled %}
                     {% if user %}
                         <a href="/favorites" class="nav-link">Mes favoris</a>
-                        {% if is_admin %}
-                        <a href="/admin" class="nav-link">Administration</a>
-                        {% endif %}
-                        <span class="nav-user">{{ user.name or user.sub }}</span>
-                        <a href="{{ logout_url }}" class="nav-link nav-logout">Déconnexion</a>
+                        <div class="nav-user-menu">
+                            <button type="button" class="nav-user-toggle" aria-haspopup="menu" aria-expanded="false">
+                                <span class="nav-user">{{ user.name or user.sub }}</span>
+                                <span class="nav-user-caret" aria-hidden="true">▾</span>
+                            </button>
+                            <div class="nav-user-dropdown" role="menu">
+                                {% if is_admin %}
+                                <a href="/admin" class="nav-dropdown-item" role="menuitem">Administration Recettes</a>
+                                <a href="/admin/config" class="nav-dropdown-item" role="menuitem">Administration Système</a>
+                                {% endif %}
+                                <a href="{{ logout_url }}" class="nav-dropdown-item" role="menuitem">Déconnexion</a>
+                            </div>
+                        </div>
                     {% else %}
                         <a href="{{ login_url }}" class="nav-link nav-login">Connexion</a>
                     {% endif %}
@@ -72,6 +80,27 @@
                 document.documentElement.dataset.theme = next;
                 try { localStorage.setItem('theme', next); } catch (e) {}
                 refreshIcon();
+            });
+        })();
+        (function () {
+            var menus = document.querySelectorAll('.nav-user-menu');
+            menus.forEach(function (menu) {
+                var trigger = menu.querySelector('.nav-user-toggle');
+                if (!trigger) return;
+                trigger.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var open = menu.classList.toggle('open');
+                    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+            });
+            document.addEventListener('click', function (e) {
+                menus.forEach(function (menu) {
+                    if (!menu.contains(e.target)) {
+                        menu.classList.remove('open');
+                        var t = menu.querySelector('.nav-user-toggle');
+                        if (t) t.setAttribute('aria-expanded', 'false');
+                    }
+                });
             });
         })();
     </script>
