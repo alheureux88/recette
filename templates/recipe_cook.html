@@ -19,6 +19,7 @@
     </header>
 
     <div class="cook-progress" id="cook-progress" aria-live="polite"></div>
+    <div class="cook-wake-status" id="cook-wake-status" role="status" aria-live="polite" hidden></div>
 
     {% if display_ingredients %}
     <section class="cook-section">
@@ -118,6 +119,57 @@
             try { localStorage.removeItem(storageKey); } catch (e) {}
             updateProgress();
         }
+
+        var wakeStatus = document.getElementById('cook-wake-status');
+        var unsupportedMsg = {{ _('cook.wake_lock_unsupported')|tojson }};
+        var releasedMsg = {{ _('cook.wake_lock_released')|tojson }};
+        var wakeSentinel = null;
+
+        function showWakeStatus(msg) {
+            if (!wakeStatus) return;
+            wakeStatus.textContent = msg;
+            wakeStatus.hidden = false;
+        }
+        function hideWakeStatus() {
+            if (!wakeStatus) return;
+            wakeStatus.hidden = true;
+            wakeStatus.textContent = '';
+        }
+
+        async function requestWakeLock() {
+            if (!('wakeLock' in navigator)) {
+                showWakeStatus(unsupportedMsg);
+                return;
+            }
+            try {
+                wakeSentinel = await navigator.wakeLock.request('screen');
+                wakeSentinel.addEventListener('release', function () {
+                    if (document.visibilityState !== 'visible') {
+                        showWakeStatus(releasedMsg);
+                    }
+                });
+                hideWakeStatus();
+            } catch (e) {
+                showWakeStatus(unsupportedMsg);
+            }
+        }
+        async function releaseWakeLock() {
+            if (wakeSentinel) {
+                try { await wakeSentinel.release(); } catch (e) {}
+                wakeSentinel = null;
+            }
+        }
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') {
+                requestWakeLock();
+            } else {
+                releaseWakeLock();
+            }
+        });
+        window.addEventListener('pagehide', releaseWakeLock);
+        requestWakeLock();
+
         checks.forEach(function (cb) {
             cb.addEventListener('change', function () {
                 saveState();

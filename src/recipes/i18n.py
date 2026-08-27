@@ -112,6 +112,14 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "cook.progress_step_one": {"fr": "étape", "en": "step"},
     "cook.progress_step_other": {"fr": "étapes", "en": "steps"},
+    "cook.wake_lock_unsupported": {
+        "fr": "L'écran ne peut pas rester allumé automatiquement sur cet appareil.",
+        "en": "The screen cannot be kept awake automatically on this device.",
+    },
+    "cook.wake_lock_released": {
+        "fr": "L'écran se verrouillera normalement hors de cette page.",
+        "en": "The screen will lock normally outside this page.",
+    },
     # --- Favoris ---
     "favorites.title": {"fr": "Mes favoris", "en": "My favorites"},
     "favorites.add": {"fr": "Ajouter aux favoris", "en": "Add to favorites"},
