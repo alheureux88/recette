@@ -73,6 +73,16 @@ from recipes.db import (
     update_recipe_manual,
     update_recipe_tags,
 )
+from recipes.i18n import (
+    COOKIE_MAX_AGE,
+    DEFAULT_LANGUAGE,
+    LANGUAGE_COOKIE,
+    SUPPORTED_LANGUAGES,
+    available_languages,
+    gettext,
+    ngettext,
+    resolve_language,
+)
 from recipes.models import (
     BulkCategoryUpdate,
     BulkTagsUpdate,
@@ -148,7 +158,62 @@ async def pwa_headers(request: Request, call_next: Any) -> Response:
     return response
 
 
+def _resolve_request_lang(request: Request) -> str:
+    return resolve_language(
+        request.cookies.get(LANGUAGE_COOKIE),
+        request.headers.get("accept-language"),
+    )
+
+
+def _translate(key: str, **values: object) -> str:
+    """Helper exposé dans les templates comme `{{ _('key', **values) }}`.
+
+    La langue courante est résolue depuis le contexte de la requête grâce à
+    l'attribut `_lang_state` posé par le middleware `LocaleMiddleware`.
+    """
+    lang = getattr(_translate, "_lang_state", DEFAULT_LANGUAGE)
+    return gettext(key, lang, **values)
+
+
+def _ntranslate(singular: str, plural: str, n: int, **values: object) -> str:
+    lang = getattr(_translate, "_lang_state", DEFAULT_LANGUAGE)
+    return ngettext(singular, plural, n, lang, **values)
+
+
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["_"] = _translate
+templates.env.globals["ngettext"] = _ntranslate
+templates.env.globals["supported_languages"] = SUPPORTED_LANGUAGES
+templates.env.globals["default_language"] = DEFAULT_LANGUAGE
+
+
+@app.middleware("http")
+async def locale_middleware(request: Request, call_next: Any) -> Response:
+    """Résout la langue et la rend disponible aux helpers de traduction Jinja."""
+    lang = _resolve_request_lang(request)
+    _translate._lang_state = lang  # type: ignore[attr-defined]
+    response: Response = await call_next(request)
+    return response
+
+
+@app.post("/lang/{code}")
+@app.get("/lang/{code}")
+async def set_language(code: str, request: Request) -> RedirectResponse:
+    """Set the language cookie and redirect back to the referring page."""
+    candidate = code.strip().lower()
+    if candidate not in SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=404, detail="Unsupported language")
+    referer = request.headers.get("referer")
+    target = referer if referer else "/"
+    response = RedirectResponse(url=target, status_code=302)
+    response.set_cookie(
+        key=LANGUAGE_COOKIE,
+        value=candidate,
+        max_age=COOKIE_MAX_AGE,
+        samesite="lax",
+        httponly=True,
+    )
+    return response
 
 
 @app.exception_handler(401)
@@ -165,6 +230,8 @@ def _base_context(request: Request, **extra: object) -> dict[str, object]:
         "login_url": login_url(request),
         "logout_url": logout_url(request),
         "is_admin": is_admin(request),
+        "lang": _resolve_request_lang(request),
+        "available_languages": available_languages(),
     }
     ctx.update(extra)
     return ctx
@@ -336,7 +403,8 @@ async def recipe_detail(
 ) -> HTMLResponse:
     recipe = get_recipe(recipe_id)
     if not recipe:
-        return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
+        not_found_msg = gettext("recipe.not_found", _resolve_request_lang(request))
+        return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id))
     return templates.TemplateResponse(
@@ -365,7 +433,8 @@ async def recipe_cook(
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
     recipe = get_recipe(recipe_id)
     if not recipe:
-        return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
+        not_found_msg = gettext("recipe.not_found", _resolve_request_lang(request))
+        return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     ingredient_ctx = _ingredient_context(
         recipe,
         _parse_servings_param(servings),
@@ -397,7 +466,8 @@ async def recipe_ingredients(
     """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
     recipe = get_recipe(recipe_id)
     if not recipe:
-        return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
+        not_found_msg = gettext("recipe.not_found", _resolve_request_lang(request))
+        return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     return templates.TemplateResponse(
         request=request,
         name="partials/ingredients.html",

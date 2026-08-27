@@ -3,18 +3,26 @@
 {% block body_class %}cook-mode{% endblock %}
 {% block content %}
 
-<div class="cook-page" data-recipe-id="{{ recipe.id }}" data-ingredient-count="{{ display_ingredients|length }}" data-step-count="{{ steps|length }}">
+<div class="cook-page"
+     data-recipe-id="{{ recipe.id }}"
+     data-ingredient-count="{{ display_ingredients|length }}"
+     data-step-count="{{ steps|length }}"
+     data-progress-template="{{ done_ings }}/{{ total_ings }} {{ ing_label }} · {{ done_steps }}/{{ total_steps }} {{ step_label }}"
+     data-ing-singular="{{ _('cook.progress_ingredient_one') }}"
+     data-ing-plural="{{ _('cook.progress_ingredient_other') }}"
+     data-step-singular="{{ _('cook.progress_step_one') }}"
+     data-step-plural="{{ _('cook.progress_step_other') }}">
     <header class="cook-bar">
-        <a href="/recipe/{{ recipe.id }}" class="cook-exit" aria-label="Retour à la recette"><span aria-hidden="true">←</span> Retour</a>
+        <a href="/recipe/{{ recipe.id }}" class="cook-exit" aria-label="{{ _('cook.back_aria') }}"><span aria-hidden="true">←</span> {{ _('cook.back') }}</a>
         <h1 class="cook-title">{{ recipe.title }}</h1>
-        <button type="button" class="cook-reset" id="cook-reset">Réinitialiser</button>
+        <button type="button" class="cook-reset" id="cook-reset">{{ _('cook.reset') }}</button>
     </header>
 
     <div class="cook-progress" id="cook-progress" aria-live="polite"></div>
 
     {% if display_ingredients %}
     <section class="cook-section">
-        <h2 class="cook-section-title">Ingrédients</h2>
+        <h2 class="cook-section-title">{{ _('cook.ingredients_title') }}</h2>
         <ul class="cook-list">
             {% for ing in display_ingredients %}
             <li>
@@ -31,7 +39,7 @@
 
     {% if steps %}
     <section class="cook-section">
-        <h2 class="cook-section-title">Étapes</h2>
+        <h2 class="cook-section-title">{{ _('cook.steps_title') }}</h2>
         <ol class="cook-list cook-steps">
             {% for step in steps %}
             <li>
@@ -84,8 +92,14 @@
                 return;
             }
             var parts = [];
-            if (totalIngs) parts.push(doneIngs + '/' + totalIngs + ' ingrédient' + (totalIngs > 1 ? 's' : ''));
-            if (totalSteps) parts.push(doneSteps + '/' + totalSteps + ' étape' + (totalSteps > 1 ? 's' : ''));
+            if (totalIngs) {
+                var ingLabel = totalIngs > 1 ? page.dataset.ingPlural : page.dataset.ingSingular;
+                parts.push(doneIngs + '/' + totalIngs + ' ' + ingLabel);
+            }
+            if (totalSteps) {
+                var stepLabel = totalSteps > 1 ? page.dataset.stepPlural : page.dataset.stepSingular;
+                parts.push(doneSteps + '/' + totalSteps + ' ' + stepLabel);
+            }
             progress.textContent = parts.join(' · ');
         }
         function applyState(state) {

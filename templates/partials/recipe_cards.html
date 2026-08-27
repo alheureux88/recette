@@ -17,7 +17,7 @@
             class="fav-btn {% if recipe.id in favorite_ids %}is-favorite{% endif %}"
             hx-post="/favorites/{{ recipe.id }}"
             hx-swap="outerHTML"
-            title="{% if recipe.id in favorite_ids %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}"
+            title="{{ _('favorites.remove') if recipe.id in favorite_ids else _('favorites.add') }}"
         >
             <span class="fav-icon">{% if recipe.id in favorite_ids %}★{% else %}☆{% endif %}</span>
         </button>
@@ -51,5 +51,5 @@
     </div>
     {% endfor %}
 {% else %}
-    <p class="empty">Aucune recette trouvée. Essayez une autre recherche ou étiquette.</p>
+    <p class="empty">{{ _('home.no_results') }}</p>
 {% endif %}

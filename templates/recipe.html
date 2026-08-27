@@ -4,19 +4,19 @@
 
 <div class="recipe-detail">
     <div class="print-toolbar">
-        <a href="/" class="back">← Toutes les recettes</a>
+        <a href="/" class="back">{{ _('recipe.back_to_list') }}</a>
         <div class="print-actions">
-            <a href="/recipe/{{ recipe.id }}/cook" class="btn-cook" id="btn-cook">Mode cuisine</a>
+            <a href="/recipe/{{ recipe.id }}/cook" class="btn-cook" id="btn-cook">{{ _('recipe.cook_mode') }}</a>
             <details class="print-options" id="print-options">
-                <summary>Options d'impression</summary>
+                <summary>{{ _('recipe.print_options') }}</summary>
                 <div class="print-options-grid">
-                    <label><input type="checkbox" id="print-images"> Images</label>
-                    <label><input type="checkbox" id="print-tags"> Étiquettes</label>
-                    <label><input type="checkbox" id="print-description"> Description</label>
-                    <label><input type="checkbox" id="print-links"> Liens externes</label>
+                    <label><input type="checkbox" id="print-images"> {{ _('recipe.print_images') }}</label>
+                    <label><input type="checkbox" id="print-tags"> {{ _('recipe.print_tags') }}</label>
+                    <label><input type="checkbox" id="print-description"> {{ _('recipe.print_description') }}</label>
+                    <label><input type="checkbox" id="print-links"> {{ _('recipe.print_links') }}</label>
                 </div>
             </details>
-            <button type="button" class="btn-print" onclick="recettePrint()">Imprimer</button>
+            <button type="button" class="btn-print" onclick="recettePrint()">{{ _('recipe.print') }}</button>
         </div>
     </div>
 
@@ -65,12 +65,12 @@
     <div class="recipe-links">
         {% if recipe.source_url %}
         <a href="{{ recipe.source_url }}" target="_blank" rel="noopener" class="recipe-link">
-            <span class="link-icon">🌐</span> Voir le site original
+            <span class="link-icon">🌐</span> {{ _('recipe.link_original_site') }}
         </a>
         {% endif %}
         {% if recipe.dropbox_url %}
         <a href="{{ recipe.dropbox_url }}" target="_blank" rel="noopener" class="recipe-link">
-            <span class="link-icon">📄</span> Voir le fichier original
+            <span class="link-icon">📄</span> {{ _('recipe.link_original_file') }}
         </a>
         {% endif %}
     </div>
@@ -80,7 +80,7 @@
         {% include "partials/ingredients.html" %}
 
         <section class="instructions">
-            <h2>Instructions</h2>
+            <h2>{{ _('recipe.instructions') }}</h2>
             <ol class="instruction-list">
                 {% for step in recipe.instructions.split('\n') %}
                     {% if step.strip() %}

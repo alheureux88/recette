@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -33,10 +33,19 @@
                 <span>Recettes <em>Merizzi</em></span>
             </a>
             <nav class="header-nav">
-                <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Basculer clair / sombre"></button>
+                <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ _('nav.toggle_theme') }}"></button>
+                {% for code in available_languages %}
+                    {% if code != lang %}
+                    <a href="/lang/{{ code }}"
+                       class="lang-switch"
+                       lang="{{ code }}"
+                       rel="nofollow"
+                       aria-label="{{ _('lang.switch_to', code=code) }}">{{ code|upper }}</a>
+                    {% endif %}
+                {% endfor %}
                 {% if auth_enabled %}
                     {% if user %}
-                        <a href="/favorites" class="nav-link">Mes favoris</a>
+                        <a href="/favorites" class="nav-link">{{ _('nav.favorites') }}</a>
                         <div class="nav-user-menu">
                             <button type="button" class="nav-user-toggle" aria-haspopup="menu" aria-expanded="false">
                                 <span class="nav-user">{{ user.name or user.sub }}</span>
@@ -44,14 +53,14 @@
                             </button>
                             <div class="nav-user-dropdown" role="menu">
                                 {% if is_admin %}
-                                <a href="/admin" class="nav-dropdown-item" role="menuitem">Administration Recettes</a>
-                                <a href="/admin/config" class="nav-dropdown-item" role="menuitem">Administration Système</a>
+                                <a href="/admin" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_recipes') }}</a>
+                                <a href="/admin/config" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_system') }}</a>
                                 {% endif %}
-                                <a href="{{ logout_url }}" class="nav-dropdown-item" role="menuitem">Déconnexion</a>
+                                <a href="{{ logout_url }}" class="nav-dropdown-item" role="menuitem">{{ _('nav.logout') }}</a>
                             </div>
                         </div>
                     {% else %}
-                        <a href="{{ login_url }}" class="nav-link nav-login">Connexion</a>
+                        <a href="{{ login_url }}" class="nav-link nav-login">{{ _('nav.login') }}</a>
                     {% endif %}
                 {% endif %}
             </nav>

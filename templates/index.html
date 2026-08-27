@@ -4,11 +4,7 @@
 <section class="hero">
     <h1 class="hero-title">Recettes <span>Merizzi</span></h1>
     <p class="hero-subtitle">
-        {% if recipes|length == 1 %}
-            1 recette à découvrir
-        {% else %}
-            {{ recipes|length }} recettes à découvrir
-        {% endif %}
+        {{ ngettext('home.subtitle_one', 'home.subtitle_other', recipes|length) }}
     </p>
 </section>
 
@@ -16,7 +12,7 @@
     <input
         type="search"
         name="q"
-        placeholder="Rechercher des recettes..."
+        placeholder="{{ _('home.search_placeholder') }}"
         value="{{ query }}"
         hx-get="/search"
         hx-trigger="input changed delay:300ms, search"
@@ -28,19 +24,19 @@
 
 <button type="button" class="filter-toggle" id="filter-toggle" aria-expanded="false" aria-controls="filter-panel">
     <span class="filter-toggle-icon" aria-hidden="true">⚙</span>
-    <span>Filtres</span>
+    <span>{{ _('home.filters_button') }}</span>
     <span class="filter-count" id="filter-count" hidden>0</span>
 </button>
 
 <div class="index-layout">
-    <aside class="filter-panel" id="filter-panel" aria-label="Filtres">
+    <aside class="filter-panel" id="filter-panel" aria-label="{{ _('home.filters_title') }}">
         <div class="filter-panel-header">
-            <h2 class="filter-panel-title">Filtres</h2>
-            <button type="button" class="filter-close" id="filter-close" aria-label="Fermer les filtres">✕</button>
+            <h2 class="filter-panel-title">{{ _('home.filters_title') }}</h2>
+            <button type="button" class="filter-close" id="filter-close" aria-label="{{ _('home.filters_close') }}">✕</button>
         </div>
 
         <div class="filter-group">
-            <h3 class="filter-title">Catégorie</h3>
+            <h3 class="filter-title">{{ _('home.filter_category') }}</h3>
             <div class="category-filters">
                 <label class="tag-pill {% if not active_category_id %}active{% endif %}">
                     <input
@@ -53,7 +49,7 @@
                         hx-target="#recipe-grid"
                         hx-include="[name='q'], [name='tags'], [name='account']"
                     >
-                    Toutes
+                    {{ _('home.filter_all') }}
                 </label>
                 {% for cat in all_categories %}
                 <label class="tag-pill {% if active_category_id == cat.id %}active{% endif %}">
@@ -75,7 +71,7 @@
 
         {% if show_provenance and provenances %}
         <div class="filter-group">
-            <h3 class="filter-title">Provenance</h3>
+            <h3 class="filter-title">{{ _('home.filter_provenance') }}</h3>
             <div class="category-filters">
                 <label class="tag-pill active">
                     <input
@@ -88,7 +84,7 @@
                         hx-target="#recipe-grid"
                         hx-include="[name='q'], [name='tags'], [name='category']"
                     >
-                    Toutes
+                    {{ _('home.filter_all') }}
                 </label>
                 {% for prov in provenances %}
                 <label class="tag-pill">

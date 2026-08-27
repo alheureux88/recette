@@ -1,4 +1,4 @@
-<h2 class="admin-section-title">Connexions Dropbox</h2>
+<h2 class="admin-section-title">{{ _('config.connections_title') }}</h2>
 
 {% if message %}
 <div class="flash flash-{{ message.0 }}">{{ message.1 }}</div>
@@ -6,38 +6,36 @@
 
 <p class="config-note">
     {% if env_dropbox_enabled %}
-    Le compte configure via les variables d'environnement (.env) reste actif en
-    complement des connexions ajoutees ci-dessous.
-    Compte par defaut (.env) : <span class="env-badge">actif</span>
+    {{ _('config.env_note_active') }}
+    {{ _('config.env_active_badge') }}
     {% else %}
-    Aucun compte par defaut n'est configure dans le .env. Ajoutez une connexion
-    Dropbox ci-dessous pour demarrer la synchronisation.
+    {{ _('config.env_note_none') }}
     {% endif %}
 </p>
 
 <table class="admin-table">
     <thead>
         <tr>
-            <th>Nom</th>
-            <th>Synchronisation</th>
-            <th>Recettes</th>
-            <th>Dossier</th>
-            <th>Filtre</th>
+            <th>{{ _('config.col_name') }}</th>
+            <th>{{ _('config.col_sync') }}</th>
+            <th>{{ _('config.col_recipes') }}</th>
+            <th>{{ _('config.col_folder') }}</th>
+            <th>{{ _('config.col_filter') }}</th>
             <th></th>
         </tr>
     </thead>
     <tbody>
         {% if env_dropbox_enabled %}
         <tr>
-            <td>Défaut (.env)</td>
+            <td>{{ _('config.default_label') }}</td>
             <td>
                 <span class="status-badge {{ 'status-on' if default_active else 'status-off' }}">
-                    {% if default_active %}Active{% else %}En pause{% endif %}
+                    {% if default_active %}{{ _('config.status_active') }}{% else %}{{ _('config.status_paused') }}{% endif %}
                 </span>
             </td>
             <td>
                 <span class="status-badge {{ 'status-on' if default_visible else 'status-off' }}">
-                    {% if default_visible %}Visibles{% else %}Masquees{% endif %}
+                    {% if default_visible %}{{ _('config.status_visible') }}{% else %}{{ _('config.status_hidden') }}{% endif %}
                 </span>
             </td>
             <td class="path-cell">{{ dropbox_folder or "/" }}</td>
@@ -46,12 +44,12 @@
                 <button class="{{ 'btn-blacklist' if default_active else 'btn-retry' }}"
                         hx-post="/admin/config/dropbox/default/toggle-active"
                         hx-target="#admin-content">
-                    {% if default_active %}Arreter{% else %}Demarrer{% endif %}
+                    {% if default_active %}{{ _('config.action_stop') }}{% else %}{{ _('config.action_start') }}{% endif %}
                 </button>
                 <button class="btn-cancel"
                         hx-post="/admin/config/dropbox/default/toggle-visible"
                         hx-target="#admin-content">
-                    {% if default_visible %}Masquer les recettes{% else %}Afficher les recettes{% endif %}
+                    {% if default_visible %}{{ _('config.action_hide') }}{% else %}{{ _('config.action_show') }}{% endif %}
                 </button>
             </td>
         </tr>
@@ -61,12 +59,12 @@
             <td>{{ conn.name }}</td>
             <td>
                 <span class="status-badge {{ 'status-on' if conn.active else 'status-off' }}">
-                    {% if conn.active %}Active{% else %}En pause{% endif %}
+                    {% if conn.active %}{{ _('config.status_active') }}{% else %}{{ _('config.status_paused') }}{% endif %}
                 </span>
             </td>
             <td>
                 <span class="status-badge {{ 'status-on' if conn.visible else 'status-off' }}">
-                    {% if conn.visible %}Visibles{% else %}Masquees{% endif %}
+                    {% if conn.visible %}{{ _('config.status_visible') }}{% else %}{{ _('config.status_hidden') }}{% endif %}
                 </span>
             </td>
             <td class="path-cell">{{ conn.folder or "/" }}</td>
@@ -75,23 +73,23 @@
                 <button class="{{ 'btn-blacklist' if conn.active else 'btn-retry' }}"
                         hx-post="/admin/config/dropbox/{{ conn.id }}/toggle-active"
                         hx-target="#admin-content">
-                    {% if conn.active %}Arreter{% else %}Demarrer{% endif %}
+                    {% if conn.active %}{{ _('config.action_stop') }}{% else %}{{ _('config.action_start') }}{% endif %}
                 </button>
                 <button class="btn-cancel"
                         hx-post="/admin/config/dropbox/{{ conn.id }}/toggle-visible"
                         hx-target="#admin-content">
-                    {% if conn.visible %}Masquer les recettes{% else %}Afficher les recettes{% endif %}
+                    {% if conn.visible %}{{ _('config.action_hide') }}{% else %}{{ _('config.action_show') }}{% endif %}
                 </button>
                 <button class="btn-retry"
                         hx-post="/admin/config/dropbox/{{ conn.id }}/test"
                         hx-target="#admin-content">
-                    Tester
+                    {{ _('config.action_test') }}
                 </button>
                 <button class="btn-blacklist"
                         hx-post="/admin/config/dropbox/{{ conn.id }}/delete"
                         hx-target="#admin-content"
-                        hx-confirm="Supprimer cette connexion Dropbox ? Toutes ses recettes importees seront egalement supprimees.">
-                    Supprimer
+                        hx-confirm="{{ _('config.action_delete') }} ?">
+                    {{ _('config.action_delete') }}
                 </button>
             </td>
         </tr>
@@ -99,20 +97,17 @@
     </tbody>
 </table>
 <p class="config-hint">
-    « Arreter » suspend la synchronisation du compte au prochain scan ; les
-    recettes restent accessibles. Masquer les recettes les retire de la page
-    principale sans les supprimer.
+    {{ _('config.hint_toggle') }}
 </p>
 
-<h2 class="admin-section-title">Ajouter une connexion</h2>
+<h2 class="admin-section-title">{{ _('config.add_title') }}</h2>
 
 <div class="config-actions">
     <a href="/admin/config/dropbox/connect" class="btn-restore">
-        Connecter un compte Dropbox
+        {{ _('config.connect_dropbox') }}
     </a>
     <span class="config-hint">
-        Vous serez redirige vers Dropbox pour autoriser l'application. Le refresh
-        token sera recupere automatiquement.
+        {{ _('config.connect_hint') }}
     </span>
 </div>
 
@@ -121,68 +116,65 @@
       hx-target="#admin-content">
     <div class="form-row">
         <div class="field field-title">
-            <span>Nom de la connexion</span>
+            <span>{{ _('config.field_name') }}</span>
             <input type="text" name="name" required
-                   placeholder="{% if oauth_account_label %}{{ oauth_account_label }}{% else %}Ex : Compte famille{% endif %}"
+                   placeholder="{% if oauth_account_label %}{{ oauth_account_label }}{% else %}{{ _('config.name_placeholder') }}{% endif %}"
                    {% if oauth_account_label %}value="{{ oauth_account_label.split(' — ')[0] }}"{% endif %}>
         </div>
     </div>
     <div class="form-row">
         <div class="field field-title">
-            <span>Refresh token</span>
+            <span>{{ _('config.field_refresh_token') }}</span>
             {% if oauth_refresh_token %}
             <input type="hidden" name="refresh_token" value="{{ oauth_refresh_token }}">
             <input type="text" value="{{ oauth_refresh_token }}" disabled>
             {% else %}
             <input type="text" name="refresh_token"
-                   placeholder="Collez un refresh token ou utilisez le bouton ci-dessus">
+                   placeholder="{{ _('config.refresh_placeholder') }}">
             {% endif %}
         </div>
     </div>
     <div class="form-row">
         <div class="field">
-            <span>Dossier a scanner</span>
-            <input type="text" name="folder" placeholder="/Recettes (vide = racine)">
+            <span>{{ _('config.field_folder') }}</span>
+            <input type="text" name="folder" placeholder="{{ _('config.folder_placeholder') }}">
         </div>
         <div class="field">
-            <span>Filtre de fichiers</span>
-            <input type="text" name="file_filter" placeholder="Ex : BOEUF* ou *.odt">
+            <span>{{ _('config.field_file_filter') }}</span>
+            <input type="text" name="file_filter" placeholder="{{ _('config.file_filter_placeholder') }}">
         </div>
     </div>
     <p class="config-hint">
-        L'application Dropbox utilisee est celle configuree dans le .env
-        (DROPBOX_APP_KEY / DROPBOX_APP_SECRET), partagee par toutes les connexions.
+        {{ _('config.dropbox_app_hint') }}
     </p>
     <div class="form-actions">
-        <button type="submit" class="btn-edit">Ajouter la connexion</button>
+        <button type="submit" class="btn-edit">{{ _('config.action_add') }}</button>
     </div>
 </form>
 
-<h2 class="admin-section-title">Modèle d'analyse (LLM)</h2>
+<h2 class="admin-section-title">{{ _('config.llm_title') }}</h2>
 <form class="admin-edit-form config-form"
       hx-post="/admin/config/model"
       hx-target="#admin-content">
     <div class="form-row">
         <div class="field field-title">
-            <span>Modèle (override global)</span>
+            <span>{{ _('config.llm_field') }}</span>
             <input type="text" name="llm_model" value="{{ llm_model }}"
-                   placeholder="{{ llm_model_default }} (défaut .env)">
+                   placeholder="{{ _('config.llm_placeholder', default=llm_model_default) }}">
         </div>
         <div class="field">
             <span>&nbsp;</span>
             <div class="form-actions">
-                <button type="submit" class="btn-retry">Appliquer</button>
+                <button type="submit" class="btn-retry">{{ _('config.llm_apply') }}</button>
                 {% if llm_model %}
                 <button type="submit" class="btn-cancel" name="llm_model" value="">
-                    Retour au défaut
+                    {{ _('config.llm_reset') }}
                 </button>
                 {% endif %}
             </div>
         </div>
     </div>
     <p class="config-hint">
-        Utilisé par l'analyse LLM des recettes importées. Laisser vide pour
-        utiliser le modèle configuré dans le .env ({{ llm_model_default }}).
-        S'applique au prochain scan.
+        {{ _('config.llm_hint', default=llm_model_default) }}
     </p>
 </form>

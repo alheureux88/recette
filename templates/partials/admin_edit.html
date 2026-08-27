@@ -1,19 +1,19 @@
-<h2 class="admin-section-title">Modifier la recette</h2>
+<h2 class="admin-section-title">{{ _('admin.edit_title') }}</h2>
 <form class="admin-edit-form"
       hx-post="/admin/edit/{{ recipe.id }}"
       hx-target="#admin-content">
     <div class="form-row">
         <label class="field field-title">
-            <span>Titre</span>
+            <span>{{ _('admin.field_title') }}</span>
             <input type="text" name="title" required value="{{ recipe.title }}">
         </label>
         <label class="field">
-            <span>Portions</span>
+            <span>{{ _('admin.field_servings') }}</span>
             <input type="number" name="servings" min="0" step="0.5"
                    value="{{ recipe.servings if recipe.servings is not none else '' }}">
         </label>
         <label class="field">
-            <span>Catégorie</span>
+            <span>{{ _('admin.field_category') }}</span>
             <select name="category">
                 <option value="">—</option>
                 {% for cat in all_categories %}
@@ -24,18 +24,18 @@
             </select>
         </label>
         <label class="field">
-            <span>URL source</span>
+            <span>{{ _('admin.field_source_url') }}</span>
             <input type="url" name="source_url" value="{{ recipe.source_url or '' }}">
         </label>
     </div>
 
     <label class="field">
-        <span>Description</span>
+        <span>{{ _('admin.field_description') }}</span>
         <textarea name="description" rows="2">{{ recipe.description or '' }}</textarea>
     </label>
 
     <fieldset class="tag-families">
-        <legend>Étiquettes</legend>
+        <legend>{{ _('admin.tags_legend') }}</legend>
         {% for family, tags in all_tags.items() %}
         <div class="tag-family">
             <span class="tag-family-name">{{ family }}</span>
@@ -55,12 +55,12 @@
     </fieldset>
 
     <div class="ingredients-editor">
-        <span class="field-label">Ingrédients</span>
+        <span class="field-label">{{ _('admin.ingredients_label') }}</span>
         <div class="ingredient-header ingredient-row">
-            <span>Qté min</span>
-            <span>Qté max</span>
-            <span>Unité</span>
-            <span>Ingrédient</span>
+            <span>{{ _('admin.ing_qty_min') }}</span>
+            <span>{{ _('admin.ing_qty_max') }}</span>
+            <span>{{ _('admin.ing_unit') }}</span>
+            <span>{{ _('admin.ing_food') }}</span>
             <span></span>
         </div>
         <div id="ingredient-rows">
@@ -74,7 +74,7 @@
                 <input type="text" name="ing_unit" value="{{ ing.unit or '' }}">
                 <input type="text" name="ing_food" value="{{ ing.food or '' }}">
                 <button type="button" class="btn-remove-row"
-                        onclick="recetteRemoveIngredient(this)" aria-label="Retirer">&times;</button>
+                        onclick="recetteRemoveIngredient(this)" aria-label="{{ _('admin.ing_remove') }}">&times;</button>
             </div>
             {% else %}
             <div class="ingredient-row">
@@ -83,40 +83,38 @@
                 <input type="text" name="ing_unit" value="">
                 <input type="text" name="ing_food" value="{{ ing }}">
                 <button type="button" class="btn-remove-row"
-                        onclick="recetteRemoveIngredient(this)" aria-label="Retirer">&times;</button>
+                        onclick="recetteRemoveIngredient(this)" aria-label="{{ _('admin.ing_remove') }}">&times;</button>
             </div>
             {% endif %}
             {% endfor %}
         </div>
-        <button type="button" class="btn-add-row" onclick="recetteAddIngredient()">+ Ajouter un ingrédient</button>
+        <button type="button" class="btn-add-row" onclick="recetteAddIngredient()">{{ _('admin.ing_add') }}</button>
         <div class="ingredient-row hidden" id="ingredient-row-template">
             <input type="number" name="ing_min" min="0" step="any" value="">
             <input type="number" name="ing_max" min="0" step="any" value="">
             <input type="text" name="ing_unit" value="">
             <input type="text" name="ing_food" value="">
             <button type="button" class="btn-remove-row"
-                    onclick="recetteRemoveIngredient(this)" aria-label="Retirer">&times;</button>
+                    onclick="recetteRemoveIngredient(this)" aria-label="{{ _('admin.ing_remove') }}">&times;</button>
         </div>
     </div>
 
     <label class="field">
-        <span>Instructions</span>
+        <span>{{ _('admin.field_instructions') }}</span>
         <textarea name="instructions" rows="10">{{ recipe.instructions or '' }}</textarea>
     </label>
 
     <p class="manual-warning">
-        En sauvegardant, cette recette sera marquée comme modifiée manuellement :
-        les futures mises à jour du fichier Dropbox seront ignorées et signalées
-        dans les fichiers en erreur.
+        {{ _('admin.manual_warning') }}
     </p>
 
     <div class="form-actions">
-        <button type="submit" class="btn-restore">Sauvegarder</button>
+        <button type="submit" class="btn-restore">{{ _('admin.save') }}</button>
         <button type="button" class="btn-cancel"
                 hx-get="/admin"
                 hx-select="#admin-content"
                 hx-target="#admin-content">
-            Annuler
+            {{ _('admin.cancel') }}
         </button>
     </div>
 </form>

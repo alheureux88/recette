@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Mes favoris — Recettes Merizzi{% endblock %}
+{% block title %}{{ _('favorites.title') }} — Recettes Merizzi{% endblock %}
 {% block content %}
 
-<h1 class="page-title">Mes favoris</h1>
+<h1 class="page-title">{{ _('favorites.title') }}</h1>
 
 <div id="recipe-grid">
     {% include "partials/recipe_cards.html" %}

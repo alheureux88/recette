@@ -1405,6 +1405,34 @@ main.admin-main {
     background: var(--accent-soft);
 }
 
+/* Switcher de langue — pill compact "code langue" */
+.lang-switch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 1.7rem;
+    padding: 0 0.55rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    text-decoration: none;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.lang-switch:hover,
+.lang-switch:focus-visible {
+    color: var(--text);
+    background: var(--accent-soft);
+    border-color: var(--accent-soft);
+    transform: translateY(-1px);
+    outline: none;
+}
+
 /* Dark mode : cellules Tabulator et textes d'erreur */
 [data-theme="dark"] .error-cell {
     color: #e08a86;
