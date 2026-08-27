@@ -5,13 +5,13 @@
 {% endif %}
 
 <p class="config-note">
+    {% if env_dropbox_enabled %}
     Le compte configure via les variables d'environnement (.env) reste actif en
     complement des connexions ajoutees ci-dessous.
-    {% if env_dropbox_enabled %}
     Compte par defaut (.env) : <span class="env-badge">actif</span>
     {% else %}
-    Aucun compte par defaut (.env) n'est configure : seules les connexions
-    ci-dessous seront synchronisees.
+    Aucun compte par defaut n'est configure dans le .env. Ajoutez une connexion
+    Dropbox ci-dessous pour demarrer la synchronisation.
     {% endif %}
 </p>
 
@@ -27,16 +27,13 @@
         </tr>
     </thead>
     <tbody>
+        {% if env_dropbox_enabled %}
         <tr>
             <td>Défaut (.env)</td>
             <td>
-                {% if env_dropbox_enabled %}
                 <span class="status-badge {{ 'status-on' if default_active else 'status-off' }}">
                     {% if default_active %}Active{% else %}En pause{% endif %}
                 </span>
-                {% else %}
-                <span class="status-badge status-off">Non configure</span>
-                {% endif %}
             </td>
             <td>
                 <span class="status-badge {{ 'status-on' if default_visible else 'status-off' }}">
@@ -46,7 +43,6 @@
             <td class="path-cell">{{ dropbox_folder or "/" }}</td>
             <td>—</td>
             <td class="admin-actions">
-                {% if env_dropbox_enabled %}
                 <button class="{{ 'btn-blacklist' if default_active else 'btn-retry' }}"
                         hx-post="/admin/config/dropbox/default/toggle-active"
                         hx-target="#admin-content">
@@ -57,9 +53,9 @@
                         hx-target="#admin-content">
                     {% if default_visible %}Masquer les recettes{% else %}Afficher les recettes{% endif %}
                 </button>
-                {% endif %}
             </td>
         </tr>
+        {% endif %}
         {% for conn in connections %}
         <tr>
             <td>{{ conn.name }}</td>
