@@ -58,6 +58,7 @@ from recipes.db import (
     init_db,
     is_default_account_active,
     is_default_account_visible,
+    is_favorite,
     remove_failed_file,
     remove_favorite,
     remove_from_blacklist,
@@ -337,11 +338,7 @@ async def recipe_detail(
     if not recipe:
         return HTMLResponse("<h1>Recette introuvable</h1>", status_code=404)
     user = get_user(request)
-    is_fav = False
-    if user:
-        is_fav = user["id"] in {
-            rid for rid in get_user_favorite_ids(user["id"]) if rid == recipe_id
-        }
+    is_fav = bool(user and is_favorite(user["id"], recipe_id))
     return templates.TemplateResponse(
         request=request,
         name="recipe.html",
@@ -459,8 +456,6 @@ async def toggle_favorite(
     recipe_id: int = Path(gt=0),
     user: dict[str, Any] = Depends(require_user),
 ) -> HTMLResponse:
-    from recipes.db import is_favorite
-
     currently_fav = is_favorite(user["id"], recipe_id)
     if currently_fav:
         remove_favorite(user["id"], recipe_id)
