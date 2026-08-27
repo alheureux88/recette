@@ -260,9 +260,10 @@ async def index(
     request: Request,
     tags: list[int] = Query(default=[]),
 ) -> HTMLResponse:
-    all_tags = get_all_tags_grouped()
-    all_categories = get_all_categories()
-    recipes = search_recipes(tag_ids=tags)
+    lang = _resolve_request_lang(request)
+    all_tags = get_all_tags_grouped(lang=lang)
+    all_categories = get_all_categories(lang=lang)
+    recipes = search_recipes(tag_ids=tags, lang=lang)
     user = get_user(request)
     favorite_ids: set[int] = set()
     if user:
@@ -292,6 +293,7 @@ async def search(
     category: str | None = Query(default=None),
     account: str | None = Query(default=None),
 ) -> HTMLResponse:
+    lang = _resolve_request_lang(request)
     category_id: int | None = None
     if category and category.strip():
         try:
@@ -301,7 +303,11 @@ async def search(
                 status_code=422, detail="category must be a valid integer"
             ) from None
     recipes = search_recipes(
-        query=q, tag_ids=tags, category_id=category_id, connection_id=_parse_account_param(account)
+        query=q,
+        tag_ids=tags,
+        category_id=category_id,
+        connection_id=_parse_account_param(account),
+        lang=lang,
     )
     user = get_user(request)
     favorite_ids: set[int] = set()
@@ -348,6 +354,7 @@ def _ingredient_context(
     servings: int | None,
     units: str,
     multiplier: float | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> dict[str, object]:
     """Construit le contexte d'affichage des ingrédients.
 
@@ -371,7 +378,9 @@ def _ingredient_context(
 
     ingredients_bruts = recipe.get("ingredients")
     items = ingredients_bruts if isinstance(ingredients_bruts, list) else []
-    display_ingredients = [format_ingredient(item, multiplicateur, systeme) for item in items]
+    display_ingredients = [
+        format_ingredient(item, multiplicateur, systeme, lang=lang) for item in items
+    ]
 
     current_servings: int | float | None
     if servings and servings > 0:
@@ -401,9 +410,10 @@ async def recipe_detail(
     units: str = Query(default="original"),
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
-    recipe = get_recipe(recipe_id)
+    lang = _resolve_request_lang(request)
+    recipe = get_recipe(recipe_id, lang=lang)
     if not recipe:
-        not_found_msg = gettext("recipe.not_found", _resolve_request_lang(request))
+        not_found_msg = gettext("recipe.not_found", lang)
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id))
@@ -416,7 +426,11 @@ async def recipe_detail(
             is_favorite=is_fav,
             show_provenance=len(get_recipe_provenances()) > 1,
             **_ingredient_context(
-                recipe, _parse_servings_param(servings), units, _parse_multiplier_param(multiplier)
+                recipe,
+                _parse_servings_param(servings),
+                units,
+                _parse_multiplier_param(multiplier),
+                lang=lang,
             ),
         ),
     )
@@ -431,15 +445,17 @@ async def recipe_cook(
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
-    recipe = get_recipe(recipe_id)
+    lang = _resolve_request_lang(request)
+    recipe = get_recipe(recipe_id, lang=lang)
     if not recipe:
-        not_found_msg = gettext("recipe.not_found", _resolve_request_lang(request))
+        not_found_msg = gettext("recipe.not_found", lang)
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     ingredient_ctx = _ingredient_context(
         recipe,
         _parse_servings_param(servings),
         units,
         _parse_multiplier_param(multiplier),
+        lang=lang,
     )
     raw_steps = recipe.get("instructions") or ""
     steps = [line.strip() for line in str(raw_steps).split("\n") if line.strip()]
@@ -464,9 +480,10 @@ async def recipe_ingredients(
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
     """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
-    recipe = get_recipe(recipe_id)
+    lang = _resolve_request_lang(request)
+    recipe = get_recipe(recipe_id, lang=lang)
     if not recipe:
-        not_found_msg = gettext("recipe.not_found", _resolve_request_lang(request))
+        not_found_msg = gettext("recipe.not_found", lang)
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     return templates.TemplateResponse(
         request=request,
@@ -478,6 +495,7 @@ async def recipe_ingredients(
                 _parse_servings_param(servings),
                 units,
                 _parse_multiplier_param(multiplier),
+                lang=lang,
             ),
         },
     )
@@ -532,7 +550,7 @@ async def toggle_favorite(
     else:
         add_favorite(user["id"], recipe_id)
 
-    recipe = get_recipe(recipe_id)
+    recipe = get_recipe(recipe_id, lang=_resolve_request_lang(request))
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -554,7 +572,8 @@ async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
     user = get_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=302)
-    recipes = get_favorite_recipes(user["id"])
+    lang = _resolve_request_lang(request)
+    recipes = get_favorite_recipes(user["id"], lang=lang)
     favorite_ids = get_user_favorite_ids(user["id"])
     return templates.TemplateResponse(
         request=request,
@@ -595,14 +614,15 @@ TAG_FAMILIES = ("origin", "diet", "protein", "cooking_method")
 
 
 def _admin_table_context(request: Request) -> dict[str, object]:
+    lang = _resolve_request_lang(request)
     return _base_context(
         request,
-        recipes=get_all_recipes_admin(),
+        recipes=get_all_recipes_admin(lang=lang),
         blacklisted=get_blacklisted_files(),
         failed=get_failed_files(),
-        all_categories=get_all_categories(only_used=False),
-        all_tags=get_existing_tags_for_prompt(),
-        all_tag_families=get_tag_families(),
+        all_categories=get_all_categories(only_used=False, lang=lang),
+        all_tags=get_existing_tags_for_prompt(lang=lang),
+        all_tag_families=get_tag_families(lang=lang),
     )
 
 
@@ -647,13 +667,15 @@ def _parse_tag_keys(keys: list[str]) -> dict[str, list[str]]:
 
 @app.get("/admin/recipes.json")
 async def admin_recipes_data(
+    request: Request,
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
     """Donnees du tableau d'administration : recettes, categories et etiquettes."""
+    lang = _resolve_request_lang(request)
     return {
-        "recipes": [_recipe_row(r) for r in get_all_recipes_admin()],
-        "categories": get_all_categories(only_used=False),
-        "tags": get_existing_tags_for_prompt(),
+        "recipes": [_recipe_row(r) for r in get_all_recipes_admin(lang=lang)],
+        "categories": get_all_categories(only_used=False, lang=lang),
+        "tags": get_existing_tags_for_prompt(lang=lang),
     }
 
 
@@ -1107,7 +1129,8 @@ async def admin_edit_form(
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    recipe = get_recipe(recipe_id)
+    lang = _resolve_request_lang(request)
+    recipe = get_recipe(recipe_id, lang=lang)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return templates.TemplateResponse(
@@ -1116,8 +1139,8 @@ async def admin_edit_form(
         context=_base_context(
             request,
             recipe=recipe,
-            all_categories=get_all_categories(only_used=False),
-            all_tags=get_existing_tags_for_prompt(),
+            all_categories=get_all_categories(only_used=False, lang=lang),
+            all_tags=get_existing_tags_for_prompt(lang=lang),
         ),
     )
 
@@ -1137,11 +1160,23 @@ async def admin_edit_save(
     if not title:
         raise HTTPException(status_code=422, detail="title is required")
 
-    data: dict[str, object] = {
+    description = str(form.get("description") or "").strip()
+    instructions = str(form.get("instructions") or "").strip()
+    ingredients = _ingredients_from_form(form)
+
+    # L'édition manuelle ne met à jour qu'une seule langue à la fois :
+    # on synchronise les deux langues sur le même contenu (le champ du
+    # formulaire est rendu dans la langue active). L'admin pourra relancer
+    # un import LLM plus tard pour régénérer proprement les deux langues.
+    base_payload = {
         "title": title,
-        "description": str(form.get("description") or "").strip(),
-        "instructions": str(form.get("instructions") or "").strip(),
-        "ingredients": _ingredients_from_form(form),
+        "description": description,
+        "instructions": instructions,
+        "ingredients": ingredients,
+    }
+    data: dict[str, object] = {
+        "lang_fr": dict(base_payload),
+        "lang_en": dict(base_payload),
         "servings": parse_quantity(form.get("servings")),
         "category": str(form.get("category") or "").strip() or None,
         "source_url": str(form.get("source_url") or "").strip() or None,

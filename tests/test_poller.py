@@ -289,10 +289,18 @@ class TestProcessFile:
             patch(
                 "recipes.poller.tag_recipe",
                 return_value={
-                    "title": "Tarte aux pommes",
-                    "description": "Delicious tart",
-                    "ingredients": ["apples"],
-                    "instructions": "Bake",
+                    "lang_fr": {
+                        "title": "Tarte aux pommes",
+                        "description": "Delicious tart",
+                        "ingredients": ["apples"],
+                        "instructions": "Bake",
+                    },
+                    "lang_en": {
+                        "title": "Apple tart",
+                        "description": "Delicious tart",
+                        "ingredients": ["apples"],
+                        "instructions": "Bake",
+                    },
                     "category": "dessert",
                     "tags": {"origin": ["francais"]},
                     "source_url": None,

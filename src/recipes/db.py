@@ -1,6 +1,15 @@
 """
 db.py — SQLite setup, schema, seed data, and query helpers.
 
+Internationalization model:
+  - The recipe table holds non-translated structural fields (servings,
+    source_url, file metadata, ...).
+  - All user-facing text (title, description, instructions, ingredients) lives
+    in `recipe_translations` keyed by language.
+  - Tag families, tags, and categories keep a stable technical `name` (used as
+    key in code/prompts) and provide `display_name_fr` / `display_name_en`
+    for rendering.
+
 Tag system:
   - tag_families: origin, diet, protein, cooking_method
   - tags: belong to a family, optionally hierarchical (parent_id)
@@ -15,95 +24,98 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from recipes.i18n import DEFAULT_LANGUAGE
+
 DB_PATH = Path(os.environ.get("DB_PATH", "/data/recipes.db"))
 
 # ---------------------------------------------------------------------------
 # Seed data
 # ---------------------------------------------------------------------------
 
-SEED_TAG_FAMILIES: list[tuple[str, str, int]] = [
-    ("origin", "Origine", 1),
-    ("diet", "Régime alimentaire", 2),
-    ("protein", "Protéine principale", 3),
-    ("cooking_method", "Méthode de cuisson", 4),
+SEED_TAG_FAMILIES: list[tuple[str, str, str, int]] = [
+    ("origin", "Origine", "Origin", 1),
+    ("diet", "Régime alimentaire", "Diet", 2),
+    ("protein", "Protéine principale", "Main protein", 3),
+    ("cooking_method", "Méthode de cuisson", "Cooking method", 4),
 ]
 
-SEED_TAGS: dict[str, list[tuple[str, str, str | None]]] = {
+# (name technique, display_name_fr, display_name_en, parent_name)
+SEED_TAGS: dict[str, list[tuple[str, str, str, str | None]]] = {
     "origin": [
-        ("asiatique", "Asiatique", None),
-        ("japonais", "Japonais", "asiatique"),
-        ("chinois", "Chinois", "asiatique"),
-        ("coreen", "Coréen", "asiatique"),
-        ("thailandais", "Thaïlandais", "asiatique"),
-        ("vietnamien", "Vietnamien", "asiatique"),
-        ("indien", "Indien", "asiatique"),
-        ("europeen", "Européen", None),
-        ("francais", "Français", "europeen"),
-        ("italien", "Italien", "europeen"),
-        ("grec", "Grec", "europeen"),
-        ("espagnol", "Espagnol", "europeen"),
-        ("allemand", "Allemand", "europeen"),
-        ("americain", "Américain", None),
-        ("canadien", "Canadien", "americain"),
-        ("quebecois", "Québécois", "canadien"),
-        ("mexicain", "Mexicain", "americain"),
-        ("moyen-oriental", "Moyen-Oriental", None),
-        ("libanais", "Libanais", "moyen-oriental"),
-        ("israelien", "Israélien", "moyen-oriental"),
-        ("africain", "Africain", None),
-        ("marocain", "Marocain", "africain"),
-        ("ethiopien", "Éthiopien", "africain"),
+        ("asiatique", "Asiatique", "Asian", None),
+        ("japonais", "Japonais", "Japanese", "asiatique"),
+        ("chinois", "Chinois", "Chinese", "asiatique"),
+        ("coreen", "Coréen", "Korean", "asiatique"),
+        ("thailandais", "Thaïlandais", "Thai", "asiatique"),
+        ("vietnamien", "Vietnamien", "Vietnamese", "asiatique"),
+        ("indien", "Indien", "Indian", "asiatique"),
+        ("europeen", "Européen", "European", None),
+        ("francais", "Français", "French", "europeen"),
+        ("italien", "Italien", "Italian", "europeen"),
+        ("grec", "Grec", "Greek", "europeen"),
+        ("espagnol", "Espagnol", "Spanish", "europeen"),
+        ("allemand", "Allemand", "German", "europeen"),
+        ("americain", "Américain", "American", None),
+        ("canadien", "Canadien", "Canadian", "americain"),
+        ("quebecois", "Québécois", "Québécois", "canadien"),
+        ("mexicain", "Mexicain", "Mexican", "americain"),
+        ("moyen-oriental", "Moyen-Oriental", "Middle Eastern", None),
+        ("libanais", "Libanais", "Lebanese", "moyen-oriental"),
+        ("israelien", "Israélien", "Israeli", "moyen-oriental"),
+        ("africain", "Africain", "African", None),
+        ("marocain", "Marocain", "Moroccan", "africain"),
+        ("ethiopien", "Éthiopien", "Ethiopian", "africain"),
     ],
     "diet": [
-        ("vegetalien", "Végétalien", None),
-        ("vegetarien", "Végétarien", None),
-        ("pescetarien", "Pescétarien", None),
-        ("sans-gluten", "Sans gluten", None),
-        ("sans-produits-laitiers", "Sans produits laitiers", None),
-        ("cetogene", "Cétogène", None),
-        ("faible-en-glucides", "Faible en glucides", None),
-        ("paleo", "Paléo", None),
+        ("vegetalien", "Végétalien", "Vegan", None),
+        ("vegetarien", "Végétarien", "Vegetarian", None),
+        ("pescetarien", "Pescétarien", "Pescatarian", None),
+        ("sans-gluten", "Sans gluten", "Gluten-free", None),
+        ("sans-produits-laitiers", "Sans produits laitiers", "Dairy-free", None),
+        ("cetogene", "Cétogène", "Keto", None),
+        ("faible-en-glucides", "Faible en glucides", "Low-carb", None),
+        ("paleo", "Paléo", "Paleo", None),
     ],
     "protein": [
-        ("poulet", "Poulet", None),
-        ("boeuf", "Bœuf", None),
-        ("porc", "Porc", None),
-        ("agneau", "Agneau", None),
-        ("veau", "Veau", None),
-        ("poisson", "Poisson", None),
-        ("fruits-de-mer", "Fruits de mer", None),
-        ("tofu", "Tofu", None),
-        ("tempeh", "Tempeh", None),
-        ("lentilles", "Lentilles", None),
-        ("oeufs", "Œufs", None),
-        ("canard", "Canard", None),
+        ("poulet", "Poulet", "Chicken", None),
+        ("boeuf", "Bœuf", "Beef", None),
+        ("porc", "Porc", "Pork", None),
+        ("agneau", "Agneau", "Lamb", None),
+        ("veau", "Veau", "Veal", None),
+        ("poisson", "Poisson", "Fish", None),
+        ("fruits-de-mer", "Fruits de mer", "Seafood", None),
+        ("tofu", "Tofu", "Tofu", None),
+        ("tempeh", "Tempeh", "Tempeh", None),
+        ("lentilles", "Lentilles", "Lentils", None),
+        ("oeufs", "Œufs", "Eggs", None),
+        ("canard", "Canard", "Duck", None),
     ],
     "cooking_method": [
-        ("braise", "Braisé", None),
-        ("roti", "Rôti", None),
-        ("saute", "Sauté", None),
-        ("wok", "Wok", None),
-        ("fume", "Fumé", None),
-        ("barbecue", "Barbecue", None),
-        ("grille", "Grillé", None),
-        ("frit", "Frit", None),
-        ("mijote", "Mijoté", None),
-        ("sans-cuisson", "Sans cuisson", None),
-        ("poche", "Poché", None),
-        ("vapeur", "Vapeur", None),
+        ("braise", "Braisé", "Braised", None),
+        ("roti", "Rôti", "Roasted", None),
+        ("saute", "Sauté", "Sautéed", None),
+        ("wok", "Wok", "Stir-fried", None),
+        ("fume", "Fumé", "Smoked", None),
+        ("barbecue", "Barbecue", "Barbecue", None),
+        ("grille", "Grillé", "Grilled", None),
+        ("frit", "Frit", "Fried", None),
+        ("mijote", "Mijoté", "Slow-cooked", None),
+        ("sans-cuisson", "Sans cuisson", "No-cook", None),
+        ("poche", "Poché", "Poached", None),
+        ("vapeur", "Vapeur", "Steamed", None),
     ],
 }
 
-SEED_CATEGORIES: list[tuple[str, str, int]] = [
-    ("entree", "Entrée", 1),
-    ("plat-principal", "Plat principal", 2),
-    ("salade", "Salade", 3),
-    ("soupe", "Soupe", 4),
-    ("sauce", "Sauce", 5),
-    ("dessert", "Dessert", 6),
-    ("accompagnement", "Accompagnement", 7),
-    ("collation", "Collation", 8),
-    ("aperitif", "Apéritif", 9),
+SEED_CATEGORIES: list[tuple[str, str, str, int]] = [
+    ("entree", "Entrée", "Starter", 1),
+    ("plat-principal", "Plat principal", "Main course", 2),
+    ("salade", "Salade", "Salad", 3),
+    ("soupe", "Soupe", "Soup", 4),
+    ("sauce", "Sauce", "Sauce", 5),
+    ("dessert", "Dessert", "Dessert", 6),
+    ("accompagnement", "Accompagnement", "Side dish", 7),
+    ("collation", "Collation", "Snack", 8),
+    ("aperitif", "Apéritif", "Appetizer", 9),
 ]
 
 
@@ -138,10 +150,6 @@ def _create_tables(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS recipes (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            title        TEXT NOT NULL,
-            description  TEXT,
-            ingredients  TEXT,
-            instructions TEXT,
             servings     REAL,
             source_url   TEXT,
             dropbox_url  TEXT,
@@ -149,23 +157,36 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             file_hash    TEXT NOT NULL,
             manually_edited INTEGER NOT NULL DEFAULT 0,
             connection_id INTEGER REFERENCES dropbox_connections(id),
+            category_id  INTEGER REFERENCES categories(id),
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS recipe_translations (
+            recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            lang         TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            description  TEXT,
+            instructions TEXT,
+            ingredients  TEXT,
+            PRIMARY KEY (recipe_id, lang)
+        );
+
         CREATE TABLE IF NOT EXISTS tag_families (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            name         TEXT NOT NULL UNIQUE,
-            display_name TEXT NOT NULL,
-            sort_order   INTEGER NOT NULL DEFAULT 0
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL UNIQUE,
+            display_name_fr TEXT NOT NULL,
+            display_name_en TEXT NOT NULL,
+            sort_order      INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS tags (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            family_id    INTEGER NOT NULL REFERENCES tag_families(id),
-            name         TEXT NOT NULL,
-            display_name TEXT NOT NULL,
-            parent_id    INTEGER REFERENCES tags(id),
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            family_id       INTEGER NOT NULL REFERENCES tag_families(id),
+            name            TEXT NOT NULL,
+            display_name_fr TEXT NOT NULL,
+            display_name_en TEXT NOT NULL,
+            parent_id       INTEGER REFERENCES tags(id),
             UNIQUE(family_id, name)
         );
 
@@ -176,10 +197,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS categories (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            name         TEXT NOT NULL UNIQUE,
-            display_name TEXT NOT NULL,
-            sort_order   INTEGER NOT NULL DEFAULT 0
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL UNIQUE,
+            display_name_fr TEXT NOT NULL,
+            display_name_en TEXT NOT NULL,
+            sort_order      INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS processed_files (
@@ -241,26 +263,167 @@ def _create_tables(conn: sqlite3.Connection) -> None:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    rows = conn.execute("PRAGMA table_info(recipes)").fetchall()
-    cols = {row[1] for row in rows}
-    del rows
+    """Bring an older single-language schema to the bilingual layout.
 
-    if "tags" in cols:
-        conn.execute("ALTER TABLE recipes DROP COLUMN tags")
+    When the legacy `recipes` table is present, its title/description/
+    ingredients/instructions columns are copied into `recipe_translations`
+    using the legacy French content for both the `fr` and `en` rows (the LLM
+    will refresh `en` on the next ingestion). This migration is a no-op for
+    fresh databases.
+    """
+    legacy = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'"
+    ).fetchone()
+    if legacy is None:
+        return
 
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
+
+    if "title" in cols:
+        # Backfill translations from legacy columns, then drop them.
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO recipe_translations
+                (recipe_id, lang, title, description, instructions, ingredients)
+            SELECT id, 'fr', title, description, instructions, ingredients
+            FROM recipes
+            WHERE title IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO recipe_translations
+                (recipe_id, lang, title, description, instructions, ingredients)
+            SELECT id, 'en', title, description, instructions, ingredients
+            FROM recipes
+            WHERE title IS NOT NULL
+            """
+        )
+
+        # recipes_fts was created against the legacy columns; rebuild on the
+        # translations table instead. We drop it now; _create_fts() will
+        # recreate it against the new schema.
+        conn.execute("DROP TRIGGER IF EXISTS recipes_ai")
+        conn.execute("DROP TRIGGER IF EXISTS recipes_au")
+        conn.execute("DROP TRIGGER IF EXISTS recipes_ad")
+        conn.execute("DROP TABLE IF EXISTS recipes_fts")
+
+        # Use a copy-then-swap to drop the legacy text columns atomically.
+        conn.execute("ALTER TABLE recipes RENAME TO recipes_legacy")
+        conn.execute(
+            """
+            CREATE TABLE recipes (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                servings     REAL,
+                source_url   TEXT,
+                dropbox_url  TEXT,
+                source_file  TEXT NOT NULL UNIQUE,
+                file_hash    TEXT NOT NULL,
+                manually_edited INTEGER NOT NULL DEFAULT 0,
+                connection_id INTEGER REFERENCES dropbox_connections(id),
+                category_id  INTEGER REFERENCES categories(id),
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO recipes
+                (id, servings, source_url, dropbox_url, source_file, file_hash,
+                 manually_edited, connection_id, category_id, created_at, updated_at)
+            SELECT id, servings, source_url, dropbox_url, source_file, file_hash,
+                   COALESCE(manually_edited, 0), connection_id, category_id,
+                   created_at, updated_at
+            FROM recipes_legacy
+            """
+        )
+        conn.execute("DROP TABLE recipes_legacy")
+        return
+
+    # New-schema recipes table: just make sure optional columns exist.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
     if "category_id" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN category_id INTEGER REFERENCES categories(id)")
-
     if "file_modified_at" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN file_modified_at DATETIME")
-
     if "manually_edited" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
-
     if "connection_id" not in cols:
         conn.execute(
             "ALTER TABLE recipes ADD COLUMN connection_id INTEGER REFERENCES dropbox_connections(id)"
         )
+
+    family_cols = {row[1] for row in conn.execute("PRAGMA table_info(tag_families)").fetchall()}
+    if "display_name" in family_cols and "display_name_fr" not in family_cols:
+        conn.execute("ALTER TABLE tag_families RENAME TO tag_families_legacy")
+        conn.execute(
+            """
+            CREATE TABLE tag_families (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL UNIQUE,
+                display_name_fr TEXT NOT NULL,
+                display_name_en TEXT NOT NULL,
+                sort_order      INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO tag_families (id, name, display_name_fr, display_name_en, sort_order)
+            SELECT id, name, display_name, display_name, sort_order
+            FROM tag_families_legacy
+            """
+        )
+        conn.execute("DROP TABLE tag_families_legacy")
+
+    tag_cols = {row[1] for row in conn.execute("PRAGMA table_info(tags)").fetchall()}
+    if "display_name" in tag_cols and "display_name_fr" not in tag_cols:
+        conn.execute("ALTER TABLE tags RENAME TO tags_legacy")
+        conn.execute(
+            """
+            CREATE TABLE tags (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                family_id       INTEGER NOT NULL REFERENCES tag_families(id),
+                name            TEXT NOT NULL,
+                display_name_fr TEXT NOT NULL,
+                display_name_en TEXT NOT NULL,
+                parent_id       INTEGER REFERENCES tags(id),
+                UNIQUE(family_id, name)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO tags (id, family_id, name, display_name_fr, display_name_en, parent_id)
+            SELECT id, family_id, name, display_name, display_name, parent_id
+            FROM tags_legacy
+            """
+        )
+        conn.execute("DROP TABLE tags_legacy")
+
+    cat_cols = {row[1] for row in conn.execute("PRAGMA table_info(categories)").fetchall()}
+    if "display_name" in cat_cols and "display_name_fr" not in cat_cols:
+        conn.execute("ALTER TABLE categories RENAME TO categories_legacy")
+        conn.execute(
+            """
+            CREATE TABLE categories (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL UNIQUE,
+                display_name_fr TEXT NOT NULL,
+                display_name_en TEXT NOT NULL,
+                sort_order      INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO categories (id, name, display_name_fr, display_name_en, sort_order)
+            SELECT id, name, display_name, display_name, sort_order
+            FROM categories_legacy
+            """
+        )
+        conn.execute("DROP TABLE categories_legacy")
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -273,6 +436,11 @@ def _create_fts(conn: sqlite3.Connection) -> None:
         return
     del fts_exists
 
+    # The FTS table stores one row per (recipe_id, lang) pair; the rowid is
+    # built from the recipe_id so the recipes_fts MATCH query can be
+    # translated back to recipe ids via `rowid / 2`.
+    #   fr rowid = recipe_id * 2
+    #   en rowid = recipe_id * 2 + 1
     conn.executescript("""
         CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5(
             title,
@@ -280,36 +448,73 @@ def _create_fts(conn: sqlite3.Connection) -> None:
             ingredients
         );
 
-        CREATE TRIGGER recipes_ai AFTER INSERT ON recipes BEGIN
+        CREATE TRIGGER rt_ai AFTER INSERT ON recipe_translations BEGIN
             INSERT INTO recipes_fts(rowid, title, description, ingredients)
-            VALUES (new.id, new.title, new.description, new.ingredients);
+            VALUES (CASE new.lang
+                        WHEN 'en' THEN new.recipe_id * 2 + 1
+                        ELSE new.recipe_id * 2
+                    END,
+                    new.title, new.description, new.ingredients);
         END;
 
-        CREATE TRIGGER recipes_au AFTER UPDATE ON recipes BEGIN
-            DELETE FROM recipes_fts WHERE rowid = old.id;
-            INSERT INTO recipes_fts(rowid, title, description, ingredients)
-            VALUES (new.id, new.title, new.description, new.ingredients);
+        CREATE TRIGGER rt_ad AFTER DELETE ON recipe_translations BEGIN
+            DELETE FROM recipes_fts WHERE rowid = CASE old.lang
+                        WHEN 'en' THEN old.recipe_id * 2 + 1
+                        ELSE old.recipe_id * 2
+                    END;
         END;
 
-        CREATE TRIGGER recipes_ad AFTER DELETE ON recipes BEGIN
-            DELETE FROM recipes_fts WHERE rowid = old.id;
+        CREATE TRIGGER rt_au AFTER UPDATE ON recipe_translations BEGIN
+            DELETE FROM recipes_fts WHERE rowid = CASE old.lang
+                        WHEN 'en' THEN old.recipe_id * 2 + 1
+                        ELSE old.recipe_id * 2
+                    END;
+            INSERT INTO recipes_fts(rowid, title, description, ingredients)
+            VALUES (CASE new.lang
+                        WHEN 'en' THEN new.recipe_id * 2 + 1
+                        ELSE new.recipe_id * 2
+                    END,
+                    new.title, new.description, new.ingredients);
         END;
     """)
 
-    rows = conn.execute("SELECT id, title, description, ingredients FROM recipes").fetchall()
+    rows = conn.execute(
+        "SELECT recipe_id, lang, title, description, ingredients FROM recipe_translations"
+    ).fetchall()
     for row in rows:
         conn.execute(
             "INSERT INTO recipes_fts(rowid, title, description, ingredients) VALUES (?, ?, ?, ?)",
-            (row["id"], row["title"], row["description"], row["ingredients"]),
+            (
+                _fts_rowid(int(row["recipe_id"]), str(row["lang"])),
+                row["title"],
+                row["description"],
+                row["ingredients"],
+            ),
         )
     del rows
 
 
+_LANG_ORDINAL = {"fr": 0, "en": 1}
+
+
+def _fts_rowid(recipe_id: int, lang: str) -> int:
+    """Composite FTS rowid: 2 * recipe_id + lang offset.
+
+    Recipe ids start at 1 so even ids map to the `fr` row and odd ids to `en`.
+    """
+    offset = _LANG_ORDINAL.get(lang, 0)
+    return recipe_id * 2 + offset
+
+
 def _seed(conn: sqlite3.Connection) -> None:
-    for name, display_name, sort_order in SEED_TAG_FAMILIES:
+    for name, fr, en, sort_order in SEED_TAG_FAMILIES:
         conn.execute(
-            "INSERT OR IGNORE INTO tag_families (name, display_name, sort_order) VALUES (?, ?, ?)",
-            (name, display_name, sort_order),
+            """
+            INSERT OR IGNORE INTO tag_families
+                (name, display_name_fr, display_name_en, sort_order)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, fr, en, sort_order),
         )
 
     for family_name, tags in SEED_TAGS.items():
@@ -321,13 +526,17 @@ def _seed(conn: sqlite3.Connection) -> None:
         family_id = int(family["id"])
         del family
 
-        for name, display_name, _parent_name in tags:
+        for name, fr, en, _parent in tags:
             conn.execute(
-                "INSERT OR IGNORE INTO tags (family_id, name, display_name) VALUES (?, ?, ?)",
-                (family_id, name, display_name),
+                """
+                INSERT OR IGNORE INTO tags
+                    (family_id, name, display_name_fr, display_name_en)
+                VALUES (?, ?, ?, ?)
+                """,
+                (family_id, name, fr, en),
             )
 
-        for name, _display_name, parent_name in tags:
+        for name, _fr, _en, parent_name in tags:
             if parent_name:
                 parent = conn.execute(
                     "SELECT id FROM tags WHERE family_id = ? AND name = ?",
@@ -341,25 +550,80 @@ def _seed(conn: sqlite3.Connection) -> None:
                         (parent_id, family_id, name),
                     )
 
-    for name, display_name, sort_order in SEED_CATEGORIES:
+    for name, fr, en, sort_order in SEED_CATEGORIES:
         conn.execute(
-            "INSERT OR IGNORE INTO categories (name, display_name, sort_order) VALUES (?, ?, ?)",
-            (name, display_name, sort_order),
+            """
+            INSERT OR IGNORE INTO categories
+                (name, display_name_fr, display_name_en, sort_order)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, fr, en, sort_order),
         )
 
 
 # ---------------------------------------------------------------------------
-# Queries
+# Localized display helpers
+# ---------------------------------------------------------------------------
+
+
+def _localize_tag(row: sqlite3.Row, lang: str) -> dict[str, object]:
+    col = "display_name_en" if lang == "en" else "display_name_fr"
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "display_name": row[col],
+    }
+
+
+def _localize_family(row: sqlite3.Row, lang: str) -> dict[str, object]:
+    col = "display_name_en" if lang == "en" else "display_name_fr"
+    return {
+        "name": row["name"],
+        "display_name": row[col],
+    }
+
+
+def _localize_category(row: sqlite3.Row, lang: str) -> dict[str, object]:
+    col = "display_name_en" if lang == "en" else "display_name_fr"
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "display_name": row[col],
+    }
+
+
+def _localize_recipe_translation(row: sqlite3.Row | None) -> dict[str, object]:
+    if row is None:
+        return {"title": "", "description": "", "instructions": "", "ingredients": []}
+    ingredients_raw = row["ingredients"] or "[]"
+    return {
+        "title": str(row["title"] or ""),
+        "description": str(row["description"] or ""),
+        "instructions": str(row["instructions"] or ""),
+        "ingredients": json.loads(str(ingredients_raw)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recipe write helpers
 # ---------------------------------------------------------------------------
 
 
 def upsert_recipe(data: dict[str, object]) -> int:
+    """Insert or update a recipe with bilingual translations.
+
+    `data` must contain both `lang_fr` and `lang_en` payloads (or, for tests
+    / manual editing, a single-language `lang` payload). A unified
+    `tags` dict of `{family: [names]}` and a single `category` key (technical
+    name) are also expected.
+    """
+    payload_fr, payload_en = _extract_translation_payload(data)
+
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id FROM recipes WHERE source_file = ?", (data["source_file"],)
         ).fetchone()
 
-        ingredients_json = json.dumps(data.get("ingredients", []))
         category_id = _resolve_category(
             conn, str(data["category"]) if data.get("category") else None
         )
@@ -370,20 +634,16 @@ def upsert_recipe(data: dict[str, object]) -> int:
         connection_id = int(str(raw_connection)) if raw_connection is not None else None
 
         if existing:
+            recipe_id = int(existing["id"])
             conn.execute(
                 """
                 UPDATE recipes SET
-                    title=?, description=?, ingredients=?, instructions=?,
                     servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
                     file_modified_at=?, connection_id=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
-            """,
+                """,
                 (
-                    data["title"],
-                    data.get("description"),
-                    ingredients_json,
-                    data.get("instructions"),
                     servings,
                     category_id,
                     data.get("source_url"),
@@ -394,21 +654,15 @@ def upsert_recipe(data: dict[str, object]) -> int:
                     data["source_file"],
                 ),
             )
-            return int(existing["id"])
         else:
             cur = conn.execute(
                 """
                 INSERT INTO recipes
-                    (title, description, ingredients, instructions, servings, category_id,
-                     source_url, dropbox_url, source_file, file_hash, file_modified_at,
-                     connection_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+                    (servings, category_id, source_url, dropbox_url, source_file,
+                     file_hash, file_modified_at, connection_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
-                    data["title"],
-                    data.get("description"),
-                    ingredients_json,
-                    data.get("instructions"),
                     servings,
                     category_id,
                     data.get("source_url"),
@@ -420,7 +674,74 @@ def upsert_recipe(data: dict[str, object]) -> int:
                 ),
             )
             assert cur.lastrowid is not None
-            return int(cur.lastrowid)
+            recipe_id = int(cur.lastrowid)
+
+        _upsert_translation(conn, recipe_id, "fr", payload_fr)
+        _upsert_translation(conn, recipe_id, "en", payload_en)
+        return recipe_id
+
+
+def _extract_translation_payload(
+    data: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Return (payload_fr, payload_en) from the upsert payload.
+
+    Accepts either pre-split `lang_fr`/`lang_en` dicts, a single-language
+    `lang` dict (replicated for both sides — used by tests and manual
+    edits), or a top-level shape with `title` / `description` /
+    `instructions` / `ingredients` keys at the root of `data` (legacy
+    single-language shape used by historical tests).
+    """
+    if "lang_fr" in data or "lang_en" in data:
+        fr = data.get("lang_fr") or {}
+        en = data.get("lang_en") or {}
+        if not isinstance(fr, dict) or not isinstance(en, dict):
+            raise ValueError("lang_fr/lang_en must be dicts")
+        return fr, en
+    legacy = data.get("lang")
+    if isinstance(legacy, dict):
+        return legacy, legacy
+
+    has_legacy_keys = any(
+        k in data for k in ("title", "description", "instructions", "ingredients")
+    )
+    if has_legacy_keys:
+        payload = {
+            "title": data.get("title") or "",
+            "description": data.get("description") or "",
+            "instructions": data.get("instructions") or "",
+            "ingredients": data.get("ingredients") or [],
+        }
+        return payload, payload
+    raise ValueError(
+        "upsert_recipe requires lang_fr/lang_en translation dicts (or a 'lang' fallback)"
+    )
+
+
+def _upsert_translation(
+    conn: sqlite3.Connection, recipe_id: int, lang: str, payload: dict[str, object]
+) -> None:
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        return
+    description = payload.get("description") or ""
+    instructions = payload.get("instructions") or ""
+    ingredients = payload.get("ingredients") or []
+    ingredients_json = json.dumps(ingredients, ensure_ascii=False)
+
+    conn.execute(
+        """
+        INSERT INTO recipe_translations
+            (recipe_id, lang, title, description, instructions, ingredients)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(recipe_id, lang) DO UPDATE SET
+            title=excluded.title,
+            description=excluded.description,
+            instructions=excluded.instructions,
+            ingredients=excluded.ingredients
+        """,
+        (recipe_id, lang, title, description, instructions, ingredients_json),
+    )
 
 
 def sync_recipe_tags(recipe_id: int, tags_by_family: dict[str, list[str]]) -> None:
@@ -462,14 +783,19 @@ def _resolve_tag(conn: sqlite3.Connection, family_id: int, name: str) -> int | N
         return int(row["id"])
 
     row = conn.execute(
-        "SELECT id FROM tags WHERE family_id = ? AND display_name = ?", (family_id, display_name)
+        "SELECT id FROM tags WHERE family_id = ? AND display_name_fr = ?",
+        (family_id, display_name),
     ).fetchone()
     if row:
         return int(row["id"])
 
     conn.execute(
-        "INSERT OR IGNORE INTO tags (family_id, name, display_name) VALUES (?, ?, ?)",
-        (family_id, name, display_name),
+        """
+        INSERT OR IGNORE INTO tags
+            (family_id, name, display_name_fr, display_name_en)
+        VALUES (?, ?, ?, ?)
+        """,
+        (family_id, name, display_name, display_name),
     )
     row = conn.execute(
         "SELECT id FROM tags WHERE family_id = ? AND name = ?", (family_id, name)
@@ -487,8 +813,12 @@ def _resolve_category(conn: sqlite3.Connection, name: str | None) -> int | None:
     display_name = name.replace("-", " ").title()
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) FROM categories").fetchone()[0]
     cur = conn.execute(
-        "INSERT INTO categories (name, display_name, sort_order) VALUES (?, ?, ?)",
-        (name, display_name, max_order + 1),
+        """
+        INSERT INTO categories
+            (name, display_name_fr, display_name_en, sort_order)
+        VALUES (?, ?, ?, ?)
+        """,
+        (name, display_name, display_name, max_order + 1),
     )
     return int(cur.lastrowid) if cur.lastrowid else None
 
@@ -523,7 +853,7 @@ def update_recipe_manual(recipe_id: int, data: dict[str, object]) -> bool:
         if not row:
             return False
 
-        ingredients_json = json.dumps(data.get("ingredients", []))
+        payload_fr, payload_en = _extract_translation_payload(data)
         category_id = _resolve_category(
             conn, str(data["category"]) if data.get("category") else None
         )
@@ -534,22 +864,19 @@ def update_recipe_manual(recipe_id: int, data: dict[str, object]) -> bool:
         conn.execute(
             """
             UPDATE recipes SET
-                title=?, description=?, ingredients=?, instructions=?,
                 servings=?, category_id=?, source_url=?,
                 manually_edited=1, updated_at=CURRENT_TIMESTAMP
             WHERE id=?
-        """,
+            """,
             (
-                data["title"],
-                data.get("description"),
-                ingredients_json,
-                data.get("instructions"),
                 servings,
                 category_id,
                 data.get("source_url"),
                 recipe_id,
             ),
         )
+        _upsert_translation(conn, recipe_id, "fr", payload_fr)
+        _upsert_translation(conn, recipe_id, "en", payload_en)
         return True
 
 
@@ -565,7 +892,7 @@ def update_recipe_category(recipe_id: int, category: str | None) -> bool:
             UPDATE recipes SET category_id=?, manually_edited=1,
                    updated_at=CURRENT_TIMESTAMP
             WHERE id=?
-        """,
+            """,
             (category_id, recipe_id),
         )
         return True
@@ -597,7 +924,7 @@ def bulk_update_category(recipe_ids: list[int], category: str | None) -> int:
             UPDATE recipes SET category_id=?, manually_edited=1,
                    updated_at=CURRENT_TIMESTAMP
             WHERE id IN ({placeholders})
-        """,
+            """,
             (category_id, *recipe_ids),
         )
         return cur.rowcount
@@ -652,7 +979,7 @@ def bulk_update_tags(
                 f"""
                 INSERT OR IGNORE INTO recipe_tags (recipe_id, tag_id)
                 SELECT r.id, ? FROM recipes r WHERE r.id IN ({placeholders})
-            """,
+                """,
                 (tag_id, *recipe_ids),
             )
         if remove_ids:
@@ -661,7 +988,7 @@ def bulk_update_tags(
                 f"""
                 DELETE FROM recipe_tags
                 WHERE tag_id IN ({tag_placeholders}) AND recipe_id IN ({placeholders})
-            """,
+                """,
                 (*remove_ids, *recipe_ids),
             )
 
@@ -672,26 +999,34 @@ def bulk_update_tags(
             f"""
             UPDATE recipes SET manually_edited=1, updated_at=CURRENT_TIMESTAMP
             WHERE id IN ({placeholders})
-        """,
+            """,
             (*recipe_ids,),
         )
         return len(recipe_ids)
 
 
-def get_recipe(recipe_id: int) -> dict[str, object] | None:
+# ---------------------------------------------------------------------------
+# Recipe read helpers
+# ---------------------------------------------------------------------------
+
+
+def get_recipe(recipe_id: int, lang: str = DEFAULT_LANGUAGE) -> dict[str, object] | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if row is None:
             return None
 
         result: dict[str, object] = dict(row)
-        result["ingredients"] = json.loads(str(result.get("ingredients") or "[]"))
+
+        translation = _load_translation(conn, recipe_id, lang)
+        result.update(translation)
+        result["title"] = translation["title"]  # backwards compat for templates
 
         cat_row = conn.execute(
-            "SELECT id, name, display_name FROM categories WHERE id = ?",
+            "SELECT * FROM categories WHERE id = ?",
             (result.get("category_id"),),
         ).fetchone()
-        result["category"] = dict(cat_row) if cat_row else None
+        result["category"] = _localize_category(cat_row, lang) if cat_row else None
 
         pc_row = conn.execute(
             "SELECT id, name FROM dropbox_connections WHERE id = ?",
@@ -705,28 +1040,30 @@ def get_recipe(recipe_id: int) -> dict[str, object] | None:
 
         tag_rows = conn.execute(
             """
-            SELECT tf.name AS family, tf.display_name AS family_display_name,
-                   t.id, t.name, t.display_name
+            SELECT tf.name AS family,
+                   tf.display_name_fr AS family_display_name_fr,
+                   tf.display_name_en AS family_display_name_en,
+                   t.id, t.name,
+                   t.display_name_fr, t.display_name_en
             FROM recipe_tags rt
             JOIN tags t ON rt.tag_id = t.id
             JOIN tag_families tf ON t.family_id = tf.id
             WHERE rt.recipe_id = ?
-            ORDER BY tf.sort_order, t.display_name
-        """,
+            ORDER BY tf.sort_order, t.display_name_fr
+            """,
             (recipe_id,),
         ).fetchall()
 
+        family_col = "family_display_name_en" if lang == "en" else "family_display_name_fr"
         tags_grouped: dict[str, dict[str, Any]] = {}
         for tr in tag_rows:
             fam = tr["family"]
             if fam not in tags_grouped:
                 tags_grouped[fam] = {
-                    "family_display_name": tr["family_display_name"],
+                    "family_display_name": tr[family_col],
                     "tags": [],
                 }
-            tags_grouped[fam]["tags"].append(
-                {"id": tr["id"], "name": tr["name"], "display_name": tr["display_name"]}
-            )
+            tags_grouped[fam]["tags"].append(_localize_tag(tr, lang))
         result["tags"] = tags_grouped
 
         result["images"] = get_recipe_images(recipe_id)
@@ -734,6 +1071,28 @@ def get_recipe(recipe_id: int) -> dict[str, object] | None:
         return result
 
 
+def _load_translation(conn: sqlite3.Connection, recipe_id: int, lang: str) -> dict[str, object]:
+    """Return the translation for `lang`, falling back to the other language."""
+    row = conn.execute(
+        "SELECT title, description, instructions, ingredients "
+        "FROM recipe_translations WHERE recipe_id = ? AND lang = ?",
+        (recipe_id, lang),
+    ).fetchone()
+    if row is not None:
+        return _localize_recipe_translation(row)
+    fallback = conn.execute(
+        "SELECT title, description, instructions, ingredients "
+        "FROM recipe_translations WHERE recipe_id = ? AND lang = ?",
+        (recipe_id, "fr" if lang == "en" else "en"),
+    ).fetchone()
+    if fallback is not None:
+        return _localize_recipe_translation(fallback)
+    return _localize_recipe_translation(None)
+
+
+# French-only stop-words for FTS (matches the previous behavior). FTS is shared
+# across languages; users may still type French words against English recipes
+# and benefit from partial matches.
 _FTS_STOPWORDS = frozenset(
     [
         "le",
@@ -810,12 +1169,14 @@ def search_recipes(
     tag_ids: list[int] | None = None,
     category_id: int | None = None,
     connection_id: int | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> list[dict[str, object]]:
     """Recherche de recettes.
 
     `connection_id` filtre par compte Dropbox d'origine ; la valeur sentinelle
     DEFAULT_ACCOUNT_ID sélectionne les recettes du compte par défaut (.env).
     Les recettes issues de connexions masquées sont toujours exclues.
+    Les champs textuels sont retournés dans la langue `lang`.
     """
     if tag_ids is None:
         tag_ids = []
@@ -833,15 +1194,13 @@ def search_recipes(
             fts_q = _fts_query(query)
             if fts_q:
                 conditions.append(
-                    "r.id IN (SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH ?)"
+                    "r.id IN (SELECT (rowid / 2) FROM recipes_fts WHERE recipes_fts MATCH ?)"
                 )
                 params.append(fts_q)
             else:
-                # Saisie non vide mais sans mot exploitable (ponctuation seule)
                 conditions.append("0")
 
         if tag_ids:
-            # Group tags by family for OR-within-family, AND-between-families logic
             tag_to_family: dict[int, int] = {}
             for tid in tag_ids:
                 row = conn.execute("SELECT family_id FROM tags WHERE id = ?", (tid,)).fetchone()
@@ -852,7 +1211,6 @@ def search_recipes(
             for tid, fid in tag_to_family.items():
                 families.setdefault(fid, []).append(tid)
 
-            # For each family, create an OR condition (recipe has ANY tag from this family)
             for _fid, tids in families.items():
                 placeholders = ", ".join("?" for _ in tids)
                 conditions.append(
@@ -874,25 +1232,30 @@ def search_recipes(
 
         rows = conn.execute(
             f"""
-            SELECT r.*, c.name AS category_name, c.display_name AS category_display_name,
+            SELECT r.*, c.name AS category_name,
+                   c.display_name_fr AS category_display_name_fr,
+                   c.display_name_en AS category_display_name_en,
                    pc.id AS provenance_id, pc.name AS provenance_name
             FROM recipes r
             LEFT JOIN categories c ON r.category_id = c.id
             LEFT JOIN dropbox_connections pc ON pc.id = r.connection_id
             {where}
             ORDER BY r.updated_at DESC
-        """,
+            """,
             params,
         ).fetchall()
 
         results = []
+        cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
+            translation = _load_translation(conn, int(row["id"]), lang)
             d: dict[str, object] = dict(row)
-            d["ingredients"] = json.loads(str(d.get("ingredients") or "[]"))
+            d.update(translation)
+            d["title"] = translation["title"]
             if d.get("category_name"):
                 d["category"] = {
                     "name": d["category_name"],
-                    "display_name": d["category_display_name"],
+                    "display_name": d[cat_col],
                 }
             else:
                 d["category"] = None
@@ -904,84 +1267,97 @@ def search_recipes(
 
             tag_rows = conn.execute(
                 """
-                SELECT t.id, t.name, t.display_name, tf.name AS family
+                SELECT t.id, t.name,
+                       t.display_name_fr, t.display_name_en,
+                       tf.name AS family
                 FROM recipe_tags rt
                 JOIN tags t ON rt.tag_id = t.id
                 JOIN tag_families tf ON t.family_id = tf.id
                 WHERE rt.recipe_id = ?
-                ORDER BY tf.sort_order, t.display_name
-            """,
+                ORDER BY tf.sort_order, t.display_name_fr
+                """,
                 (row["id"],),
             ).fetchall()
-            d["tags"] = [dict(tr) for tr in tag_rows]
+            d["tags"] = [_localize_tag(tr, lang) | {"family": tr["family"]} for tr in tag_rows]
 
-            d["images"] = get_recipe_images(row["id"])
+            d["images"] = get_recipe_images(int(row["id"]))
 
             results.append(d)
 
         return results
 
 
-def get_all_tags_grouped() -> dict[str, dict[str, Any]]:
+def get_all_tags_grouped(lang: str = DEFAULT_LANGUAGE) -> dict[str, dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT tf.name AS family, tf.display_name AS family_display_name,
-                   t.id, t.name, t.display_name
+            SELECT tf.name AS family,
+                   tf.display_name_fr AS family_display_name_fr,
+                   tf.display_name_en AS family_display_name_en,
+                   t.id, t.name,
+                   t.display_name_fr, t.display_name_en
             FROM tags t
             JOIN tag_families tf ON t.family_id = tf.id
             JOIN recipe_tags rt ON t.id = rt.tag_id
             GROUP BY t.id
-            ORDER BY tf.sort_order, t.display_name
-        """
+            ORDER BY tf.sort_order, t.display_name_fr
+            """
         ).fetchall()
 
+    family_col = "family_display_name_en" if lang == "en" else "family_display_name_fr"
     result: dict[str, dict[str, Any]] = {}
     for row in rows:
         fam = row["family"]
         if fam not in result:
             result[fam] = {
-                "display_name": row["family_display_name"],
+                "display_name": row[family_col],
                 "tags": [],
             }
-        result[fam]["tags"].append(
-            {"id": row["id"], "name": row["name"], "display_name": row["display_name"]}
-        )
+        result[fam]["tags"].append(_localize_tag(row, lang))
     return result
 
 
-def get_all_categories(only_used: bool = True) -> list[dict[str, object]]:
+def get_all_categories(
+    only_used: bool = True, lang: str = DEFAULT_LANGUAGE
+) -> list[dict[str, object]]:
     with get_conn() as conn:
         if only_used:
             rows = conn.execute(
                 """
-                SELECT DISTINCT c.id, c.name, c.display_name
+                SELECT DISTINCT c.id, c.name,
+                       c.display_name_fr, c.display_name_en
                 FROM categories c
                 JOIN recipes r ON c.id = r.category_id
                 ORDER BY c.sort_order
-            """
+                """
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, name, display_name FROM categories ORDER BY sort_order"
+                "SELECT id, name, display_name_fr, display_name_en "
+                "FROM categories ORDER BY sort_order"
             ).fetchall()
-    return [dict(r) for r in rows]
+    return [_localize_category(r, lang) for r in rows]
 
 
-def get_existing_tags_for_prompt() -> dict[str, list[dict[str, object]]]:
+def get_existing_tags_for_prompt(
+    lang: str = DEFAULT_LANGUAGE,
+) -> dict[str, list[dict[str, object]]]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT tf.name AS family, t.name, t.display_name, t.parent_id,
+            SELECT tf.name AS family,
+                   t.name, t.display_name_fr, t.display_name_en,
+                   t.parent_id,
                    p.name AS parent_name
             FROM tags t
             JOIN tag_families tf ON t.family_id = tf.id
             LEFT JOIN tags p ON t.parent_id = p.id
-            ORDER BY tf.sort_order, t.display_name
-        """
+            ORDER BY tf.sort_order, t.display_name_fr
+            """
         ).fetchall()
 
     result: dict[str, list[dict[str, object]]] = {}
+    tag_col = "display_name_en" if lang == "en" else "display_name_fr"
     for row in rows:
         fam = row["family"]
         if fam not in result:
@@ -989,19 +1365,19 @@ def get_existing_tags_for_prompt() -> dict[str, list[dict[str, object]]]:
         result[fam].append(
             {
                 "name": row["name"],
-                "display_name": row["display_name"],
+                "display_name": row[tag_col],
                 "parent_name": row["parent_name"],
             }
         )
     return result
 
 
-def get_tag_families() -> list[dict[str, object]]:
+def get_tag_families(lang: str = DEFAULT_LANGUAGE) -> list[dict[str, object]]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT name, display_name FROM tag_families ORDER BY sort_order"
+            "SELECT name, display_name_fr, display_name_en FROM tag_families ORDER BY sort_order"
         ).fetchall()
-    return [{"name": r["name"], "display_name": r["display_name"]} for r in rows]
+    return [_localize_family(r, lang) for r in rows]
 
 
 def mark_processed(path: str, file_hash: str) -> None:
@@ -1010,7 +1386,7 @@ def mark_processed(path: str, file_hash: str) -> None:
             """
             INSERT INTO processed_files (path, file_hash) VALUES (?, ?)
             ON CONFLICT(path) DO UPDATE SET file_hash=excluded.file_hash, processed_at=CURRENT_TIMESTAMP
-        """,
+            """,
             (path, file_hash),
         )
 
@@ -1088,51 +1464,60 @@ def get_user_favorite_ids(user_id: int) -> set[int]:
         return {int(r["recipe_id"]) for r in rows}
 
 
-def get_favorite_recipes(user_id: int) -> list[dict[str, object]]:
+def get_favorite_recipes(user_id: int, lang: str = DEFAULT_LANGUAGE) -> list[dict[str, object]]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT r.*, c.name AS category_name, c.display_name AS category_display_name
+            SELECT r.*, c.name AS category_name,
+                   c.display_name_fr AS category_display_name_fr,
+                   c.display_name_en AS category_display_name_en
             FROM favorites f
             JOIN recipes r ON f.recipe_id = r.id
             LEFT JOIN categories c ON r.category_id = c.id
             WHERE f.user_id = ?
             ORDER BY f.created_at DESC
-        """,
+            """,
             (user_id,),
         ).fetchall()
 
         results = []
+        cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
+            translation = _load_translation(conn, int(row["id"]), lang)
             d: dict[str, object] = dict(row)
-            d["ingredients"] = json.loads(str(d.get("ingredients") or "[]"))
+            d.update(translation)
+            d["title"] = translation["title"]
             if d.get("category_name"):
                 d["category"] = {
                     "name": d["category_name"],
-                    "display_name": d["category_display_name"],
+                    "display_name": d[cat_col],
                 }
             else:
                 d["category"] = None
 
             tag_rows = conn.execute(
                 """
-                SELECT t.id, t.name, t.display_name, tf.name AS family
+                SELECT t.id, t.name,
+                       t.display_name_fr, t.display_name_en,
+                       tf.name AS family
                 FROM recipe_tags rt
                 JOIN tags t ON rt.tag_id = t.id
                 JOIN tag_families tf ON t.family_id = tf.id
                 WHERE rt.recipe_id = ?
-                ORDER BY tf.sort_order, t.display_name
-            """,
+                ORDER BY tf.sort_order, t.display_name_fr
+                """,
                 (row["id"],),
             ).fetchall()
-            d["tags"] = [dict(tr) for tr in tag_rows]
-            d["images"] = get_recipe_images(row["id"])
+            d["tags"] = [_localize_tag(tr, lang) | {"family": tr["family"]} for tr in tag_rows]
+            d["images"] = get_recipe_images(int(row["id"]))
             results.append(d)
 
         return results
 
 
-def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
+def get_all_recipes_admin(
+    filter: str = "", lang: str = DEFAULT_LANGUAGE
+) -> list[dict[str, object]]:
     where = ""
     if filter == "no_tags":
         where = "WHERE NOT EXISTS (SELECT 1 FROM recipe_tags rt WHERE rt.recipe_id = r.id)"
@@ -1142,27 +1527,35 @@ def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
     with get_conn() as conn:
         rows = conn.execute(
             f"""
-            SELECT r.id, r.title, r.source_file, r.created_at, r.updated_at,
+            SELECT r.id, r.source_file, r.created_at, r.updated_at,
                    r.file_modified_at, r.manually_edited,
                    (SELECT COUNT(*) FROM favorites f WHERE f.recipe_id = r.id)
                        AS favorite_count,
-                   c.name AS category_name, c.display_name AS category_display_name,
+                   c.name AS category_name,
+                   c.display_name_fr AS category_display_name_fr,
+                   c.display_name_en AS category_display_name_en,
                    pc.name AS provenance
             FROM recipes r
             LEFT JOIN categories c ON r.category_id = c.id
             LEFT JOIN dropbox_connections pc ON pc.id = r.connection_id
             {where}
             ORDER BY r.created_at DESC
-        """
+            """
         ).fetchall()
 
         results = []
+        cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
+            translation = _load_translation(conn, int(row["id"]), lang)
             d: dict[str, object] = dict(row)
+            d["title"] = translation["title"]
+            d["description"] = translation["description"]
+            d["instructions"] = translation["instructions"]
+            d["ingredients"] = translation["ingredients"]
             if d.get("category_name"):
                 d["category"] = {
                     "name": d["category_name"],
-                    "display_name": d["category_display_name"],
+                    "display_name": d[cat_col],
                 }
             else:
                 d["category"] = None
@@ -1170,16 +1563,18 @@ def get_all_recipes_admin(filter: str = "") -> list[dict[str, object]]:
 
             tag_rows = conn.execute(
                 """
-                SELECT t.id, t.name, t.display_name, tf.name AS family
+                SELECT t.id, t.name,
+                       t.display_name_fr, t.display_name_en,
+                       tf.name AS family
                 FROM recipe_tags rt
                 JOIN tags t ON rt.tag_id = t.id
                 JOIN tag_families tf ON t.family_id = tf.id
                 WHERE rt.recipe_id = ?
-                ORDER BY tf.sort_order, t.display_name
-            """,
+                ORDER BY tf.sort_order, t.display_name_fr
+                """,
                 (row["id"],),
             ).fetchall()
-            d["tags"] = [dict(tr) for tr in tag_rows]
+            d["tags"] = [_localize_tag(tr, lang) | {"family": tr["family"]} for tr in tag_rows]
             results.append(d)
 
         return results
@@ -1198,7 +1593,7 @@ def blacklist_and_delete_recipe(recipe_id: int) -> str | None:
             """
             INSERT INTO blacklist (path) VALUES (?)
             ON CONFLICT(path) DO UPDATE SET blacklisted_at=CURRENT_TIMESTAMP
-        """,
+            """,
             (source_file,),
         )
         return source_file
@@ -1249,7 +1644,7 @@ def record_failed_file(path: str, error: str) -> None:
             """
             INSERT INTO failed_files (path, error) VALUES (?, ?)
             ON CONFLICT(path) DO UPDATE SET error=excluded.error, failed_at=CURRENT_TIMESTAMP
-        """,
+            """,
             (path, error),
         )
 
@@ -1291,11 +1686,7 @@ def add_dropbox_connection(
     folder: str = "",
     file_filter: str = "",
 ) -> int | None:
-    """Insère une nouvelle connexion Dropbox. Retourne None si le nom existe déjà.
-
-    Les identifiants d'application (app key/secret) sont partagés avec le
-    compte par défaut et proviennent de l'environnement.
-    """
+    """Insère une nouvelle connexion Dropbox. Retourne None si le nom existe déjà."""
     with get_conn() as conn:
         existing = conn.execute(
             "SELECT id FROM dropbox_connections WHERE name = ?", (name,)
@@ -1307,7 +1698,7 @@ def add_dropbox_connection(
             INSERT INTO dropbox_connections
                 (name, refresh_token, folder, file_filter)
             VALUES (?, ?, ?, ?)
-        """,
+            """,
             (name, refresh_token, folder, file_filter),
         )
         assert cur.lastrowid is not None
@@ -1325,12 +1716,7 @@ def get_dropbox_connection_credentials(connection_id: int) -> dict[str, object] 
 
 
 def delete_dropbox_connection(connection_id: int) -> bool:
-    """Supprime une connexion et toutes ses recettes associees.
-
-    Les recettes du compte (et leurs images/etiquettes), ainsi que les entrees
-    de traitement (fichiers traites, en erreur, blacklistes) sont supprimees :
-    re-ajouter la connexion repartira de zero.
-    """
+    """Supprime une connexion et toutes ses recettes associees."""
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id FROM dropbox_connections WHERE id = ?", (connection_id,)
@@ -1367,7 +1753,7 @@ def set_dropbox_connection_visible(connection_id: int, visible: bool) -> None:
 # App settings (key/value) — used for the default (.env) Dropbox account flags
 # ---------------------------------------------------------------------------
 
-DEFAULT_ACCOUNT_ID = -1  # sentinel: recipes with connection_id IS NULL
+DEFAULT_ACCOUNT_ID = -1
 DEFAULT_ACCOUNT_NAME = "Défaut"
 
 
@@ -1383,7 +1769,7 @@ def set_setting(key: str, value: str) -> None:
             """
             INSERT INTO app_settings (key, value) VALUES (?, ?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value
-        """,
+            """,
             (key, value),
         )
 
@@ -1410,11 +1796,7 @@ def set_default_account_visible(visible: bool) -> None:
 
 
 def get_recipe_provenances() -> list[dict[str, object]]:
-    """Liste des comptes Dropbox ayant au moins une recette visible.
-
-    Le compte par défaut (.env) apparaît sous DEFAULT_ACCOUNT_ID s'il a des
-    recettes. Les connexions masquées sont exclues.
-    """
+    """Liste des comptes Dropbox ayant au moins une recette visible."""
     with get_conn() as conn:
         rows = conn.execute(
             f"""
@@ -1433,6 +1815,6 @@ def get_recipe_provenances() -> list[dict[str, object]]:
                   {int(is_default_account_visible())} = 1
 
             ORDER BY name
-        """
+            """
         ).fetchall()
         return [dict(r) for r in rows if r["count"] > 0]

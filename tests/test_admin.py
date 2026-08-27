@@ -278,12 +278,20 @@ class TestPollerManualEditCheck:
             patch(
                 "recipes.poller.tag_recipe",
                 return_value={
-                    "title": "Poulet Rôti",
-                    "description": None,
-                    "ingredients": [],
-                    "instructions": None,
-                    "category": None,
+                    "lang_fr": {
+                        "title": "Poulet Rôti",
+                        "description": None,
+                        "ingredients": [],
+                        "instructions": None,
+                    },
+                    "lang_en": {
+                        "title": "Poulet Rôti",
+                        "description": None,
+                        "ingredients": [],
+                        "instructions": None,
+                    },
                     "tags": {},
+                    "category": None,
                     "source_url": None,
                 },
             ) as mock_tag,

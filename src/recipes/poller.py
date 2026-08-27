@@ -471,7 +471,7 @@ def process_file(
         remove_failed_file(path)
 
     log.info(
-        f"  Saved recipe #{recipe_id}: '{structured['title']}' "
+        f"  Saved recipe #{recipe_id}: '{structured['lang_fr']['title']}' "  # type: ignore[index]
         f"| category: {structured.get('category')} "
         f"| tags: {structured.get('tags', {})} "
         f"| source_url: {structured.get('source_url')} "

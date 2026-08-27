@@ -176,3 +176,87 @@ class TestFormatIngredientConversion:
     def test_invalid_system_falls_back_to_original(self):
         ing = {"food": "eau", "quantity_min": 1, "quantity_max": None, "unit": "tasse"}
         assert format_ingredient(ing, systeme="bogus") == "1 tasse d'eau"
+
+
+class TestFormatIngredientEnglish:
+    """Localized display in English: cup / cups, tbsp / tsp, of."""
+
+    def test_simple_unit_singular(self):
+        ing = {"food": "flour", "quantity_min": 1, "quantity_max": None, "unit": "tasse"}
+        assert format_ingredient(ing, lang="en") == "1 cup of flour"
+
+    def test_simple_unit_plural(self):
+        ing = {"food": "flour", "quantity_min": 1.5, "quantity_max": None, "unit": "tasse"}
+        assert format_ingredient(ing, lang="en") == "1 1/2 cups of flour"
+
+    def test_tbsp_short_form_invariant(self):
+        ing = {"food": "soy sauce", "quantity_min": 2, "quantity_max": None, "unit": "c. à soupe"}
+        assert format_ingredient(ing, lang="en") == "2 tbsp of soy sauce"
+
+    def test_tsp_short_form_invariant(self):
+        ing = {"food": "salt", "quantity_min": 1, "quantity_max": None, "unit": "c. à thé"}
+        assert format_ingredient(ing, lang="en") == "1 tsp of salt"
+
+    def test_english_alias_input(self):
+        # LLM may emit English aliases; they map to the same canonical key.
+        ing = {"food": "flour", "quantity_min": 1, "quantity_max": None, "unit": "cup"}
+        assert format_ingredient(ing, lang="en") == "1 cup of flour"
+
+    def test_tbsp_alias_input(self):
+        ing = {"food": "butter", "quantity_min": 2, "quantity_max": None, "unit": "tbsp"}
+        assert format_ingredient(ing, lang="en") == "2 tbsp of butter"
+
+    def test_no_elision(self):
+        # English has no elision after a vowel.
+        ing = {"food": "oil", "quantity_min": 2, "quantity_max": None, "unit": "c. à soupe"}
+        assert format_ingredient(ing, lang="en") == "2 tbsp of oil"
+
+    def test_no_unit_just_quantity(self):
+        ing = {"food": "eggs", "quantity_min": 3, "quantity_max": None, "unit": None}
+        assert format_ingredient(ing, lang="en") == "3 eggs"
+
+    def test_no_quantity(self):
+        ing = {"food": "salt to taste", "quantity_min": None, "quantity_max": None, "unit": None}
+        assert format_ingredient(ing, lang="en") == "salt to taste"
+
+    def test_range(self):
+        ing = {"food": "flour", "quantity_min": 1, "quantity_max": 2, "unit": "tasse"}
+        assert format_ingredient(ing, lang="en") == "1 to 2 cups of flour"
+
+    def test_unknown_unit_passthrough_en_singular(self):
+        ing = {"food": "garlic", "quantity_min": 1, "quantity_max": None, "unit": "gousse"}
+        assert format_ingredient(ing, lang="en") == "1 gousse of garlic"
+
+    def test_unknown_unit_passthrough_en_plural(self):
+        ing = {"food": "garlic", "quantity_min": 3, "quantity_max": None, "unit": "gousse"}
+        # "gousse" n'est pas une unité canonique, mais en anglais on applique
+        # un pluriel basique (-es sur les sibilantes) pour rester lisible.
+        assert format_ingredient(ing, lang="en") == "3 gousses of garlic"
+
+    def test_metric_to_imperial(self):
+        ing = {"food": "ground beef", "quantity_min": 450, "quantity_max": None, "unit": "g"}
+        assert format_ingredient(ing, systeme="imperial", lang="en") == "1 lb of ground beef"
+
+    def test_imperial_to_metric(self):
+        ing = {"food": "water", "quantity_min": 1, "quantity_max": None, "unit": "tasse"}
+        assert format_ingredient(ing, systeme="metric", lang="en") == "250 ml of water"
+
+    def test_metric_volume_to_imperial(self):
+        ing = {"food": "soy sauce", "quantity_min": 15, "quantity_max": None, "unit": "ml"}
+        assert format_ingredient(ing, systeme="imperial", lang="en") == "1 tbsp of soy sauce"
+
+    def test_elision_french_still_works(self):
+        """Default language (fr) keeps the elision rules."""
+        ing = {
+            "food": "huile d'olive",
+            "quantity_min": 2,
+            "quantity_max": None,
+            "unit": "c. à soupe",
+        }
+        assert format_ingredient(ing) == "2 c. à soupe d'huile d'olive"
+
+    def test_unknown_unit_pluralization_fr(self):
+        ing = {"food": "ail", "quantity_min": 1, "quantity_max": None, "unit": "gousse"}
+        assert format_ingredient(ing) == "1 gousse d'ail"
+        ing["quantity_min"] = 3
+        assert format_ingredient(ing) == "3 gousses d'ail"

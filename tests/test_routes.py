@@ -266,3 +266,129 @@ def test_recipe_detail_invalid_id_returns_422(client):
 def test_recipe_detail_negative_id_returns_422(client):
     resp = client.get("/recipe/-1")
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Localized ingredient rendering (units + preposition)
+# ---------------------------------------------------------------------------
+_EN_SAMPLE_INGREDIENTS_FR = [
+    {"food": "poulet", "quantity_min": 1, "quantity_max": None, "unit": None},
+    {"food": "ail", "quantity_min": 3, "quantity_max": None, "unit": "gousse"},
+    {"food": "beurre", "quantity_min": 50, "quantity_max": None, "unit": "g"},
+]
+_EN_SAMPLE_INGREDIENTS_EN = [
+    {"food": "chicken", "quantity_min": 1, "quantity_max": None, "unit": None},
+    {"food": "garlic", "quantity_min": 3, "quantity_max": None, "unit": "clove"},
+    {"food": "butter", "quantity_min": 50, "quantity_max": None, "unit": "g"},
+]
+
+
+def _insert_bilingual_recipe(source_file: str, file_hash: str) -> int:
+    data = {
+        "lang_fr": {
+            "title": "Poulet Rôti",
+            "description": "Simple French roast chicken.",
+            "instructions": "Season. Roast at 200°C for 1 hour.",
+            "ingredients": _EN_SAMPLE_INGREDIENTS_FR,
+        },
+        "lang_en": {
+            "title": "Roast Chicken",
+            "description": "Simple French roast chicken.",
+            "instructions": "Season. Roast at 200°C for 1 hour.",
+            "ingredients": _EN_SAMPLE_INGREDIENTS_EN,
+        },
+        "category": "plat-principal",
+        "tags": {"origin": ["francais"], "protein": ["poulet"], "cooking_method": ["roti"]},
+        "source_file": source_file,
+        "file_hash": file_hash,
+    }
+    recipe_id = upsert_recipe(data)
+    sync_recipe_tags(recipe_id, data["tags"])
+    return recipe_id
+
+
+def test_recipe_detail_en_uses_english_units_and_preposition(client):
+    recipe_id = _insert_bilingual_recipe("/r/en1.docx", "en1")
+    resp = client.get(f"/recipe/{recipe_id}", cookies={"lang": "en"})
+    page = _page(resp)
+    assert resp.status_code == 200
+    assert "3 cloves of garlic" in page
+    assert "50 g of butter" in page
+    assert "1 chicken" in page
+
+
+def test_recipe_detail_en_imperial_units(client):
+    recipe_id = _insert_bilingual_recipe("/r/en2.docx", "en2")
+    resp = client.get(f"/recipe/{recipe_id}?units=imperial", cookies={"lang": "en"})
+    page = _page(resp)
+    assert "1 3/4 oz of butter" in page
+
+
+def test_recipe_detail_fr_keeps_french_units(client):
+    """The same recipe rendered in French still shows French units and d' elision."""
+    recipe_id = _insert_bilingual_recipe("/r/en3.docx", "en3")
+    page = _page(client.get(f"/recipe/{recipe_id}"))
+    assert "3 gousses d'ail" in page
+    assert "50 g de beurre" in page
+
+
+def test_recipe_detail_en_tbsp_unit(client):
+    data = {
+        "lang_fr": {
+            "title": "Vinaigrette",
+            "description": "",
+            "instructions": "",
+            "ingredients": [
+                {"food": "huile", "quantity_min": 3, "quantity_max": None, "unit": "c. à soupe"},
+            ],
+        },
+        "lang_en": {
+            "title": "Vinaigrette",
+            "description": "",
+            "instructions": "",
+            "ingredients": [
+                {"food": "oil", "quantity_min": 3, "quantity_max": None, "unit": "c. à soupe"},
+            ],
+        },
+        "category": "sauce",
+        "tags": {},
+        "source_file": "/r/vinaigrette.docx",
+        "file_hash": "vinaigrette",
+    }
+    recipe_id = upsert_recipe(data)
+    fr = _page(client.get(f"/recipe/{recipe_id}"))
+    en = _page(client.get(f"/recipe/{recipe_id}", cookies={"lang": "en"}))
+    assert "3 c. à soupe d'huile" in fr
+    assert "3 tbsp of oil" in en
+
+
+def test_recipe_detail_en_with_cup_unit(client):
+    data = {
+        "lang_fr": {
+            "title": "Crêpes",
+            "description": "",
+            "instructions": "",
+            "ingredients": [
+                {"food": "farine", "quantity_min": 1, "quantity_max": None, "unit": "tasse"},
+                {"food": "lait", "quantity_min": 2, "quantity_max": None, "unit": "tasse"},
+            ],
+        },
+        "lang_en": {
+            "title": "Pancakes",
+            "description": "",
+            "instructions": "",
+            "ingredients": [
+                {"food": "flour", "quantity_min": 1, "quantity_max": None, "unit": "tasse"},
+                {"food": "milk", "quantity_min": 2, "quantity_max": None, "unit": "tasse"},
+            ],
+        },
+        "category": "dessert",
+        "tags": {},
+        "source_file": "/r/crepes.docx",
+        "file_hash": "crepes",
+    }
+    recipe_id = upsert_recipe(data)
+    resp = client.get(f"/recipe/{recipe_id}", cookies={"lang": "en"})
+    page = _page(resp)
+    assert "1 cup of flour" in page
+    assert "2 cups of milk" in page
