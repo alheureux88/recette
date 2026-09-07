@@ -659,6 +659,19 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
     background: transparent;
 }
 
+.instruction-timer-btn--minus,
+.instruction-timer-btn--plus {
+    background: var(--surface-alt);
+    font-weight: 600;
+    min-width: 3rem;
+}
+
+.instruction-timer-btn--minus:hover,
+.instruction-timer-btn--plus:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
 /* Ingredient scaling controls (portions / unités) */
 .ingredient-controls {
     display: flex;

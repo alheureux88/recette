@@ -93,6 +93,8 @@
                             <div class="instruction-timer-controls">
                                 <button type="button" class="instruction-timer-btn instruction-timer-btn--start" data-role="start-pause">{{ _('cook.timer_start') }}</button>
                                 <button type="button" class="instruction-timer-btn instruction-timer-btn--reset" data-role="reset">{{ _('cook.timer_reset') }}</button>
+                                <button type="button" class="instruction-timer-btn instruction-timer-btn--minus" data-role="minus">-1m</button>
+                                <button type="button" class="instruction-timer-btn instruction-timer-btn--plus" data-role="plus">+1m</button>
                             </div>
                         </div>
                         {% endif %}
@@ -315,6 +317,16 @@
             saveTimerStates();
         }
 
+        function adjustTimer(t, deltaSeconds) {
+            t.remainingSeconds = Math.max(0, t.remainingSeconds + deltaSeconds);
+            t.remainingEl.textContent = formatTime(t.remainingSeconds);
+            if (t.remainingSeconds > 0) {
+                t.el.classList.remove('instruction-timer--done');
+                t.doneNotified = false;
+            }
+            saveTimerStates();
+        }
+
         function restoreTimer(idx, state) {
             var t = timers[idx];
             if (!t) return;
@@ -345,6 +357,8 @@
             var remainingEl = el.querySelector('[data-role="remaining"]');
             var startPauseBtn = el.querySelector('[data-role="start-pause"]');
             var resetBtn = el.querySelector('[data-role="reset"]');
+            var minusBtn = el.querySelector('[data-role="minus"]');
+            var plusBtn = el.querySelector('[data-role="plus"]');
 
             var t = {
                 el: el,
@@ -369,9 +383,23 @@
                 }
             });
 
-            resetBtn.addEventListener('click', function () {
+            resetBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                e.preventDefault();
                 resetTimer(t);
             });
+
+            if (minusBtn) {
+                minusBtn.addEventListener('click', function () {
+                    adjustTimer(t, -60);
+                });
+            }
+
+            if (plusBtn) {
+                plusBtn.addEventListener('click', function () {
+                    adjustTimer(t, 60);
+                });
+            }
 
             return t;
         }
