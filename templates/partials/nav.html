@@ -1,0 +1,20 @@
+{% if auth_enabled %}
+    {% if user %}
+        <a href="/favorites" class="nav-link">{{ _('nav.favorites') }}</a>
+        <div class="nav-user-menu">
+            <button type="button" class="nav-user-toggle" aria-haspopup="menu" aria-expanded="false">
+                <span class="nav-user">{{ user.name or user.sub }}</span>
+                <span class="nav-user-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="nav-user-dropdown" role="menu">
+                {% if is_admin %}
+                <a href="/admin" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_recipes') }}</a>
+                <a href="/admin/config" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_system') }}</a>
+                {% endif %}
+                <a href="{{ logout_url }}" class="nav-dropdown-item" role="menuitem">{{ _('nav.logout') }}</a>
+            </div>
+        </div>
+    {% else %}
+        <a href="{{ login_url }}" class="nav-link nav-login">{{ _('nav.login') }}</a>
+    {% endif %}
+{% endif %}

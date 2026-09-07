@@ -1,0 +1,296 @@
+<div class="reparse-diff">
+    <p>
+        <button type="button" class="btn-cancel" hx-get="/admin" hx-select="#admin-content" hx-target="#admin-content">
+            {{ _('admin.reparse_back') }}
+        </button>
+    </p>
+    <h2 class="admin-section-title">{{ _('admin.reparse_title') }}</h2>
+    <p class="reparse-subtitle">{{ _('admin.reparse_subtitle') }}</p>
+
+    {% if error %}
+    <p class="reparse-error">{{ error }}</p>
+    {% endif %}
+
+    {% if not error %}
+    <div class="reparse-form" data-recipe-id="{{ recipe_id }}">
+        <input type="hidden" name="proposed" value='{{ proposed_json|e }}'>
+
+        <div class="reparse-actions-top">
+            <button type="button" class="btn-cancel" data-reparse-select="1">
+                {{ _('admin.reparse_select_all') }}
+            </button>
+            <button type="button" class="btn-cancel" data-reparse-select="0">
+                {{ _('admin.reparse_unselect_all') }}
+            </button>
+            <span class="reparse-changed-count">
+                {{ diffs | selectattr('changed') | list | length }} / {{ diffs | length }}
+            </span>
+        </div>
+
+        {% if not any_changed %}
+        <p class="reparse-no-changes">{{ _('admin.reparse_no_changes') }}</p>
+        {% endif %}
+
+        <table class="reparse-table">
+            <colgroup>
+                <col class="reparse-col-apply">
+                <col class="reparse-col-label">
+                <col class="reparse-col-side">
+                <col class="reparse-col-resolved">
+                <col class="reparse-col-side">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Champ</th>
+                    <th>{{ _('admin.reparse_current') }}</th>
+                    <th>{{ _('admin.reparse_resolved') }}</th>
+                    <th>{{ _('admin.reparse_proposed') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for d in diffs %}
+                {% set status = 'changed' if d.changed else 'unchanged' %}
+                {% set resolved_value = d.proposed if d.changed else d.current %}
+                {% set is_editable = d.kind in ('text', 'scalar') and d.field_key != 'tags' %}
+                <tr class="reparse-row reparse-row-{{ status }}"
+                    data-field="{{ d.field_key }}"
+                    data-current="{{ d.current | tojson if d.current is not none else '""' }}"
+                    data-proposed="{{ d.proposed | tojson if d.proposed is not none else '""' }}"
+                    data-editable="{{ '1' if is_editable else '0' }}">
+                    <td class="reparse-apply-cell">
+                        <input type="checkbox" name="fields" value="{{ d.field_key }}"
+                               {% if d.changed %}checked{% endif %}
+                               {% if not d.changed %}disabled{% endif %}>
+                    </td>
+                    <td class="reparse-label">
+                        {{ _('admin.reparse_field_' ~ d.field_key) }}
+                        {% if not d.changed %}
+                        <span class="reparse-unchanged-tag">{{ _('admin.reparse_unchanged') }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="reparse-side reparse-side-current">
+                        {% if d.kind == 'text' %}
+                            <div class="reparse-text">{% if d.changed %}{{ d.current_html|safe }}{% else %}{{ d.current or _('admin.reparse_empty_value') }}{% endif %}</div>
+                        {% elif d.kind == 'lines' %}
+                            <div class="reparse-lines">
+                                {% for html in d.current_html %}
+                                <div class="reparse-line reparse-line-{{ d.current_status[loop.index0] }}">{{ html|safe if (d.current_status[loop.index0] == 'modified' and d.changed) else (d.current_lines[loop.index0] or ' ') }}</div>
+                                {% endfor %}
+                            </div>
+                        {% elif d.kind == 'ingredients' %}
+                            <div class="reparse-lines">
+                                {% for html in d.current_html %}
+                                <div class="reparse-line reparse-line-{{ d.current_status[loop.index0] }}">{{ html|safe if (d.current_status[loop.index0] == 'modified' and d.changed) else (d.current_lines[loop.index0] or ' ') }}</div>
+                                {% endfor %}
+                            </div>
+                        {% elif d.kind == 'tags' %}
+                            {% with side='current' %}{% include "partials/admin_reparse_tags_cell.html" %}{% endwith %}
+                        {% elif d.kind == 'scalar' %}
+                            <div class="reparse-text">{% if d.changed %}{{ d.current_html|safe }}{% else %}{{ d.current if d.current is not none and d.current != '' else _('admin.reparse_empty_value') }}{% endif %}</div>
+                        {% endif %}
+                    </td>
+                    <td class="reparse-side reparse-side-resolved">
+                        {% if not d.changed %}
+                            <div class="reparse-resolved-unchanged">{{ _('admin.reparse_unchanged') }}</div>
+                        {% elif is_editable %}
+                            <div class="reparse-resolved-choice">
+                                <label class="reparse-resolved-radio">
+                                    <input type="radio" name="resolved-{{ d.field_key }}" value="original"
+                                           data-reparse-source="original">
+                                    <span>{{ _('admin.reparse_choice_original') }}</span>
+                                </label>
+                                <label class="reparse-resolved-radio">
+                                    <input type="radio" name="resolved-{{ d.field_key }}" value="proposed"
+                                           data-reparse-source="proposed" checked>
+                                    <span>{{ _('admin.reparse_choice_proposed') }}</span>
+                                </label>
+                            </div>
+                            {% if d.field_key in ('title_fr', 'title_en', 'description_fr', 'description_en', 'servings', 'source_url', 'category') %}
+                                {% set multiline = d.field_key.startswith('description_') %}
+                                {% if multiline %}
+                                    <textarea class="reparse-resolved-input"
+                                              name="resolved-value-{{ d.field_key }}"
+                                              rows="2"
+                                              data-reparse-input>{{ resolved_value if resolved_value is not none else '' }}</textarea>
+                                {% else %}
+                                    <input type="text" class="reparse-resolved-input"
+                                           name="resolved-value-{{ d.field_key }}"
+                                           value="{{ resolved_value if resolved_value is not none else '' }}"
+                                           data-reparse-input>
+                                {% endif %}
+                            {% endif %}
+                        {% else %}
+                            <div class="reparse-resolved-choice">
+                                <label class="reparse-resolved-radio">
+                                    <input type="radio" name="resolved-{{ d.field_key }}" value="original"
+                                           data-reparse-source="original">
+                                    <span>{{ _('admin.reparse_choice_original') }}</span>
+                                </label>
+                                <label class="reparse-resolved-radio">
+                                    <input type="radio" name="resolved-{{ d.field_key }}" value="proposed"
+                                           data-reparse-source="proposed" checked>
+                                    <span>{{ _('admin.reparse_choice_proposed') }}</span>
+                                </label>
+                            </div>
+                            <div class="reparse-resolved-preview reparse-text">{{ d.proposed_html|safe if d.kind in ('text', 'lines', 'ingredients') else d.proposed }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="reparse-side reparse-side-proposed">
+                        {% if d.kind == 'text' %}
+                            <div class="reparse-text">{% if d.changed %}{{ d.proposed_html|safe }}{% else %}{{ d.proposed or _('admin.reparse_empty_value') }}{% endif %}</div>
+                        {% elif d.kind == 'lines' %}
+                            <div class="reparse-lines">
+                                {% for html in d.proposed_html %}
+                                <div class="reparse-line reparse-line-{{ d.proposed_status[loop.index0] }}">{{ html|safe if (d.proposed_status[loop.index0] == 'modified' and d.changed) else (d.proposed_lines[loop.index0] or ' ') }}</div>
+                                {% endfor %}
+                            </div>
+                        {% elif d.kind == 'ingredients' %}
+                            <div class="reparse-lines">
+                                {% for html in d.proposed_html %}
+                                <div class="reparse-line reparse-line-{{ d.proposed_status[loop.index0] }}">{{ html|safe if (d.proposed_status[loop.index0] == 'modified' and d.changed) else (d.proposed_lines[loop.index0] or ' ') }}</div>
+                                {% endfor %}
+                            </div>
+                        {% elif d.kind == 'tags' %}
+                            {% with side='proposed' %}{% include "partials/admin_reparse_tags_cell.html" %}{% endwith %}
+                        {% elif d.kind == 'scalar' %}
+                            <div class="reparse-text">{% if d.changed %}{{ d.proposed_html|safe }}{% else %}{{ d.proposed if d.proposed is not none and d.proposed != '' else _('admin.reparse_empty_value') }}{% endif %}</div>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="reparse-actions-bottom">
+            <button type="button" class="btn-restore" data-reparse-apply="selected"
+                    {% if not any_changed %}disabled{% endif %}>
+                {{ _('admin.reparse_apply_selected') }}
+            </button>
+            <button type="button" class="btn-apply" data-reparse-apply="all"
+                    {% if not any_changed %}disabled{% endif %}>
+                {{ _('admin.reparse_apply_all') }}
+            </button>
+            <button type="button" class="btn-cancel"
+                    hx-get="/admin" hx-select="#admin-content" hx-target="#admin-content">
+                {{ _('admin.cancel') }}
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    (function () {
+        var form = document.querySelector(".reparse-form");
+        if (!form || form.__recetteReparseInit) return;
+        form.__recetteReparseInit = true;
+
+        form.querySelectorAll("[data-reparse-select]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var checked = btn.getAttribute("data-reparse-select") === "1";
+                form.querySelectorAll("input[type=checkbox][name=fields]").forEach(function (cb) {
+                    if (!cb.disabled) cb.checked = checked;
+                });
+            });
+        });
+
+        // 3-column diff: when the user picks a source, populate the input.
+        form.querySelectorAll("[data-reparse-source]").forEach(function (radio) {
+            radio.addEventListener("change", function () {
+                var row = radio.closest(".reparse-row");
+                if (!row) return;
+                var input = row.querySelector("[data-reparse-input]");
+                if (!input) return;
+                var source = radio.getAttribute("data-reparse-source");
+                var raw = source === "original"
+                    ? row.getAttribute("data-current")
+                    : row.getAttribute("data-proposed");
+                try {
+                    var parsed = JSON.parse(raw);
+                    input.value = parsed == null ? "" : String(parsed);
+                } catch (e) {
+                    input.value = "";
+                }
+            });
+        });
+
+        // When the user types in the resolved input, mark the row as edited by
+        // un-checking both radio buttons (the applied payload uses the live
+        // input value regardless of the radio state).
+        form.querySelectorAll("[data-reparse-input]").forEach(function (input) {
+            input.addEventListener("input", function () {
+                var row = input.closest(".reparse-row");
+                if (!row) return;
+                row.classList.add("reparse-row-edited");
+            });
+        });
+
+        form.querySelectorAll("[data-reparse-apply]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var mode = btn.getAttribute("data-reparse-apply");
+                var fields = [];
+                var resolved = {};
+                form.querySelectorAll("input[type=checkbox][name=fields]").forEach(function (cb) {
+                    if (cb.disabled || !cb.checked) return;
+                    fields.push(cb.value);
+                    var row = cb.closest(".reparse-row");
+                    if (!row) return;
+                    var input = row.querySelector("[data-reparse-input]");
+                    if (input) {
+                        var field = row.getAttribute("data-field");
+                        resolved[field] = input.value;
+                    } else {
+                        // For non-editable fields (lines / ingredients / tags)
+                        // we still record the radio choice so the backend can
+                        // honor "Original" when the user wants to revert.
+                        var radio = row.querySelector("input[type=radio]:checked");
+                        if (radio) {
+                            var source = radio.getAttribute("data-reparse-source");
+                            var raw = source === "original"
+                                ? row.getAttribute("data-current")
+                                : row.getAttribute("data-proposed");
+                            try {
+                                var field = row.getAttribute("data-field");
+                                resolved[field] = JSON.parse(raw);
+                            } catch (e) { /* ignore */ }
+                        }
+                    }
+                });
+                if (mode === "all") {
+                    fields = [];
+                    form.querySelectorAll("input[type=checkbox][name=fields]").forEach(function (cb) {
+                        if (!cb.disabled) fields.push(cb.value);
+                    });
+                }
+                if (!fields.length) {
+                    alert(window.recetteI18n.alert_save_error);
+                    return;
+                }
+                var proposedRaw = form.querySelector("input[name=proposed]").value || "{}";
+                var proposed;
+                try { proposed = JSON.parse(proposedRaw); }
+                catch (e) { proposed = {}; }
+                var recipeId = form.getAttribute("data-recipe-id");
+                btn.disabled = true;
+                fetch("/admin/reparse/" + recipeId + "/apply", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "HX-Request": "true" },
+                    body: JSON.stringify({ proposed: proposed, fields: fields, resolved: resolved }),
+                })
+                    .then(function (r) { return r.text(); })
+                    .then(function (html) {
+                        var target = document.getElementById("admin-content");
+                        if (target) target.innerHTML = html;
+                        if (window.__recetteTable) {
+                            window.__recetteTable.replaceData();
+                        }
+                    })
+                    .catch(function () {
+                        alert(window.recetteI18n.alert_update_error);
+                        btn.disabled = false;
+                    });
+            });
+        });
+    })();
+</script>
