@@ -82,11 +82,16 @@
         <section class="instructions">
             <h2>{{ _('recipe.instructions') }}</h2>
             <ol class="instruction-list">
-                {% for step in recipe.instructions.split('\n') %}
-                    {% if step.strip() %}
-                    <li class="instruction-step">
+                {% for step in steps_list %}
+                    {% if step.text.strip() %}
+                    <li class="instruction-step{% if step.has_timer %} instruction-step--timer{% endif %}">
                         <span class="instruction-number" aria-hidden="true">{{ loop.index }}</span>
-                        <span class="instruction-text">{{ step }}</span>
+                        <span class="instruction-text">{{ step.text }}</span>
+                        {% if step.has_timer %}
+                        <span class="instruction-timer-badge" title="{{ _('cook.timer_label') }}: {{ (step.duration_seconds / 60)|round(0)|int }}min">
+                            &#9202; {{ (step.duration_seconds / 60)|round(0)|int }}min
+                        </span>
+                        {% endif %}
                     </li>
                     {% endif %}
                 {% endfor %}

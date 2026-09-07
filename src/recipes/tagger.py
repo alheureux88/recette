@@ -7,6 +7,7 @@ title / description / instructions / ingredients payload.
 import json
 import os
 import threading
+import uuid
 from typing import Any
 
 from recipes.db import (
@@ -18,6 +19,7 @@ from recipes.units import parse_quantity
 
 _client: Any = None
 _client_lock = threading.Lock()
+_session_id: str = str(uuid.uuid4())
 
 
 def reset_client() -> None:
@@ -40,14 +42,27 @@ def _get_client() -> Any:
         if provider == "anthropic":
             from anthropic import Anthropic
 
-            _client = Anthropic(api_key=api_key)
+            _client = Anthropic(
+                api_key=api_key,
+                default_headers={
+                    "User-Agent": "recettes-merizzi/1.0",
+                    "x-opencode-session": _session_id,
+                },
+            )
         else:
             from openai import OpenAI
 
             base_url = os.environ.get("LLM_BASE_URL")
-            _client = (
-                OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
-            )
+            default_headers = {
+                "User-Agent": "recettes-merizzi/1.0",
+                "x-opencode-session": _session_id,
+            }
+            if base_url:
+                _client = OpenAI(
+                    api_key=api_key, base_url=base_url, default_headers=default_headers
+                )
+            else:
+                _client = OpenAI(api_key=api_key, default_headers=default_headers)
 
         return _client
 
@@ -137,11 +152,21 @@ def build_system_prompt() -> str:
             "Pour la catégorie, utilise le nom exact d'une des catégories disponibles.",
             "For category, use the exact name of one of the available categories.",
             "",
-            "=== IMPORTANT pour les instructions / IMPORTANT for instructions ===",
+            "=== IMPORTANT pour les étapes / IMPORTANT for steps ===",
             "",
-            "Le texte brut contient des paragraphes séparés par des sauts de ligne.",
-            "Préserve ces sauts de ligne dans le champ 'instructions' (les deux langues)",
-            "en utilisant '\\n' entre chaque étape. NE mets PAS tout dans un seul paragraphe.",
+            "Les étapes de la recette doivent être retournées dans un tableau 'steps_fr' et 'steps_en'.",
+            "Chaque étape est un objet avec 'text' (le texte de l'étape) et 'timer_seconds' (entier ou null).",
+            "",
+            "Recipe steps must be returned as 'steps_fr' and 'steps_en' arrays.",
+            "Each step is an object with 'text' (the step text) and 'timer_seconds' (integer or null).",
+            "",
+            "Si une étape mentionne un temps d'attente, de cuisson, de repos, de marinade, etc.",
+            "(ex: 'cuire 5 minutes', 'laisser reposer 10 min', 'bake for 25 min'), mets la durée",
+            "en SECONDES dans 'timer_seconds'. Sinon, mets null.",
+            "",
+            "If a step mentions a waiting, cooking, resting, marinating time, etc.",
+            "(e.g. 'cook for 5 minutes', 'let rest 10 min', 'bake for 25 min'), put the duration",
+            "in SECONDS in 'timer_seconds'. Otherwise, put null.",
             "",
             "=== IMPORTANT pour les ingrédients / IMPORTANT for ingredients ===",
             "",
@@ -209,8 +234,16 @@ def build_system_prompt() -> str:
             '      "unit": null',
             "    }",
             "  ],",
-            '  "instructions_fr": "Étape 1.\\nÉtape 2.\\nÉtape 3.",',
-            '  "instructions_en": "Step 1.\\nStep 2.\\nStep 3.",',
+            '  "steps_fr": [',
+            '    {"text": "Étape 1.", "timer_seconds": null},',
+            '    {"text": "Cuire 5 minutes.", "timer_seconds": 300},',
+            '    {"text": "Étape 3.", "timer_seconds": null}',
+            "  ],",
+            '  "steps_en": [',
+            '    {"text": "Step 1.", "timer_seconds": null},',
+            '    {"text": "Cook for 5 minutes.", "timer_seconds": 300},',
+            '    {"text": "Step 3.", "timer_seconds": null}',
+            "  ],",
             '  "category": "plat-principal",',
             '  "tags": {',
             '    "origin": ["asiatique", "japonais"],',
@@ -288,6 +321,11 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
     payload_fr["ingredients"] = ingredients_fr
     payload_en["ingredients"] = ingredients_en
 
+    steps_fr = _normalize_steps(data.get("steps_fr"), "fr")
+    steps_en = _normalize_steps(data.get("steps_en"), "en")
+    payload_fr["steps"] = steps_fr
+    payload_en["steps"] = steps_en
+
     tags = data.get("tags") if isinstance(data.get("tags"), dict) else {}
     tags = {str(k): v for k, v in tags.items()}
     for family_key in list(tags.keys()):
@@ -335,19 +373,14 @@ def _extract_bilingual_payload(
     description_fr = _coerce_str(data.get("description_fr") or data.get("description"))
     description_en = _coerce_str(data.get("description_en") or data.get("description"))
 
-    instructions_fr = _coerce_str(data.get("instructions_fr") or data.get("instructions"))
-    instructions_en = _coerce_str(data.get("instructions_en") or data.get("instructions"))
-
     return (
         {
             "title": title_fr,
             "description": description_fr,
-            "instructions": instructions_fr,
         },
         {
             "title": title_en,
             "description": description_en,
-            "instructions": instructions_en,
         },
     )
 
@@ -417,3 +450,24 @@ def _parse_servings(value: object) -> int | float | None:
     if parsed == int(parsed):
         return int(parsed)
     return parsed
+
+
+def _normalize_steps(raw: object, lang: str) -> list[dict[str, object]]:
+    """Normalize the steps array from the LLM response.
+
+    Each step is an object with 'text' (string) and 'timer_seconds' (int or null).
+    """
+    if not isinstance(raw, list):
+        return []
+    result: list[dict[str, object]] = []
+    for item in raw:
+        if isinstance(item, dict):
+            text = item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            timer = item.get("timer_seconds")
+            timer_seconds: int | None = None
+            if isinstance(timer, (int, float)) and timer > 0:
+                timer_seconds = int(timer)
+            result.append({"text": text.strip(), "timer_seconds": timer_seconds})
+    return result

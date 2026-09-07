@@ -99,17 +99,44 @@
         </div>
     </div>
 
-    <label class="field">
-        <span>{{ _('admin.field_instructions') }}</span>
-        <textarea name="instructions" rows="10">{{ recipe.instructions or '' }}</textarea>
-    </label>
+    <div class="steps-editor">
+        <span class="field-label">{{ _('admin.field_steps') }}</span>
+        <div class="step-header step-row">
+            <span class="step-text-header">{{ _('admin.step_text') }}</span>
+            <span class="step-timer-header">{{ _('admin.step_timer') }}</span>
+            <span></span>
+        </div>
+        <div id="step-rows">
+            {% for step in recipe.steps %}
+            {% if step is mapping %}
+            <div class="step-row">
+                <input type="text" name="step_text" value="{{ step.text or '' }}" placeholder="{{ _('admin.step_text_placeholder') }}">
+                <input type="number" name="step_timer" min="0" step="1"
+                       value="{{ step.timer_seconds if step.timer_seconds else '' }}"
+                       placeholder="{{ _('admin.step_timer_placeholder') }}">
+                <button type="button" class="btn-remove-row"
+                        onclick="recetteRemoveStep(this)" aria-label="{{ _('admin.step_remove') }}">&times;</button>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <button type="button" class="btn-add-row" onclick="recetteAddStep()">{{ _('admin.step_add') }}</button>
+        <div class="step-row hidden" id="step-row-template">
+            <input type="text" name="step_text" value="" placeholder="{{ _('admin.step_text_placeholder') }}">
+            <input type="number" name="step_timer" min="0" step="1" value="" placeholder="{{ _('admin.step_timer_placeholder') }}">
+            <button type="button" class="btn-remove-row"
+                    onclick="recetteRemoveStep(this)" aria-label="{{ _('admin.step_remove') }}">&times;</button>
+        </div>
+    </div>
+
+    <input type="hidden" name="steps" id="steps-json">
 
     <p class="manual-warning">
         {{ _('admin.manual_warning') }}
     </p>
 
     <div class="form-actions">
-        <button type="submit" class="btn-restore">{{ _('admin.save') }}</button>
+        <button type="submit" class="btn-restore" onclick="recetteSerializeSteps()">{{ _('admin.save') }}</button>
         <button type="button" class="btn-cancel"
                 hx-get="/admin"
                 hx-select="#admin-content"
@@ -131,5 +158,32 @@
     }
     function recetteRemoveIngredient(btn) {
         btn.closest(".ingredient-row").remove();
+    }
+    function recetteAddStep() {
+        const list = document.getElementById("step-rows");
+        const template = document.getElementById("step-row-template");
+        const row = template.cloneNode(true);
+        row.removeAttribute("id");
+        row.classList.remove("hidden");
+        list.appendChild(row);
+        row.querySelector("input[name='step_text']").focus();
+    }
+    function recetteRemoveStep(btn) {
+        btn.closest(".step-row").remove();
+    }
+    function recetteSerializeSteps() {
+        const rows = document.querySelectorAll("#step-rows .step-row:not(.hidden)");
+        const steps = [];
+        rows.forEach(function (row) {
+            const text = row.querySelector("input[name='step_text']").value.trim();
+            const timerVal = row.querySelector("input[name='step_timer']").value;
+            if (text) {
+                steps.push({
+                    text: text,
+                    timer_seconds: timerVal ? parseInt(timerVal, 10) : null
+                });
+            }
+        });
+        document.getElementById("steps-json").value = JSON.stringify(steps);
     }
 </script>

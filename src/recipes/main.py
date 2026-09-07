@@ -5,6 +5,7 @@ Includes a built-in APScheduler job that polls Dropbox every X minutes.
 Run:  uvicorn recipes.main:app --host 0.0.0.0 --port 8000
 """
 
+import json
 import logging
 import os
 import secrets
@@ -39,6 +40,7 @@ from recipes.db import (
     bulk_update_category,
     bulk_update_tags,
     delete_dropbox_connection,
+    delete_push_subscription,
     delete_setting,
     get_all_categories,
     get_all_recipes_admin,
@@ -50,6 +52,7 @@ from recipes.db import (
     get_failed_files,
     get_favorite_recipes,
     get_or_create_user,
+    get_push_subscription,
     get_recipe,
     get_recipe_provenances,
     get_setting,
@@ -62,6 +65,7 @@ from recipes.db import (
     remove_failed_file,
     remove_favorite,
     remove_from_blacklist,
+    save_push_subscription,
     search_recipes,
     set_default_account_active,
     set_default_account_visible,
@@ -88,6 +92,9 @@ from recipes.models import (
     BulkTagsUpdate,
     InlineCategoryUpdate,
     InlineTagsUpdate,
+    PushSubscriptionRegister,
+    TimerCancelRequest,
+    TimerScheduleRequest,
 )
 from recipes.poller import (
     DROPBOX_FOLDER,
@@ -99,12 +106,19 @@ from recipes.poller import (
     verify_connection_credentials,
 )
 from recipes.poller import run as poll_dropbox
+from recipes.push import (
+    VAPID_PUBLIC_KEY,
+    cancel_timer_notification,
+    schedule_timer_notification,
+)
 from recipes.units import format_ingredient, parse_quantity
 
 log = logging.getLogger(__name__)
 
 POLL_INTERVAL_MINUTES = int(os.environ.get("POLL_INTERVAL_MINUTES", "15"))
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
+
+_scheduler: BackgroundScheduler | None = None
 
 
 @asynccontextmanager
@@ -134,9 +148,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     scheduler.start()
     log.info(f"Scheduler started — polling every {POLL_INTERVAL_MINUTES} min.")
 
+    global _scheduler
+    _scheduler = scheduler
+
     yield
 
     scheduler.shutdown(wait=False)
+    _scheduler = None
     log.info("Scheduler stopped.")
 
 
@@ -417,6 +435,20 @@ async def recipe_detail(
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id))
+    steps_raw = recipe.get("steps") or []
+    steps_list: list[dict[str, object]] = []
+    if isinstance(steps_raw, list):
+        for step in steps_raw:
+            if isinstance(step, dict):
+                steps_list.append(
+                    {
+                        "text": str(step.get("text") or ""),
+                        "has_timer": bool(step.get("timer_seconds")),
+                        "duration_seconds": int(step["timer_seconds"])
+                        if step.get("timer_seconds")
+                        else 0,
+                    }
+                )
     return templates.TemplateResponse(
         request=request,
         name="recipe.html",
@@ -425,6 +457,7 @@ async def recipe_detail(
             recipe=recipe,
             is_favorite=is_fav,
             show_provenance=len(get_recipe_provenances()) > 1,
+            steps_list=steps_list,
             **_ingredient_context(
                 recipe,
                 _parse_servings_param(servings),
@@ -457,8 +490,20 @@ async def recipe_cook(
         _parse_multiplier_param(multiplier),
         lang=lang,
     )
-    raw_steps = recipe.get("instructions") or ""
-    steps = [line.strip() for line in str(raw_steps).split("\n") if line.strip()]
+    steps_raw = recipe.get("steps") or []
+    steps: list[dict[str, object]] = []
+    if isinstance(steps_raw, list):
+        for step in steps_raw:
+            if isinstance(step, dict):
+                steps.append(
+                    {
+                        "text": str(step.get("text") or ""),
+                        "has_timer": bool(step.get("timer_seconds")),
+                        "duration_seconds": int(step["timer_seconds"])
+                        if step.get("timer_seconds")
+                        else 0,
+                    }
+                )
     return templates.TemplateResponse(
         request=request,
         name="recipe_cook.html",
@@ -467,6 +512,7 @@ async def recipe_cook(
             recipe=recipe,
             display_ingredients=ingredient_ctx.get("display_ingredients", []),
             steps=steps,
+            vapid_public_key=VAPID_PUBLIC_KEY,
         ),
     )
 
@@ -1161,7 +1207,13 @@ async def admin_edit_save(
         raise HTTPException(status_code=422, detail="title is required")
 
     description = str(form.get("description") or "").strip()
-    instructions = str(form.get("instructions") or "").strip()
+    steps_json = str(form.get("steps") or "[]").strip()
+    try:
+        steps = json.loads(steps_json)
+        if not isinstance(steps, list):
+            steps = []
+    except json.JSONDecodeError:
+        steps = []
     ingredients = _ingredients_from_form(form)
 
     # L'édition manuelle ne met à jour qu'une seule langue à la fois :
@@ -1171,7 +1223,7 @@ async def admin_edit_save(
     base_payload = {
         "title": title,
         "description": description,
-        "instructions": instructions,
+        "steps": steps,
         "ingredients": ingredients,
     }
     data: dict[str, object] = {
@@ -1233,3 +1285,74 @@ async def admin_retry_failed(
         name="partials/admin_table.html",
         context=_admin_table_context(request),
     )
+
+
+# ---------------------------------------------------------------------------
+# Push notifications
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/push/vapid-public-key")
+async def push_vapid_public_key() -> dict[str, str]:
+    """Return the VAPID public key for the browser to subscribe to push."""
+    return {"vapid_public_key": VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(data: PushSubscriptionRegister) -> dict[str, object]:
+    """Register a push subscription from the browser."""
+    user = get_user_from_request_safe(None)
+    user_id = user["id"] if user else None
+    sub_id = save_push_subscription(user_id, data.endpoint, data.subscription)
+    return {"ok": True, "id": sub_id}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(endpoint: str = Query(...)) -> dict[str, object]:
+    """Unregister a push subscription."""
+    deleted = delete_push_subscription(endpoint)
+    return {"ok": True, "deleted": deleted}
+
+
+@app.post("/api/push/schedule-timer")
+async def push_schedule_timer(data: TimerScheduleRequest) -> dict[str, object]:
+    """Schedule a push notification for when a timer completes."""
+    if not _scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not available")
+
+    sub = get_push_subscription(data.endpoint)
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    subscription_obj = sub["subscription"]
+    if not isinstance(subscription_obj, dict):
+        raise HTTPException(status_code=500, detail="Invalid subscription data")
+
+    job_id = schedule_timer_notification(
+        _scheduler,
+        data.recipe_id,
+        data.step_index,
+        data.duration_seconds,
+        subscription_obj,
+    )
+    return {"ok": True, "job_id": job_id}
+
+
+@app.post("/api/push/cancel-timer")
+async def push_cancel_timer(data: TimerCancelRequest) -> dict[str, object]:
+    """Cancel scheduled timer notifications for a recipe step."""
+    if not _scheduler:
+        raise HTTPException(status_code=503, detail="Scheduler not available")
+
+    removed = cancel_timer_notification(_scheduler, data.recipe_id, data.step_index)
+    return {"ok": True, "removed": removed}
+
+
+def get_user_from_request_safe(request: Request | None) -> dict[str, Any] | None:
+    """Safely get user from request, returning None if no request or no user."""
+    if request is None:
+        return None
+    try:
+        return get_user(request)
+    except Exception:
+        return None

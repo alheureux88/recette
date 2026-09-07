@@ -23,7 +23,12 @@ SAMPLE = {
         {"food": "sugar", "quantity_min": 1, "quantity_max": 2, "unit": "tasse"},
         {"food": "puff pastry", "quantity_min": 1, "quantity_max": None, "unit": None},
     ],
-    "instructions": "Caramelise apples. Top with pastry. Bake. Flip.",
+    "steps": [
+        {"text": "Caramelise apples.", "timer_seconds": None},
+        {"text": "Top with pastry.", "timer_seconds": None},
+        {"text": "Bake for 45 minutes.", "timer_seconds": 2700},
+        {"text": "Flip.", "timer_seconds": None},
+    ],
     "servings": 6,
     "category": "dessert",
     "tags": {
@@ -322,3 +327,70 @@ def test_processed_file_tracking():
 
 def test_get_processed_hash_missing():
     assert get_processed_hash("/recipes/nonexistent.docx") is None
+
+
+def test_upsert_with_structured_steps():
+    """Test that structured steps with timers are stored and retrieved correctly."""
+    recipe_data = {
+        "title": "Test Recipe",
+        "description": "Test description",
+        "ingredients": [],
+        "steps": [
+            {"text": "Step 1", "timer_seconds": None},
+            {"text": "Cook for 5 minutes", "timer_seconds": 300},
+            {"text": "Rest for 10 minutes", "timer_seconds": 600},
+        ],
+        "category": "plat-principal",
+        "tags": {},
+        "source_file": "/recipes/test_steps.docx",
+        "file_hash": "steps123",
+    }
+    recipe_id = upsert_recipe(recipe_data)
+    sync_recipe_tags(recipe_id, recipe_data.get("tags", {}))
+
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    assert recipe["steps"] == [
+        {"text": "Step 1", "timer_seconds": None},
+        {"text": "Cook for 5 minutes", "timer_seconds": 300},
+        {"text": "Rest for 10 minutes", "timer_seconds": 600},
+    ]
+
+
+def test_upsert_with_empty_steps():
+    """Test that empty steps list is handled correctly."""
+    recipe_data = {
+        "title": "No Steps",
+        "description": "No steps recipe",
+        "ingredients": [],
+        "steps": [],
+        "category": None,
+        "tags": {},
+        "source_file": "/recipes/no_steps.docx",
+        "file_hash": "nosteps",
+    }
+    recipe_id = upsert_recipe(recipe_data)
+    sync_recipe_tags(recipe_id, recipe_data.get("tags", {}))
+
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    assert recipe["steps"] == []
+
+
+def test_upsert_with_missing_steps():
+    """Test that missing steps defaults to empty list."""
+    recipe_data = {
+        "title": "Missing Steps",
+        "description": "No steps field",
+        "ingredients": [],
+        "category": None,
+        "tags": {},
+        "source_file": "/recipes/missing_steps.docx",
+        "file_hash": "misssteps",
+    }
+    recipe_id = upsert_recipe(recipe_data)
+    sync_recipe_tags(recipe_id, recipe_data.get("tags", {}))
+
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    assert recipe["steps"] == []

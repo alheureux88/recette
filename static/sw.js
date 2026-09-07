@@ -34,3 +34,40 @@ self.addEventListener("fetch", (e) => {
       .catch(() => caches.match(req).then((r) => r || caches.match("/")))
   );
 });
+
+self.addEventListener("push", (e) => {
+  if (!e.data) return;
+  let payload;
+  try {
+    payload = e.data.json();
+  } catch (_) {
+    payload = { title: e.data.text(), body: "" };
+  }
+  const title = payload.title || "Timer";
+  const options = {
+    body: payload.body || "",
+    icon: payload.icon || "/static/icon-192.png",
+    badge: payload.badge || "/static/favicon-32x32.png",
+    data: payload.data || {},
+    tag: payload.data ? "timer-" + payload.data.recipe_id + "-" + payload.data.step_index : "timer",
+    requireInteraction: true,
+    vibrate: [200, 100, 200, 100, 200],
+  };
+  if (payload.url) {
+    options.data.url = payload.url;
+  }
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if (client.url.includes(url) && "focus" in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
+});

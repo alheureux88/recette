@@ -64,8 +64,8 @@ class TestBuildSystemPrompt:
         assert '"title_fr"' in prompt
         assert '"title_en"' in prompt
         assert '"ingredients"' in prompt
-        assert '"instructions_fr"' in prompt
-        assert '"instructions_en"' in prompt
+        assert '"steps_fr"' in prompt
+        assert '"steps_en"' in prompt
         assert '"category"' in prompt
         assert '"tags"' in prompt
 
@@ -312,9 +312,9 @@ class TestTagRecipe:
         assert result["lang_en"]["description"] == ""
         assert result["lang_fr"]["ingredients"] == []
         assert result["lang_en"]["ingredients"] == []
+        assert result["lang_fr"]["steps"] == []
+        assert result["lang_en"]["steps"] == []
         assert result["servings"] is None
-        assert result["lang_fr"]["instructions"] == ""
-        assert result["lang_en"]["instructions"] == ""
         assert result["tags"] == {}
         assert result["category"] is None
         assert result["source_url"] is None
@@ -500,3 +500,132 @@ class TestServingsParsing:
 
     def test_missing_servings(self):
         assert self._tag(None) is None
+
+
+class TestNormalizeSteps:
+    """Tests for _normalize_steps function."""
+
+    def test_normalize_steps_with_timers(self):
+        from recipes.tagger import _normalize_steps
+
+        raw = [
+            {"text": "Cuire 5 minutes", "timer_seconds": 300},
+            {"text": "Mélanger", "timer_seconds": None},
+            {"text": "Laisser reposer 10 min", "timer_seconds": 600},
+        ]
+        result = _normalize_steps(raw, "fr")
+        assert len(result) == 3
+        assert result[0] == {"text": "Cuire 5 minutes", "timer_seconds": 300}
+        assert result[1] == {"text": "Mélanger", "timer_seconds": None}
+        assert result[2] == {"text": "Laisser reposer 10 min", "timer_seconds": 600}
+
+    def test_normalize_steps_empty_text_filtered(self):
+        from recipes.tagger import _normalize_steps
+
+        raw = [
+            {"text": "", "timer_seconds": 300},
+            {"text": "Valid step", "timer_seconds": None},
+            {"text": "   ", "timer_seconds": 100},
+        ]
+        result = _normalize_steps(raw, "fr")
+        assert len(result) == 1
+        assert result[0] == {"text": "Valid step", "timer_seconds": None}
+
+    def test_normalize_steps_invalid_timer(self):
+        from recipes.tagger import _normalize_steps
+
+        raw = [
+            {"text": "Step 1", "timer_seconds": -10},
+            {"text": "Step 2", "timer_seconds": "not a number"},
+            {"text": "Step 3", "timer_seconds": 0},
+        ]
+        result = _normalize_steps(raw, "fr")
+        assert len(result) == 3
+        assert result[0]["timer_seconds"] is None
+        assert result[1]["timer_seconds"] is None
+        assert result[2]["timer_seconds"] is None
+
+    def test_normalize_steps_non_list(self):
+        from recipes.tagger import _normalize_steps
+
+        assert _normalize_steps(None, "fr") == []
+        assert _normalize_steps("not a list", "fr") == []
+        assert _normalize_steps({}, "fr") == []
+
+    def test_normalize_steps_missing_fields(self):
+        from recipes.tagger import _normalize_steps
+
+        raw = [
+            {"text": "Step 1"},
+            {"timer_seconds": 300},
+            {},
+        ]
+        result = _normalize_steps(raw, "fr")
+        assert len(result) == 1
+        assert result[0] == {"text": "Step 1", "timer_seconds": None}
+
+
+class TestTagRecipeWithSteps:
+    """Tests for tag_recipe with structured steps."""
+
+    def _mock_openai_response(self, content: str) -> MagicMock:
+        mock_response = MagicMock()
+        mock_message = MagicMock()
+        mock_message.content = content
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        return mock_response
+
+    def test_tag_recipe_with_steps_and_timers(self):
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Poulet Rôti",
+                "title_en": "Roast Chicken",
+                "steps_fr": [
+                    {"text": "Préchauffer le four", "timer_seconds": None},
+                    {"text": "Cuire 30 minutes", "timer_seconds": 1800},
+                ],
+                "steps_en": [
+                    {"text": "Preheat oven", "timer_seconds": None},
+                    {"text": "Cook for 30 minutes", "timer_seconds": 1800},
+                ],
+                "ingredients": [],
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
+
+        with patch("recipes.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert len(result["lang_fr"]["steps"]) == 2
+        assert result["lang_fr"]["steps"][0] == {
+            "text": "Préchauffer le four",
+            "timer_seconds": None,
+        }
+        assert result["lang_fr"]["steps"][1] == {"text": "Cuire 30 minutes", "timer_seconds": 1800}
+        assert len(result["lang_en"]["steps"]) == 2
+        assert result["lang_en"]["steps"][1] == {
+            "text": "Cook for 30 minutes",
+            "timer_seconds": 1800,
+        }
+
+    def test_tag_recipe_without_steps(self):
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Simple",
+                "title_en": "Simple",
+                "ingredients": [],
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
+
+        with patch("recipes.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert result["lang_fr"]["steps"] == []
+        assert result["lang_en"]["steps"] == []

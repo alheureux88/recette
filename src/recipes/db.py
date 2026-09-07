@@ -141,7 +141,6 @@ def get_conn() -> sqlite3.Connection:
 def init_db() -> None:
     with get_conn() as conn:
         _create_tables(conn)
-        _migrate(conn)
         _create_fts(conn)
         _seed(conn)
 
@@ -158,6 +157,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             manually_edited INTEGER NOT NULL DEFAULT 0,
             connection_id INTEGER REFERENCES dropbox_connections(id),
             category_id  INTEGER REFERENCES categories(id),
+            file_modified_at DATETIME,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -167,7 +167,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             lang         TEXT NOT NULL,
             title        TEXT NOT NULL,
             description  TEXT,
-            instructions TEXT,
+            steps        TEXT,
             ingredients  TEXT,
             PRIMARY KEY (recipe_id, lang)
         );
@@ -259,171 +259,15 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            endpoint     TEXT NOT NULL UNIQUE,
+            subscription TEXT NOT NULL,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
-
-
-def _migrate(conn: sqlite3.Connection) -> None:
-    """Bring an older single-language schema to the bilingual layout.
-
-    When the legacy `recipes` table is present, its title/description/
-    ingredients/instructions columns are copied into `recipe_translations`
-    using the legacy French content for both the `fr` and `en` rows (the LLM
-    will refresh `en` on the next ingestion). This migration is a no-op for
-    fresh databases.
-    """
-    legacy = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='recipes'"
-    ).fetchone()
-    if legacy is None:
-        return
-
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
-
-    if "title" in cols:
-        # Backfill translations from legacy columns, then drop them.
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO recipe_translations
-                (recipe_id, lang, title, description, instructions, ingredients)
-            SELECT id, 'fr', title, description, instructions, ingredients
-            FROM recipes
-            WHERE title IS NOT NULL
-            """
-        )
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO recipe_translations
-                (recipe_id, lang, title, description, instructions, ingredients)
-            SELECT id, 'en', title, description, instructions, ingredients
-            FROM recipes
-            WHERE title IS NOT NULL
-            """
-        )
-
-        # recipes_fts was created against the legacy columns; rebuild on the
-        # translations table instead. We drop it now; _create_fts() will
-        # recreate it against the new schema.
-        conn.execute("DROP TRIGGER IF EXISTS recipes_ai")
-        conn.execute("DROP TRIGGER IF EXISTS recipes_au")
-        conn.execute("DROP TRIGGER IF EXISTS recipes_ad")
-        conn.execute("DROP TABLE IF EXISTS recipes_fts")
-
-        # Use a copy-then-swap to drop the legacy text columns atomically.
-        conn.execute("ALTER TABLE recipes RENAME TO recipes_legacy")
-        conn.execute(
-            """
-            CREATE TABLE recipes (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                servings     REAL,
-                source_url   TEXT,
-                dropbox_url  TEXT,
-                source_file  TEXT NOT NULL UNIQUE,
-                file_hash    TEXT NOT NULL,
-                manually_edited INTEGER NOT NULL DEFAULT 0,
-                connection_id INTEGER REFERENCES dropbox_connections(id),
-                category_id  INTEGER REFERENCES categories(id),
-                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO recipes
-                (id, servings, source_url, dropbox_url, source_file, file_hash,
-                 manually_edited, connection_id, category_id, created_at, updated_at)
-            SELECT id, servings, source_url, dropbox_url, source_file, file_hash,
-                   COALESCE(manually_edited, 0), connection_id, category_id,
-                   created_at, updated_at
-            FROM recipes_legacy
-            """
-        )
-        conn.execute("DROP TABLE recipes_legacy")
-        return
-
-    # New-schema recipes table: just make sure optional columns exist.
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
-    if "category_id" not in cols:
-        conn.execute("ALTER TABLE recipes ADD COLUMN category_id INTEGER REFERENCES categories(id)")
-    if "file_modified_at" not in cols:
-        conn.execute("ALTER TABLE recipes ADD COLUMN file_modified_at DATETIME")
-    if "manually_edited" not in cols:
-        conn.execute("ALTER TABLE recipes ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
-    if "connection_id" not in cols:
-        conn.execute(
-            "ALTER TABLE recipes ADD COLUMN connection_id INTEGER REFERENCES dropbox_connections(id)"
-        )
-
-    family_cols = {row[1] for row in conn.execute("PRAGMA table_info(tag_families)").fetchall()}
-    if "display_name" in family_cols and "display_name_fr" not in family_cols:
-        conn.execute("ALTER TABLE tag_families RENAME TO tag_families_legacy")
-        conn.execute(
-            """
-            CREATE TABLE tag_families (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                name            TEXT NOT NULL UNIQUE,
-                display_name_fr TEXT NOT NULL,
-                display_name_en TEXT NOT NULL,
-                sort_order      INTEGER NOT NULL DEFAULT 0
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO tag_families (id, name, display_name_fr, display_name_en, sort_order)
-            SELECT id, name, display_name, display_name, sort_order
-            FROM tag_families_legacy
-            """
-        )
-        conn.execute("DROP TABLE tag_families_legacy")
-
-    tag_cols = {row[1] for row in conn.execute("PRAGMA table_info(tags)").fetchall()}
-    if "display_name" in tag_cols and "display_name_fr" not in tag_cols:
-        conn.execute("ALTER TABLE tags RENAME TO tags_legacy")
-        conn.execute(
-            """
-            CREATE TABLE tags (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                family_id       INTEGER NOT NULL REFERENCES tag_families(id),
-                name            TEXT NOT NULL,
-                display_name_fr TEXT NOT NULL,
-                display_name_en TEXT NOT NULL,
-                parent_id       INTEGER REFERENCES tags(id),
-                UNIQUE(family_id, name)
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO tags (id, family_id, name, display_name_fr, display_name_en, parent_id)
-            SELECT id, family_id, name, display_name, display_name, parent_id
-            FROM tags_legacy
-            """
-        )
-        conn.execute("DROP TABLE tags_legacy")
-
-    cat_cols = {row[1] for row in conn.execute("PRAGMA table_info(categories)").fetchall()}
-    if "display_name" in cat_cols and "display_name_fr" not in cat_cols:
-        conn.execute("ALTER TABLE categories RENAME TO categories_legacy")
-        conn.execute(
-            """
-            CREATE TABLE categories (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                name            TEXT NOT NULL UNIQUE,
-                display_name_fr TEXT NOT NULL,
-                display_name_en TEXT NOT NULL,
-                sort_order      INTEGER NOT NULL DEFAULT 0
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO categories (id, name, display_name_fr, display_name_en, sort_order)
-            SELECT id, name, display_name, display_name, sort_order
-            FROM categories_legacy
-            """
-        )
-        conn.execute("DROP TABLE categories_legacy")
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -594,12 +438,13 @@ def _localize_category(row: sqlite3.Row, lang: str) -> dict[str, object]:
 
 def _localize_recipe_translation(row: sqlite3.Row | None) -> dict[str, object]:
     if row is None:
-        return {"title": "", "description": "", "instructions": "", "ingredients": []}
+        return {"title": "", "description": "", "steps": [], "ingredients": []}
     ingredients_raw = row["ingredients"] or "[]"
+    steps_raw = row["steps"] or "[]"
     return {
         "title": str(row["title"] or ""),
         "description": str(row["description"] or ""),
-        "instructions": str(row["instructions"] or ""),
+        "steps": json.loads(str(steps_raw)),
         "ingredients": json.loads(str(ingredients_raw)),
     }
 
@@ -689,7 +534,7 @@ def _extract_translation_payload(
     Accepts either pre-split `lang_fr`/`lang_en` dicts, a single-language
     `lang` dict (replicated for both sides — used by tests and manual
     edits), or a top-level shape with `title` / `description` /
-    `instructions` / `ingredients` keys at the root of `data` (legacy
+    `steps` / `ingredients` keys at the root of `data` (legacy
     single-language shape used by historical tests).
     """
     if "lang_fr" in data or "lang_en" in data:
@@ -702,14 +547,12 @@ def _extract_translation_payload(
     if isinstance(legacy, dict):
         return legacy, legacy
 
-    has_legacy_keys = any(
-        k in data for k in ("title", "description", "instructions", "ingredients")
-    )
+    has_legacy_keys = any(k in data for k in ("title", "description", "steps", "ingredients"))
     if has_legacy_keys:
         payload = {
             "title": data.get("title") or "",
             "description": data.get("description") or "",
-            "instructions": data.get("instructions") or "",
+            "steps": data.get("steps") or [],
             "ingredients": data.get("ingredients") or [],
         }
         return payload, payload
@@ -725,22 +568,23 @@ def _upsert_translation(
     if not title:
         return
     description = payload.get("description") or ""
-    instructions = payload.get("instructions") or ""
+    steps = payload.get("steps") or []
+    steps_json = json.dumps(steps, ensure_ascii=False)
     ingredients = payload.get("ingredients") or []
     ingredients_json = json.dumps(ingredients, ensure_ascii=False)
 
     conn.execute(
         """
         INSERT INTO recipe_translations
-            (recipe_id, lang, title, description, instructions, ingredients)
+            (recipe_id, lang, title, description, steps, ingredients)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(recipe_id, lang) DO UPDATE SET
             title=excluded.title,
             description=excluded.description,
-            instructions=excluded.instructions,
+            steps=excluded.steps,
             ingredients=excluded.ingredients
         """,
-        (recipe_id, lang, title, description, instructions, ingredients_json),
+        (recipe_id, lang, title, description, steps_json, ingredients_json),
     )
 
 
@@ -1074,14 +918,14 @@ def get_recipe(recipe_id: int, lang: str = DEFAULT_LANGUAGE) -> dict[str, object
 def _load_translation(conn: sqlite3.Connection, recipe_id: int, lang: str) -> dict[str, object]:
     """Return the translation for `lang`, falling back to the other language."""
     row = conn.execute(
-        "SELECT title, description, instructions, ingredients "
+        "SELECT title, description, steps, ingredients "
         "FROM recipe_translations WHERE recipe_id = ? AND lang = ?",
         (recipe_id, lang),
     ).fetchone()
     if row is not None:
         return _localize_recipe_translation(row)
     fallback = conn.execute(
-        "SELECT title, description, instructions, ingredients "
+        "SELECT title, description, steps, ingredients "
         "FROM recipe_translations WHERE recipe_id = ? AND lang = ?",
         (recipe_id, "fr" if lang == "en" else "en"),
     ).fetchone()
@@ -1550,7 +1394,7 @@ def get_all_recipes_admin(
             d: dict[str, object] = dict(row)
             d["title"] = translation["title"]
             d["description"] = translation["description"]
-            d["instructions"] = translation["instructions"]
+            d["steps"] = translation["steps"]
             d["ingredients"] = translation["ingredients"]
             if d.get("category_name"):
                 d["category"] = {
@@ -1818,3 +1662,89 @@ def get_recipe_provenances() -> list[dict[str, object]]:
             """
         ).fetchall()
         return [dict(r) for r in rows if r["count"] > 0]
+
+
+# ---------------------------------------------------------------------------
+# Push subscriptions
+# ---------------------------------------------------------------------------
+
+
+def save_push_subscription(
+    user_id: int | None, endpoint: str, subscription: dict[str, object]
+) -> int:
+    """Save or update a push subscription.
+
+    Args:
+        user_id: Optional user ID (null for anonymous users).
+        endpoint: The push endpoint URL (unique identifier).
+        subscription: The full subscription object from the browser.
+
+    Returns:
+        The subscription ID.
+    """
+    subscription_json = json.dumps(subscription, ensure_ascii=False)
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM push_subscriptions WHERE endpoint = ?", (endpoint,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE push_subscriptions
+                SET subscription = ?, user_id = ?
+                WHERE endpoint = ?
+                """,
+                (subscription_json, user_id, endpoint),
+            )
+            return int(existing["id"])
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO push_subscriptions (user_id, endpoint, subscription)
+                VALUES (?, ?, ?)
+                """,
+                (user_id, endpoint, subscription_json),
+            )
+            assert cur.lastrowid is not None
+            return int(cur.lastrowid)
+
+
+def get_push_subscription(endpoint: str) -> dict[str, object] | None:
+    """Get a push subscription by endpoint."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, user_id, endpoint, subscription FROM push_subscriptions WHERE endpoint = ?",
+            (endpoint,),
+        ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        try:
+            result["subscription"] = json.loads(str(result["subscription"]))
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return result
+
+
+def delete_push_subscription(endpoint: str) -> bool:
+    """Delete a push subscription by endpoint."""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+        return cur.rowcount > 0
+
+
+def get_all_push_subscriptions() -> list[dict[str, object]]:
+    """Get all push subscriptions (for cleanup/testing)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, user_id, endpoint, subscription FROM push_subscriptions"
+        ).fetchall()
+        results = []
+        for row in rows:
+            result = dict(row)
+            try:
+                result["subscription"] = json.loads(str(result["subscription"]))
+            except (json.JSONDecodeError, TypeError):
+                continue
+            results.append(result)
+        return results

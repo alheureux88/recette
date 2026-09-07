@@ -120,6 +120,14 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "fr": "L'écran se verrouillera normalement hors de cette page.",
         "en": "The screen will lock normally outside this page.",
     },
+    "cook.timer_done": {"fr": "Temps écoulé!", "en": "Time's up!"},
+    "cook.timer_start": {"fr": "Démarrer", "en": "Start"},
+    "cook.timer_pause": {"fr": "Pause", "en": "Pause"},
+    "cook.timer_resume": {"fr": "Reprendre", "en": "Resume"},
+    "cook.timer_reset": {"fr": "Réinit.", "en": "Reset"},
+    "cook.timer_add": {"fr": "Ajouter", "en": "Add"},
+    "cook.timer_remove": {"fr": "Retirer", "en": "Remove"},
+    "cook.timer_label": {"fr": "Minuteur", "en": "Timer"},
     # --- Favoris ---
     "favorites.title": {"fr": "Mes favoris", "en": "My favorites"},
     "favorites.add": {"fr": "Ajouter aux favoris", "en": "Add to favorites"},
@@ -233,6 +241,13 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "admin.ing_remove": {"fr": "Retirer", "en": "Remove"},
     "admin.ing_add": {"fr": "+ Ajouter un ingrédient", "en": "+ Add ingredient"},
     "admin.field_instructions": {"fr": "Instructions", "en": "Instructions"},
+    "admin.field_steps": {"fr": "Étapes", "en": "Steps"},
+    "admin.step_text": {"fr": "Texte de l'étape", "en": "Step text"},
+    "admin.step_timer": {"fr": "Minuteur (sec)", "en": "Timer (sec)"},
+    "admin.step_text_placeholder": {"fr": "Ex: Cuire 5 minutes", "en": "E.g.: Cook for 5 minutes"},
+    "admin.step_timer_placeholder": {"fr": "Secondes", "en": "Seconds"},
+    "admin.step_remove": {"fr": "Retirer", "en": "Remove"},
+    "admin.step_add": {"fr": "+ Ajouter une étape", "en": "+ Add step"},
     "admin.manual_warning": {
         "fr": (
             "En sauvegardant, cette recette sera marquée comme modifiée manuellement : "

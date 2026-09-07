@@ -569,6 +569,22 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
 }
 .instruction-text { flex: 1; }
 
+.instruction-timer-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent-dk);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    white-space: nowrap;
+    margin-top: 0.15rem;
+}
+
 /* Ingredient scaling controls (portions / unités) */
 .ingredient-controls {
     display: flex;
@@ -1760,5 +1776,105 @@ body.cook-mode main {
 }
 .cook-item:has(.cook-check:checked) .cook-step-number::before {
     content: "\2713";
+}
+
+.cook-step {
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.cook-step-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    width: 100%;
+    cursor: pointer;
+}
+
+.cook-timer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: background 0.2s, border-color 0.2s;
+}
+.cook-timer--running {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface));
+}
+.cook-timer--done {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    animation: cook-timer-pulse 1s ease-in-out infinite;
+}
+@keyframes cook-timer-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.cook-timer-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.cook-timer-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+.cook-timer-remaining {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    letter-spacing: 0.02em;
+}
+.cook-timer--done .cook-timer-remaining {
+    color: var(--accent-dk);
+}
+
+.cook-timer-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.cook-timer-btn {
+    flex: 1;
+    min-width: 3.5rem;
+    padding: 0.45rem 0.6rem;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+}
+.cook-timer-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+.cook-timer-btn:active {
+    transform: scale(0.97);
+}
+.cook-timer-btn--start {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+}
+.cook-timer-btn--start:hover {
+    background: var(--accent-dk);
+    border-color: var(--accent-dk);
+    color: var(--on-accent);
+}
+.cook-timer-btn--minus,
+.cook-timer-btn--plus {
+    flex: 0 1 auto;
+    min-width: 3rem;
 }
 

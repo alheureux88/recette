@@ -33,7 +33,10 @@ SAMPLE = {
     "title": "Poulet Rôti",
     "description": "Simple French roast chicken.",
     "ingredients": ["chicken", "garlic"],
-    "instructions": "Season. Roast.",
+    "steps": [
+        {"text": "Season.", "timer_seconds": None},
+        {"text": "Roast.", "timer_seconds": None},
+    ],
     "category": "plat-principal",
     "tags": {
         "origin": ["francais"],
@@ -198,7 +201,7 @@ class TestUpdateRecipeManual:
                 "ingredients": [
                     {"food": "poulet", "quantity_min": 1.5, "quantity_max": None, "unit": "kg"}
                 ],
-                "instructions": "Nouvelles instructions",
+                "steps": [{"text": "Nouvelles instructions", "timer_seconds": None}],
                 "servings": 6,
                 "category": "dessert",
                 "source_url": "https://example.com",
@@ -208,7 +211,7 @@ class TestUpdateRecipeManual:
         recipe = get_recipe(recipe_id)
         assert recipe["title"] == "Poulet Rôti modifié"
         assert recipe["description"] == "Nouvelle description"
-        assert recipe["instructions"] == "Nouvelles instructions"
+        assert recipe["steps"] == [{"text": "Nouvelles instructions", "timer_seconds": None}]
         assert recipe["servings"] == 6
         assert recipe["category"]["name"] == "dessert"
         assert recipe["source_url"] == "https://example.com"
@@ -282,13 +285,13 @@ class TestPollerManualEditCheck:
                         "title": "Poulet Rôti",
                         "description": None,
                         "ingredients": [],
-                        "instructions": None,
+                        "steps": [],
                     },
                     "lang_en": {
                         "title": "Poulet Rôti",
                         "description": None,
                         "ingredients": [],
-                        "instructions": None,
+                        "steps": [],
                     },
                     "tags": {},
                     "category": None,
@@ -344,7 +347,7 @@ class TestAdminEditRoutes:
             data={
                 "title": "Poulet modifié",
                 "description": "Desc",
-                "instructions": "Étape 1.\nÉtape 2.",
+                "steps": '[{"text": "Étape 1.", "timer_seconds": null}, {"text": "Étape 2.", "timer_seconds": null}]',
                 "servings": "4",
                 "category": "dessert",
                 "source_url": "https://example.com",
