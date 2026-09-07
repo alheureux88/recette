@@ -29,6 +29,7 @@
 
     <div class="cook-progress" id="cook-progress" aria-live="polite"></div>
     <div class="cook-wake-status" id="cook-wake-status" role="status" aria-live="polite" hidden></div>
+    <div class="cook-notification-status" id="cook-notification-status" role="status" aria-live="polite"></div>
 
     {% if display_ingredients %}
     <section class="cook-section">
@@ -302,6 +303,14 @@
 
         function startTimer(t) {
             if (t.remainingSeconds <= 0) return;
+            
+            // Request notification permission on first timer start
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(function(permission) {
+                    console.log('Notification permission:', permission);
+                });
+            }
+            
             t.running = true;
             t.doneNotified = false;
             t.startPauseBtn.textContent = timerPauseLabel;
@@ -393,13 +402,71 @@
             }
         }
 
+        function playTimerSound() {
+            try {
+                var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                var oscillator = audioContext.createOscillator();
+                var gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (e) {
+                console.warn('Could not play timer sound:', e);
+            }
+        }
+
+        function vibrateTimer() {
+            try {
+                if ('vibrate' in navigator) {
+                    navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+            } catch (e) {
+                console.warn('Could not vibrate:', e);
+            }
+        }
+
         function notifyTimerDone(t) {
             var stepNum = parseInt(t.el.dataset.stepIndex, 10) + 1;
+            
+            // Play sound
+            playTimerSound();
+            
+            // Vibrate if available
+            vibrateTimer();
+            
+            // Show browser notification if permitted
             try {
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification(timerDoneMsg, { body: timerDoneMsg + ' - ' + stepNum });
+                if ('Notification' in window) {
+                    if (Notification.permission === 'granted') {
+                        new Notification(timerDoneMsg, { 
+                            body: timerDoneMsg + ' - ' + stepNum,
+                            icon: '/static/icon-192.png',
+                            badge: '/static/favicon-32x32.png',
+                            tag: 'timer-' + recipeId + '-' + stepNum,
+                            requireInteraction: true
+                        });
+                    } else if (Notification.permission !== 'denied') {
+                        // Request permission for future timers
+                        Notification.requestPermission().then(function(permission) {
+                            if (permission === 'granted') {
+                                console.log('Notification permission granted');
+                            }
+                        });
+                    }
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('Notification error:', e);
+            }
+            
             t.remainingEl.textContent = formatTime(0);
             t.el.classList.add('cook-timer--done');
         }

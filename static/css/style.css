@@ -585,6 +585,80 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
     margin-top: 0.15rem;
 }
 
+.instruction-timer-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all 0.2s ease;
+}
+
+.instruction-timer-widget.instruction-timer--running {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.instruction-timer-widget.instruction-timer--done {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    animation: timer-pulse 1s ease-in-out infinite;
+}
+
+@keyframes timer-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.instruction-timer-display {
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    text-align: center;
+}
+
+.instruction-timer-controls {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.instruction-timer-btn {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.instruction-timer-btn:hover {
+    background: var(--surface-alt);
+    border-color: var(--accent);
+}
+
+.instruction-timer-btn--start {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+}
+
+.instruction-timer-btn--start:hover {
+    background: var(--accent-dk);
+    border-color: var(--accent-dk);
+}
+
+.instruction-timer-btn--reset {
+    background: transparent;
+}
+
 /* Ingredient scaling controls (portions / unités) */
 .ingredient-controls {
     display: flex;

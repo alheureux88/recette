@@ -88,9 +88,13 @@
                         <span class="instruction-number" aria-hidden="true">{{ loop.index }}</span>
                         <span class="instruction-text">{{ step.text }}</span>
                         {% if step.has_timer %}
-                        <span class="instruction-timer-badge" title="{{ _('cook.timer_label') }}: {{ (step.duration_seconds / 60)|round(0)|int }}min">
-                            &#9202; {{ (step.duration_seconds / 60)|round(0)|int }}min
-                        </span>
+                        <div class="instruction-timer-widget" data-step-index="{{ loop.index0 }}" data-default-duration="{{ step.duration_seconds }}">
+                            <span class="instruction-timer-display" data-role="remaining">{{ step.duration_seconds }}</span>
+                            <div class="instruction-timer-controls">
+                                <button type="button" class="instruction-timer-btn instruction-timer-btn--start" data-role="start-pause">{{ _('cook.timer_start') }}</button>
+                                <button type="button" class="instruction-timer-btn instruction-timer-btn--reset" data-role="reset">{{ _('cook.timer_reset') }}</button>
+                            </div>
+                        </div>
                         {% endif %}
                     </li>
                     {% endif %}
@@ -146,6 +150,244 @@
             });
             window.print();
         };
+
+        // Timer functionality for recipe detail page
+        var recipeId = {{ recipe.id }};
+        var timerStorageKey = 'recette:timers:' + recipeId;
+        var timerStartLabel = '{{ _('cook.timer_start') }}';
+        var timerPauseLabel = '{{ _('cook.timer_pause') }}';
+        var timerResumeLabel = '{{ _('cook.timer_resume') }}';
+        var timerDoneMsg = '{{ _('cook.timer_done') }}';
+        var timerWidgets = document.querySelectorAll('.instruction-timer-widget');
+        var timers = {};
+
+        function formatTime(totalSeconds) {
+            if (totalSeconds < 0) totalSeconds = 0;
+            var m = Math.floor(totalSeconds / 60);
+            var s = totalSeconds % 60;
+            return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+        }
+
+        function loadTimerStates() {
+            try {
+                var raw = localStorage.getItem(timerStorageKey);
+                if (!raw) return {};
+                var data = JSON.parse(raw);
+                return (data && typeof data === 'object') ? data : {};
+            } catch (e) { return {}; }
+        }
+
+        function saveTimerStates() {
+            var states = {};
+            timerWidgets.forEach(function (el) {
+                var idx = el.dataset.stepIndex;
+                var t = timers[idx];
+                if (!t) return;
+                states[idx] = {
+                    remainingSeconds: t.remainingSeconds,
+                    running: t.running,
+                    endTimestamp: t.running ? (Date.now() + t.remainingSeconds * 1000) : null
+                };
+            });
+            try { localStorage.setItem(timerStorageKey, JSON.stringify(states)); } catch (e) {}
+        }
+
+        function playTimerSound() {
+            try {
+                var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                var oscillator = audioContext.createOscillator();
+                var gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (e) {
+                console.warn('Could not play timer sound:', e);
+            }
+        }
+
+        function vibrateTimer() {
+            try {
+                if ('vibrate' in navigator) {
+                    navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+            } catch (e) {
+                console.warn('Could not vibrate:', e);
+            }
+        }
+
+        function notifyTimerDone(t) {
+            var stepNum = parseInt(t.el.dataset.stepIndex, 10) + 1;
+            
+            playTimerSound();
+            vibrateTimer();
+            
+            try {
+                if ('Notification' in window) {
+                    if (Notification.permission === 'granted') {
+                        new Notification(timerDoneMsg, { 
+                            body: timerDoneMsg + ' - ' + stepNum,
+                            icon: '/static/icon-192.png',
+                            badge: '/static/favicon-32x32.png',
+                            tag: 'timer-' + recipeId + '-' + stepNum,
+                            requireInteraction: true
+                        });
+                    } else if (Notification.permission !== 'denied') {
+                        Notification.requestPermission().then(function(permission) {
+                            if (permission === 'granted') {
+                                console.log('Notification permission granted');
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn('Notification error:', e);
+            }
+            
+            t.remainingEl.textContent = formatTime(0);
+            t.el.classList.add('instruction-timer--done');
+        }
+
+        function startTimer(t) {
+            if (t.remainingSeconds <= 0) return;
+            
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(function(permission) {
+                    console.log('Notification permission:', permission);
+                });
+            }
+            
+            t.running = true;
+            t.doneNotified = false;
+            t.startPauseBtn.textContent = timerPauseLabel;
+            t.el.classList.add('instruction-timer--running');
+            t.el.classList.remove('instruction-timer--done');
+            t.intervalId = setInterval(function () {
+                t.remainingSeconds--;
+                t.remainingEl.textContent = formatTime(t.remainingSeconds);
+                if (t.remainingSeconds <= 0) {
+                    clearInterval(t.intervalId);
+                    t.intervalId = null;
+                    t.running = false;
+                    t.startPauseBtn.textContent = timerStartLabel;
+                    t.el.classList.remove('instruction-timer--running');
+                    t.el.classList.add('instruction-timer--done');
+                    if (!t.doneNotified) {
+                        t.doneNotified = true;
+                        notifyTimerDone(t);
+                    }
+                    saveTimerStates();
+                }
+            }, 1000);
+            saveTimerStates();
+        }
+
+        function pauseTimer(t) {
+            t.running = false;
+            if (t.intervalId) {
+                clearInterval(t.intervalId);
+                t.intervalId = null;
+            }
+            t.startPauseBtn.textContent = timerResumeLabel;
+            t.el.classList.remove('instruction-timer--running');
+            saveTimerStates();
+        }
+
+        function resetTimer(t) {
+            if (t.intervalId) {
+                clearInterval(t.intervalId);
+                t.intervalId = null;
+            }
+            t.running = false;
+            t.remainingSeconds = t.defaultDuration;
+            t.doneNotified = false;
+            t.remainingEl.textContent = formatTime(t.remainingSeconds);
+            t.startPauseBtn.textContent = timerStartLabel;
+            t.el.classList.remove('instruction-timer--running', 'instruction-timer--done');
+            saveTimerStates();
+        }
+
+        function restoreTimer(idx, state) {
+            var t = timers[idx];
+            if (!t) return;
+            if (state.endTimestamp && state.running) {
+                var now = Date.now();
+                var remaining = Math.round((state.endTimestamp - now) / 1000);
+                if (remaining <= 0) {
+                    t.remainingSeconds = 0;
+                    t.remainingEl.textContent = formatTime(0);
+                    t.el.classList.add('instruction-timer--done');
+                    t.doneNotified = false;
+                    notifyTimerDone(t);
+                    t.doneNotified = true;
+                } else {
+                    t.remainingSeconds = remaining;
+                    t.remainingEl.textContent = formatTime(remaining);
+                    startTimer(t);
+                }
+            } else {
+                t.remainingSeconds = state.remainingSeconds || t.defaultDuration;
+                t.remainingEl.textContent = formatTime(t.remainingSeconds);
+            }
+        }
+
+        function initTimer(el) {
+            var idx = el.dataset.stepIndex;
+            var defaultDuration = parseInt(el.dataset.defaultDuration, 10) || 0;
+            var remainingEl = el.querySelector('[data-role="remaining"]');
+            var startPauseBtn = el.querySelector('[data-role="start-pause"]');
+            var resetBtn = el.querySelector('[data-role="reset"]');
+
+            var t = {
+                el: el,
+                stepIndex: parseInt(idx, 10),
+                remainingEl: remainingEl,
+                startPauseBtn: startPauseBtn,
+                defaultDuration: defaultDuration,
+                remainingSeconds: defaultDuration,
+                running: false,
+                intervalId: null,
+                doneNotified: false
+            };
+            timers[idx] = t;
+
+            remainingEl.textContent = formatTime(t.remainingSeconds);
+
+            startPauseBtn.addEventListener('click', function () {
+                if (t.running) {
+                    pauseTimer(t);
+                } else {
+                    startTimer(t);
+                }
+            });
+
+            resetBtn.addEventListener('click', function () {
+                resetTimer(t);
+            });
+
+            return t;
+        }
+
+        timerWidgets.forEach(function (el) {
+            initTimer(el);
+        });
+
+        var savedStates = loadTimerStates();
+        Object.keys(savedStates).forEach(function (idx) {
+            restoreTimer(idx, savedStates[idx]);
+        });
+
+        setInterval(saveTimerStates, 5000);
+
+        window.addEventListener('beforeunload', saveTimerStates);
     })();
 </script>
 
