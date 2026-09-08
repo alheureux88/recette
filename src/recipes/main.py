@@ -25,6 +25,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from recipes.features.auth.controllers import router as auth_router
 from recipes.features.push.controllers import router as push_router
 from recipes.features.push.controllers import set_scheduler as set_push_scheduler
+from recipes.features.recipes.controllers import router as recipes_router
 from recipes.shared.auth import (
     OIDC_ENABLED,
     get_user,
@@ -186,6 +187,7 @@ app.mount("/images", StaticFiles(directory=str(IMAGES_DIR), check_dir=False), na
 
 app.include_router(auth_router)
 app.include_router(push_router)
+app.include_router(recipes_router)
 
 
 @app.middleware("http")
