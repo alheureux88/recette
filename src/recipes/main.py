@@ -22,10 +22,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from recipes.features.auth.controllers import router as auth_router
 from recipes.shared.auth import (
     OIDC_ENABLED,
-    authorize_redirect,
-    fetch_token,
     get_user,
     is_admin,
     login_url,
@@ -58,7 +57,6 @@ from recipes.shared.db import (
     get_existing_tags_for_prompt,
     get_failed_files,
     get_favorite_recipes,
-    get_or_create_user,
     get_push_subscription,
     get_recipe,
     get_recipe_provenances,
@@ -189,6 +187,8 @@ app = FastAPI(title="Recettes Merizzi", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/images", StaticFiles(directory=str(IMAGES_DIR), check_dir=False), name="images")
+
+app.include_router(auth_router)
 
 
 @app.middleware("http")
@@ -601,46 +601,6 @@ async def recipe_ingredients(
             ),
         },
     )
-
-
-@app.get("/auth/login")
-async def auth_login(request: Request) -> RedirectResponse:
-    if not OIDC_ENABLED:
-        return RedirectResponse(url="/", status_code=302)
-    return await authorize_redirect(request)
-
-
-@app.get("/auth/callback")
-async def auth_callback(
-    request: Request, conn: sqlite3.Connection = Depends(get_db)
-) -> RedirectResponse:
-    if not OIDC_ENABLED:
-        return RedirectResponse(url="/", status_code=302)
-    token = await fetch_token(request)
-    userinfo = token.get("userinfo", {})
-    subject = userinfo.get("sub", "")
-    if not subject:
-        raise HTTPException(status_code=401, detail="No subject in token")
-    user_id = get_or_create_user(
-        subject=subject,
-        email=userinfo.get("email"),
-        name=userinfo.get("name"),
-        conn=conn,
-    )
-    groups = userinfo.get("groups", [])
-    request.session["user"] = {
-        "id": user_id,
-        "sub": subject,
-        "name": userinfo.get("name"),
-        "groups": groups,
-    }
-    return RedirectResponse(url="/", status_code=302)
-
-
-@app.get("/auth/logout")
-async def auth_logout(request: Request) -> RedirectResponse:
-    request.session.clear()
-    return RedirectResponse(url="/", status_code=302)
 
 
 @app.post("/favorites/{recipe_id}")
