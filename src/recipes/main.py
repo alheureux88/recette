@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import secrets
+import sqlite3
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -51,6 +52,7 @@ from recipes.db import (
     get_all_shopping_lists,
     get_all_tags_grouped,
     get_blacklisted_files,
+    get_db,
     get_dropbox_connection_credentials,
     get_dropbox_connections,
     get_existing_tags_for_prompt,
@@ -280,9 +282,9 @@ def _base_context(request: Request, **extra: object) -> dict[str, object]:
     return ctx
 
 
-def _provenance_context() -> dict[str, object]:
+def _provenance_context(conn: sqlite3.Connection) -> dict[str, object]:
     """Filtre de provenance : affiché seulement si plusieurs comptes ont des recettes."""
-    provenances = get_recipe_provenances()
+    provenances = get_recipe_provenances(conn=conn)
     return {"provenances": provenances, "show_provenance": len(provenances) > 1}
 
 
@@ -301,16 +303,17 @@ def _parse_account_param(raw: str | None) -> int | None:
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     tags: list[int] = Query(default=[]),
 ) -> HTMLResponse:
     lang = _resolve_request_lang(request)
-    all_tags = get_all_tags_grouped(lang=lang)
-    all_categories = get_all_categories(lang=lang)
-    recipes = search_recipes(tag_ids=tags, lang=lang)
+    all_tags = get_all_tags_grouped(lang=lang, conn=conn)
+    all_categories = get_all_categories(lang=lang, conn=conn)
+    recipes = search_recipes(tag_ids=tags, lang=lang, conn=conn)
     user = get_user(request)
     favorite_ids: set[int] = set()
     if user:
-        favorite_ids = get_user_favorite_ids(user["id"])
+        favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -323,7 +326,7 @@ async def index(
             active_tag_ids=tags,
             active_category_id=None,
             favorite_ids=favorite_ids,
-            **_provenance_context(),
+            **_provenance_context(conn),
         ),
     )
 
@@ -331,6 +334,7 @@ async def index(
 @app.get("/search", response_class=HTMLResponse)
 async def search(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     q: str = Query(default=""),
     tags: list[int] = Query(default=[]),
     category: str | None = Query(default=None),
@@ -351,11 +355,12 @@ async def search(
         category_id=category_id,
         connection_id=_parse_account_param(account),
         lang=lang,
+        conn=conn,
     )
     user = get_user(request)
     favorite_ids: set[int] = set()
     if user:
-        favorite_ids = get_user_favorite_ids(user["id"])
+        favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="partials/recipe_cards.html",
@@ -364,7 +369,7 @@ async def search(
             "favorite_ids": favorite_ids,
             "user": user,
             "auth_enabled": OIDC_ENABLED,
-            **_provenance_context(),
+            **_provenance_context(conn),
         },
     )
 
@@ -448,18 +453,19 @@ def _ingredient_context(
 @app.get("/recipe/{recipe_id}", response_class=HTMLResponse)
 async def recipe_detail(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         not_found_msg = gettext("recipe.not_found", lang)
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
     user = get_user(request)
-    is_fav = bool(user and is_favorite(user["id"], recipe_id))
+    is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
     steps_raw = recipe.get("steps") or []
     steps_list: list[dict[str, object]] = []
     if isinstance(steps_raw, list):
@@ -476,7 +482,7 @@ async def recipe_detail(
                 )
 
     user_id = _shopping_list_user_id(request)
-    user_shopping_lists = get_user_shopping_lists(user_id, include_done=False)
+    user_shopping_lists = get_user_shopping_lists(user_id, include_done=False, conn=conn)
     shopping_lists_data = [
         {"id": int(str(lst["id"])), "name": str(lst["name"])} for lst in user_shopping_lists
     ]
@@ -502,7 +508,7 @@ async def recipe_detail(
             request,
             recipe=recipe,
             is_favorite=is_fav,
-            show_provenance=len(get_recipe_provenances()) > 1,
+            show_provenance=len(get_recipe_provenances(conn=conn)) > 1,
             steps_list=steps_list,
             shopping_lists=shopping_lists_data,
             ingredients_json=json.dumps(ingredients_for_json, ensure_ascii=False),
@@ -520,6 +526,7 @@ async def recipe_detail(
 @app.get("/recipe/{recipe_id}/cook", response_class=HTMLResponse)
 async def recipe_cook(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
@@ -527,7 +534,7 @@ async def recipe_cook(
 ) -> HTMLResponse:
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         not_found_msg = gettext("recipe.not_found", lang)
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
@@ -568,6 +575,7 @@ async def recipe_cook(
 @app.get("/recipe/{recipe_id}/ingredients", response_class=HTMLResponse)
 async def recipe_ingredients(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
@@ -575,7 +583,7 @@ async def recipe_ingredients(
 ) -> HTMLResponse:
     """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         not_found_msg = gettext("recipe.not_found", lang)
         return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
@@ -603,7 +611,9 @@ async def auth_login(request: Request) -> RedirectResponse:
 
 
 @app.get("/auth/callback")
-async def auth_callback(request: Request) -> RedirectResponse:
+async def auth_callback(
+    request: Request, conn: sqlite3.Connection = Depends(get_db)
+) -> RedirectResponse:
     if not OIDC_ENABLED:
         return RedirectResponse(url="/", status_code=302)
     token = await fetch_token(request)
@@ -615,6 +625,7 @@ async def auth_callback(request: Request) -> RedirectResponse:
         subject=subject,
         email=userinfo.get("email"),
         name=userinfo.get("name"),
+        conn=conn,
     )
     groups = userinfo.get("groups", [])
     request.session["user"] = {
@@ -635,16 +646,17 @@ async def auth_logout(request: Request) -> RedirectResponse:
 @app.post("/favorites/{recipe_id}")
 async def toggle_favorite(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     user: dict[str, Any] = Depends(require_user),
 ) -> HTMLResponse:
-    currently_fav = is_favorite(user["id"], recipe_id)
+    currently_fav = is_favorite(user["id"], recipe_id, conn=conn)
     if currently_fav:
-        remove_favorite(user["id"], recipe_id)
+        remove_favorite(user["id"], recipe_id, conn=conn)
     else:
-        add_favorite(user["id"], recipe_id)
+        add_favorite(user["id"], recipe_id, conn=conn)
 
-    recipe = get_recipe(recipe_id, lang=_resolve_request_lang(request))
+    recipe = get_recipe(recipe_id, lang=_resolve_request_lang(request), conn=conn)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -660,15 +672,17 @@ async def toggle_favorite(
 
 
 @app.get("/favorites", response_model=None)
-async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
+async def favorites_page(
+    request: Request, conn: sqlite3.Connection = Depends(get_db)
+) -> RedirectResponse | HTMLResponse:
     if not OIDC_ENABLED:
         return RedirectResponse(url="/", status_code=302)
     user = get_user(request)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=302)
     lang = _resolve_request_lang(request)
-    recipes = get_favorite_recipes(user["id"], lang=lang)
-    favorite_ids = get_user_favorite_ids(user["id"])
+    recipes = get_favorite_recipes(user["id"], lang=lang, conn=conn)
+    favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="favorites.html",
@@ -683,40 +697,42 @@ async def favorites_page(request: Request) -> RedirectResponse | HTMLResponse:
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context=_admin_table_context(request),
+        context=_admin_table_context(request, conn),
     )
 
 
 @app.get("/admin/config", response_class=HTMLResponse)
 async def admin_config_page(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context=_admin_config_context(request),
+        context=_admin_config_context(request, conn),
     )
 
 
 TAG_FAMILIES = ("origin", "diet", "protein", "cooking_method")
 
 
-def _admin_table_context(request: Request) -> dict[str, object]:
+def _admin_table_context(request: Request, conn: sqlite3.Connection) -> dict[str, object]:
     lang = _resolve_request_lang(request)
     return _base_context(
         request,
-        recipes=get_all_recipes_admin(lang=lang),
-        blacklisted=get_blacklisted_files(),
-        failed=get_failed_files(),
-        all_categories=get_all_categories(only_used=False, lang=lang),
-        all_tags=get_existing_tags_for_prompt(lang=lang),
-        all_tag_families=get_tag_families(lang=lang),
+        recipes=get_all_recipes_admin(lang=lang, conn=conn),
+        blacklisted=get_blacklisted_files(conn=conn),
+        failed=get_failed_files(conn=conn),
+        all_categories=get_all_categories(only_used=False, lang=lang, conn=conn),
+        all_tags=get_existing_tags_for_prompt(lang=lang, conn=conn),
+        all_tag_families=get_tag_families(lang=lang, conn=conn),
     )
 
 
@@ -762,19 +778,21 @@ def _parse_tag_keys(keys: list[str]) -> dict[str, list[str]]:
 @app.get("/admin/recipes.json")
 async def admin_recipes_data(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
     """Donnees du tableau d'administration : recettes, categories et etiquettes."""
     lang = _resolve_request_lang(request)
     return {
-        "recipes": [_recipe_row(r) for r in get_all_recipes_admin(lang=lang)],
-        "categories": get_all_categories(only_used=False, lang=lang),
-        "tags": get_existing_tags_for_prompt(lang=lang),
+        "recipes": [_recipe_row(r) for r in get_all_recipes_admin(lang=lang, conn=conn)],
+        "categories": get_all_categories(only_used=False, lang=lang, conn=conn),
+        "tags": get_existing_tags_for_prompt(lang=lang, conn=conn),
     }
 
 
 @app.get("/admin/files.json")
 async def admin_files_data(
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
     """Donnees des tableaux de fichiers blacklistes et en erreur."""
@@ -785,7 +803,7 @@ async def admin_files_data(
                 "provenance": str(item.get("provenance") or ""),
                 "date": str(item.get("blacklisted_at") or ""),
             }
-            for item in get_blacklisted_files()
+            for item in get_blacklisted_files(conn=conn)
         ],
         "failed": [
             {
@@ -794,7 +812,7 @@ async def admin_files_data(
                 "error": str(item.get("error") or ""),
                 "date": str(item.get("failed_at") or ""),
             }
-            for item in get_failed_files()
+            for item in get_failed_files(conn=conn)
         ],
     }
 
@@ -802,10 +820,11 @@ async def admin_files_data(
 @app.post("/admin/inline/{recipe_id}/category")
 async def admin_inline_category(
     data: InlineCategoryUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
-    if not update_recipe_category(recipe_id, data.category):
+    if not update_recipe_category(recipe_id, data.category, conn=conn):
         raise HTTPException(status_code=404, detail="Recipe not found")
     return {"ok": True}
 
@@ -813,10 +832,11 @@ async def admin_inline_category(
 @app.post("/admin/inline/{recipe_id}/tags")
 async def admin_inline_tags(
     data: InlineTagsUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
-    if not update_recipe_tags(recipe_id, _parse_tag_keys(data.tags)):
+    if not update_recipe_tags(recipe_id, _parse_tag_keys(data.tags), conn=conn):
         raise HTTPException(status_code=404, detail="Recipe not found")
     return {"ok": True}
 
@@ -824,33 +844,37 @@ async def admin_inline_tags(
 @app.post("/admin/bulk/category")
 async def admin_bulk_category(
     data: BulkCategoryUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
-    updated = bulk_update_category(data.ids, data.category)
+    updated = bulk_update_category(data.ids, data.category, conn=conn)
     return {"ok": True, "updated": updated}
 
 
 @app.post("/admin/bulk/tags")
 async def admin_bulk_tags(
     data: BulkTagsUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
-    updated = bulk_update_tags(data.ids, _parse_tag_keys(data.add), _parse_tag_keys(data.remove))
+    updated = bulk_update_tags(
+        data.ids, _parse_tag_keys(data.add), _parse_tag_keys(data.remove), conn=conn
+    )
     return {"ok": True, "updated": updated}
 
 
 def _admin_config_context(
-    request: Request, message: tuple[str, str] | None = None
+    request: Request, conn: sqlite3.Connection, message: tuple[str, str] | None = None
 ) -> dict[str, object]:
     """Contexte du partial Configuration. `message` = (kind, text)."""
     return _base_context(
         request,
-        connections=get_dropbox_connections(),
+        connections=get_dropbox_connections(conn=conn),
         env_dropbox_enabled=has_env_dropbox_credentials(),
-        default_active=is_default_account_active(),
-        default_visible=is_default_account_visible(),
+        default_active=is_default_account_active(conn=conn),
+        default_visible=is_default_account_visible(conn=conn),
         dropbox_folder=DROPBOX_FOLDER,
-        llm_model=get_setting("llm_model", ""),
+        llm_model=get_setting("llm_model", "", conn=conn),
         llm_model_default=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
         message=message,
     )
@@ -859,6 +883,7 @@ def _admin_config_context(
 @app.post("/admin/config/dropbox", response_class=HTMLResponse)
 async def admin_config_add_dropbox(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     form = await request.form()
@@ -873,6 +898,7 @@ async def admin_config_add_dropbox(
             name=_config_template_name(request),
             context=_admin_config_context(
                 request,
+                conn,
                 ("error", "Le nom et le refresh token sont obligatoires."),
             ),
             status_code=422,
@@ -883,13 +909,14 @@ async def admin_config_add_dropbox(
         refresh_token=refresh_token,
         folder=folder,
         file_filter=file_filter,
+        conn=conn,
     )
     if connection_id is None:
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
             context=_admin_config_context(
-                request, ("error", f"Une connexion nommee '{name}' existe deja.")
+                request, conn, ("error", f"Une connexion nommee '{name}' existe deja.")
             ),
             status_code=422,
         )
@@ -898,7 +925,9 @@ async def admin_config_add_dropbox(
         request=request,
         name=_config_template_name(request),
         context=_admin_config_context(
-            request, ("ok", f"Connexion '{name}' ajoutee. Elle sera utilisee au prochain scan.")
+            request,
+            conn,
+            ("ok", f"Connexion '{name}' ajoutee. Elle sera utilisee au prochain scan."),
         ),
     )
 
@@ -915,30 +944,30 @@ def _config_template_name(request: Request) -> str:
 @app.get("/admin/config/dropbox/connect")
 async def admin_config_connect_dropbox(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> Response:
     """Redirige vers la page d'autorisation Dropbox (flux OAuth2 offline)."""
     state = secrets.token_urlsafe(24)
-    # Stocke en DB : la session cookie peut etre perdue entre le depart vers
-    # Dropbox et le retour (autre hote, navigation separee, etc.)
-    set_setting("dropbox_oauth_state", state)
+    set_setting("dropbox_oauth_state", state, conn=conn)
     try:
         url = build_oauth_authorize_url(_dropbox_redirect_uri(request), state)
     except ValueError as e:
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
-            context=_admin_config_context(request, ("error", str(e))),
+            context=_admin_config_context(request, conn, ("error", str(e))),
             status_code=422,
         )
     return RedirectResponse(url=url, status_code=302)
 
 
 def _admin_config_oauth_context(
-    request: Request, refresh_token: str, account_label: str
+    request: Request, conn: sqlite3.Connection, refresh_token: str, account_label: str
 ) -> dict[str, object]:
     ctx = _admin_config_context(
         request,
+        conn,
         (
             "ok",
             "Compte Dropbox autorise. Choisissez un nom pour finaliser la connexion.",
@@ -952,6 +981,7 @@ def _admin_config_oauth_context(
 @app.get("/admin/config/dropbox/callback", response_class=HTMLResponse, response_model=None)
 async def admin_config_dropbox_callback(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse | RedirectResponse:
     """Recoit le code d'autorisation Dropbox et l'echange contre un refresh token."""
@@ -965,12 +995,12 @@ async def admin_config_dropbox_callback(
             request=request,
             name=template_name,
             context=_admin_config_context(
-                request, ("error", f"Autorisation Dropbox refusee : {error}")
+                request, conn, ("error", f"Autorisation Dropbox refusee : {error}")
             ),
         )
 
-    expected_state = get_setting("dropbox_oauth_state")
-    delete_setting("dropbox_oauth_state")
+    expected_state = get_setting("dropbox_oauth_state", conn=conn)
+    delete_setting("dropbox_oauth_state", conn=conn)
 
     if not code:
         detail = "code manquant"
@@ -988,7 +1018,7 @@ async def admin_config_dropbox_callback(
             request=request,
             name=template_name,
             context=_admin_config_context(
-                request, ("error", f"Reponse Dropbox invalide ({detail}).")
+                request, conn, ("error", f"Reponse Dropbox invalide ({detail}).")
             ),
             status_code=422,
         )
@@ -1005,19 +1035,22 @@ async def admin_config_dropbox_callback(
         return templates.TemplateResponse(
             request=request,
             name=template_name,
-            context=_admin_config_context(request, ("error", f"Echange du code echoue : {e}")),
+            context=_admin_config_context(
+                request, conn, ("error", f"Echange du code echoue : {e}")
+            ),
         )
 
     return templates.TemplateResponse(
         request=request,
         name=template_name,
-        context=_admin_config_oauth_context(request, refresh_token, account_label),
+        context=_admin_config_oauth_context(request, conn, refresh_token, account_label),
     )
 
 
 @app.post("/admin/config/model", response_class=HTMLResponse)
 async def admin_config_set_model(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     """Override global du modele LLM utilise pour l'analyse des recettes."""
@@ -1025,21 +1058,25 @@ async def admin_config_set_model(
     model = str(form.get("llm_model") or "").strip()
 
     if model:
-        set_setting("llm_model", model)
+        set_setting("llm_model", model, conn=conn)
         message = ("ok", f"Modele LLM defini : '{model}'.")
     else:
-        delete_setting("llm_model")
+        delete_setting("llm_model", conn=conn)
         message = ("ok", "Override retire : retour au modele du .env.")
 
     return templates.TemplateResponse(
         request=request,
         name=_config_template_name(request),
-        context=_admin_config_context(request, message),
+        context=_admin_config_context(request, conn, message),
     )
 
 
 def _toggle_response(
-    request: Request, label: str, active: bool, visible: bool | None = None
+    request: Request,
+    conn: sqlite3.Connection,
+    label: str,
+    active: bool,
+    visible: bool | None = None,
 ) -> HTMLResponse:
     if visible is None:
         etat = "demarree" if active else "arretee"
@@ -1048,33 +1085,36 @@ def _toggle_response(
     return templates.TemplateResponse(
         request=request,
         name=_config_template_name(request),
-        context=_admin_config_context(request, ("ok", f"Synchronisation '{label}' {etat}.")),
+        context=_admin_config_context(request, conn, ("ok", f"Synchronisation '{label}' {etat}.")),
     )
 
 
 @app.post("/admin/config/dropbox/default/toggle-active", response_class=HTMLResponse)
 async def admin_config_toggle_default_active(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    new_active = not is_default_account_active()
-    set_default_account_active(new_active)
-    return _toggle_response(request, "Défaut (.env)", new_active)
+    new_active = not is_default_account_active(conn=conn)
+    set_default_account_active(new_active, conn=conn)
+    return _toggle_response(request, conn, "Défaut (.env)", new_active)
 
 
 @app.post("/admin/config/dropbox/default/toggle-visible", response_class=HTMLResponse)
 async def admin_config_toggle_default_visible(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    new_visible = not is_default_account_visible()
-    set_default_account_visible(new_visible)
-    return _toggle_response(request, "Défaut (.env)", True, visible=new_visible)
+    new_visible = not is_default_account_visible(conn=conn)
+    set_default_account_visible(new_visible, conn=conn)
+    return _toggle_response(request, conn, "Défaut (.env)", True, visible=new_visible)
 
 
 @app.post("/admin/config/dropbox/default/delete", response_class=HTMLResponse)
 async def admin_config_delete_default(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -1082,6 +1122,7 @@ async def admin_config_delete_default(
         name=_config_template_name(request),
         context=_admin_config_context(
             request,
+            conn,
             ("error", "Le compte par defaut (.env) ne peut pas etre supprime ici."),
         ),
     )
@@ -1090,50 +1131,53 @@ async def admin_config_delete_default(
 @app.post("/admin/config/dropbox/{connection_id}/toggle-active", response_class=HTMLResponse)
 async def admin_config_toggle_active(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    conn = get_dropbox_connection_credentials(connection_id)
-    if not conn:
+    dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
+    if not dbx_conn:
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
-            context=_admin_config_context(request, ("error", "Connexion introuvable.")),
+            context=_admin_config_context(request, conn, ("error", "Connexion introuvable.")),
             status_code=404,
         )
-    connections = {c["id"]: c for c in get_dropbox_connections()}
+    connections = {c["id"]: c for c in get_dropbox_connections(conn=conn)}
     new_active = not bool(connections[connection_id]["active"])
-    set_dropbox_connection_active(connection_id, new_active)
-    return _toggle_response(request, str(conn["name"]), new_active)
+    set_dropbox_connection_active(connection_id, new_active, conn=conn)
+    return _toggle_response(request, conn, str(dbx_conn["name"]), new_active)
 
 
 @app.post("/admin/config/dropbox/{connection_id}/toggle-visible", response_class=HTMLResponse)
 async def admin_config_toggle_visible(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    conn = get_dropbox_connection_credentials(connection_id)
-    if not conn:
+    dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
+    if not dbx_conn:
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
-            context=_admin_config_context(request, ("error", "Connexion introuvable.")),
+            context=_admin_config_context(request, conn, ("error", "Connexion introuvable.")),
             status_code=404,
         )
-    connections = {c["id"]: c for c in get_dropbox_connections()}
+    connections = {c["id"]: c for c in get_dropbox_connections(conn=conn)}
     new_visible = not bool(connections[connection_id]["visible"])
-    set_dropbox_connection_visible(connection_id, new_visible)
-    return _toggle_response(request, str(conn["name"]), True, visible=new_visible)
+    set_dropbox_connection_visible(connection_id, new_visible, conn=conn)
+    return _toggle_response(request, conn, str(dbx_conn["name"]), True, visible=new_visible)
 
 
 @app.post("/admin/config/dropbox/{connection_id}/delete", response_class=HTMLResponse)
 async def admin_config_delete_dropbox(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    if delete_dropbox_connection(connection_id):
+    if delete_dropbox_connection(connection_id, conn=conn):
         forget_connection_client(connection_id)
         message = (
             "ok",
@@ -1144,34 +1188,35 @@ async def admin_config_delete_dropbox(
     return templates.TemplateResponse(
         request=request,
         name=_config_template_name(request),
-        context=_admin_config_context(request, message),
+        context=_admin_config_context(request, conn, message),
     )
 
 
 @app.post("/admin/config/dropbox/{connection_id}/test", response_class=HTMLResponse)
 async def admin_config_test_dropbox(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    conn = get_dropbox_connection_credentials(connection_id)
-    if not conn:
+    dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
+    if not dbx_conn:
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
-            context=_admin_config_context(request, ("error", "Connexion introuvable.")),
+            context=_admin_config_context(request, conn, ("error", "Connexion introuvable.")),
             status_code=404,
         )
 
     try:
-        account_label = verify_connection_credentials(str(conn["refresh_token"]))
+        account_label = verify_connection_credentials(str(dbx_conn["refresh_token"]))
     except Exception as e:
-        log.error(f"Dropbox connection test failed for '{conn['name']}': {e}")
+        log.error(f"Dropbox connection test failed for '{dbx_conn['name']}': {e}")
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
             context=_admin_config_context(
-                request, ("error", f"Echec de connexion pour '{conn['name']}' : {e}")
+                request, conn, ("error", f"Echec de connexion pour '{dbx_conn['name']}' : {e}")
             ),
         )
 
@@ -1179,7 +1224,7 @@ async def admin_config_test_dropbox(
         request=request,
         name=_config_template_name(request),
         context=_admin_config_context(
-            request, ("ok", f"Connexion '{conn['name']}' validee : {account_label}")
+            request, conn, ("ok", f"Connexion '{dbx_conn['name']}' validee : {account_label}")
         ),
     )
 
@@ -1220,11 +1265,12 @@ def _tags_from_form(form: Any) -> dict[str, list[str]]:
 @app.get("/admin/edit/{recipe_id}", response_class=HTMLResponse)
 async def admin_edit_form(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return templates.TemplateResponse(
@@ -1233,8 +1279,8 @@ async def admin_edit_form(
         context=_base_context(
             request,
             recipe=recipe,
-            all_categories=get_all_categories(only_used=False, lang=lang),
-            all_tags=get_existing_tags_for_prompt(lang=lang),
+            all_categories=get_all_categories(only_used=False, lang=lang, conn=conn),
+            all_tags=get_existing_tags_for_prompt(lang=lang, conn=conn),
         ),
     )
 
@@ -1242,10 +1288,11 @@ async def admin_edit_form(
 @app.post("/admin/edit/{recipe_id}", response_class=HTMLResponse)
 async def admin_edit_save(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    recipe = get_recipe(recipe_id)
+    recipe = get_recipe(recipe_id, conn=conn)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -1264,10 +1311,6 @@ async def admin_edit_save(
         steps = []
     ingredients = _ingredients_from_form(form)
 
-    # L'édition manuelle ne met à jour qu'une seule langue à la fois :
-    # on synchronise les deux langues sur le même contenu (le champ du
-    # formulaire est rendu dans la langue active). L'admin pourra relancer
-    # un import LLM plus tard pour régénérer proprement les deux langues.
     base_payload = {
         "title": title,
         "description": description,
@@ -1282,56 +1325,59 @@ async def admin_edit_save(
         "source_url": str(form.get("source_url") or "").strip() or None,
     }
 
-    if not update_recipe_manual(recipe_id, data):
+    if not update_recipe_manual(recipe_id, data, conn=conn):
         raise HTTPException(status_code=404, detail="Recipe not found")
-    sync_recipe_tags(recipe_id, _tags_from_form(form))
+    sync_recipe_tags(recipe_id, _tags_from_form(form), conn=conn)
 
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request),
+        context=_admin_table_context(request, conn),
     )
 
 
 @app.post("/admin/blacklist/{recipe_id}")
 async def admin_blacklist(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    blacklist_and_delete_recipe(recipe_id)
+    blacklist_and_delete_recipe(recipe_id, conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request),
+        context=_admin_table_context(request, conn),
     )
 
 
 @app.post("/admin/unblacklist")
 async def admin_unblacklist(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     path: str = Query(...),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    remove_from_blacklist(path)
+    remove_from_blacklist(path, conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request),
+        context=_admin_table_context(request, conn),
     )
 
 
 @app.post("/admin/retry-failed")
 async def admin_retry_failed(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     path: str = Query(...),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    remove_failed_file(path)
+    remove_failed_file(path, conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",
-        context=_admin_table_context(request),
+        context=_admin_table_context(request, conn),
     )
 
 
@@ -1347,28 +1393,34 @@ async def push_vapid_public_key() -> dict[str, str]:
 
 
 @app.post("/api/push/subscribe")
-async def push_subscribe(data: PushSubscriptionRegister) -> dict[str, object]:
+async def push_subscribe(
+    data: PushSubscriptionRegister, conn: sqlite3.Connection = Depends(get_db)
+) -> dict[str, object]:
     """Register a push subscription from the browser."""
     user = get_user_from_request_safe(None)
     user_id = user["id"] if user else None
-    sub_id = save_push_subscription(user_id, data.endpoint, data.subscription)
+    sub_id = save_push_subscription(user_id, data.endpoint, data.subscription, conn=conn)
     return {"ok": True, "id": sub_id}
 
 
 @app.post("/api/push/unsubscribe")
-async def push_unsubscribe(endpoint: str = Query(...)) -> dict[str, object]:
+async def push_unsubscribe(
+    endpoint: str = Query(...), conn: sqlite3.Connection = Depends(get_db)
+) -> dict[str, object]:
     """Unregister a push subscription."""
-    deleted = delete_push_subscription(endpoint)
+    deleted = delete_push_subscription(endpoint, conn=conn)
     return {"ok": True, "deleted": deleted}
 
 
 @app.post("/api/push/schedule-timer")
-async def push_schedule_timer(data: TimerScheduleRequest) -> dict[str, object]:
+async def push_schedule_timer(
+    data: TimerScheduleRequest, conn: sqlite3.Connection = Depends(get_db)
+) -> dict[str, object]:
     """Schedule a push notification for when a timer completes."""
     if not _scheduler:
         raise HTTPException(status_code=503, detail="Scheduler not available")
 
-    sub = get_push_subscription(data.endpoint)
+    sub = get_push_subscription(data.endpoint, conn=conn)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
@@ -1436,19 +1488,21 @@ def _can_edit_shopping_list(request: Request, shopping_list: dict[str, object]) 
 
 
 @app.get("/shopping", response_class=HTMLResponse)
-async def shopping_lists_page(request: Request) -> HTMLResponse:
+async def shopping_lists_page(
+    request: Request, conn: sqlite3.Connection = Depends(get_db)
+) -> HTMLResponse:
     """Show all shopping lists for the current user (or anonymous)."""
     lang = _resolve_request_lang(request)
     user_id = _shopping_list_user_id(request)
 
     if user_id is not None:
-        lists = get_user_shopping_lists(user_id)
+        lists = get_user_shopping_lists(user_id, conn=conn)
     else:
-        lists = get_shopping_lists_by_ids(_get_anon_list_ids(request))
+        lists = get_shopping_lists_by_ids(_get_anon_list_ids(request), conn=conn)
 
     lists_with_counts = []
     for lst in lists:
-        items = get_shopping_list_items(int(str(lst["id"])), lang=lang)
+        items = get_shopping_list_items(int(str(lst["id"])), lang=lang, conn=conn)
         lst["item_count"] = len(items)
         done_count = sum(1 for i in items if i["is_done"])
         lst["done_count"] = done_count
@@ -1468,12 +1522,13 @@ async def shopping_lists_page(request: Request) -> HTMLResponse:
 @app.get("/shopping/{list_id}", response_class=HTMLResponse, response_model=None)
 async def shopping_list_detail(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
     mode: str = Query(default="edit"),
 ) -> HTMLResponse | RedirectResponse:
     """Show a shopping list detail page."""
     lang = _resolve_request_lang(request)
-    shopping_list = get_shopping_list_by_id(list_id)
+    shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
 
@@ -1481,8 +1536,8 @@ async def shopping_list_detail(
     if user_id is None:
         _add_anon_list_id(request, list_id)
 
-    items = get_shopping_list_items(list_id, lang=lang)
-    departments = get_shopping_departments(lang=lang)
+    items = get_shopping_list_items(list_id, lang=lang, conn=conn)
+    departments = get_shopping_departments(lang=lang, conn=conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -1512,11 +1567,12 @@ async def shopping_list_detail(
 @app.get("/shopping/{list_id}/cook", response_class=HTMLResponse)
 async def shopping_list_cook(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
 ) -> HTMLResponse:
     """Shopping mode - cook-like view for checking off items while shopping."""
     lang = _resolve_request_lang(request)
-    shopping_list = get_shopping_list_by_id(list_id)
+    shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
 
@@ -1524,8 +1580,8 @@ async def shopping_list_cook(
     if user_id is None:
         _add_anon_list_id(request, list_id)
 
-    items = get_shopping_list_items(list_id, lang=lang)
-    departments = get_shopping_departments(lang=lang)
+    items = get_shopping_list_items(list_id, lang=lang, conn=conn)
+    departments = get_shopping_departments(lang=lang, conn=conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -1559,11 +1615,12 @@ async def shopping_list_cook(
 async def shopping_list_shared(
     request: Request,
     token: str,
+    conn: sqlite3.Connection = Depends(get_db),
     mode: str = Query(default="shopping"),
 ) -> HTMLResponse:
     """View a shared shopping list. Anyone with the link can edit."""
     lang = _resolve_request_lang(request)
-    shopping_list = get_shopping_list_by_token(token)
+    shopping_list = get_shopping_list_by_token(token, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
 
@@ -1571,8 +1628,8 @@ async def shopping_list_shared(
     if user_id is None:
         _add_anon_list_id(request, int(str(shopping_list["id"])))
 
-    items = get_shopping_list_items(int(str(shopping_list["id"])), lang=lang)
-    departments = get_shopping_departments(lang=lang)
+    items = get_shopping_list_items(int(str(shopping_list["id"])), lang=lang, conn=conn)
+    departments = get_shopping_departments(lang=lang, conn=conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -1603,11 +1660,12 @@ async def shopping_list_shared(
 @app.post("/shopping/lists")
 async def shopping_list_create(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     name: str = Form(...),
 ) -> RedirectResponse:
     """Create a new shopping list."""
     user_id = _shopping_list_user_id(request)
-    lst = create_shopping_list(name, user_id=user_id)
+    lst = create_shopping_list(name, user_id=user_id, conn=conn)
     if user_id is None:
         _add_anon_list_id(request, int(str(lst["id"])))
     return RedirectResponse(url=f"/shopping/{lst['id']}", status_code=303)
@@ -1616,26 +1674,28 @@ async def shopping_list_create(
 @app.post("/shopping/lists/{list_id}/delete")
 async def shopping_list_delete(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
 ) -> RedirectResponse:
     """Delete a shopping list."""
-    shopping_list = get_shopping_list_by_id(list_id)
+    shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
     if not _can_edit_shopping_list(request, shopping_list):
         raise HTTPException(status_code=403, detail="Not authorized")
-    delete_shopping_list(list_id)
+    delete_shopping_list(list_id, conn=conn)
     return RedirectResponse(url="/shopping", status_code=303)
 
 
 @app.post("/shopping/lists/{list_id}/rename", response_model=None)
 async def shopping_list_rename(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
     name: str = Form(...),
 ) -> RedirectResponse | HTMLResponse:
     """Rename a shopping list."""
-    shopping_list = get_shopping_list_by_id(list_id)
+    shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
     if not _can_edit_shopping_list(request, shopping_list):
@@ -1644,10 +1704,10 @@ async def shopping_list_rename(
     name = name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
-    rename_shopping_list(list_id, name)
+    rename_shopping_list(list_id, name, conn=conn)
 
     if request.headers.get("hx-request"):
-        shopping_list = get_shopping_list_by_id(list_id)
+        shopping_list = get_shopping_list_by_id(list_id, conn=conn)
         return templates.TemplateResponse(
             request=request,
             name="partials/shopping_list_header.html",
@@ -1663,13 +1723,14 @@ async def shopping_list_rename(
 @app.post("/shopping/lists/{list_id}/items", response_model=None)
 async def shopping_list_add_item(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
     department_id: int = Form(...),
     text: str = Form(...),
     quantity: str | None = Form(None),
 ) -> HTMLResponse | RedirectResponse:
     """Add an item to a shopping list."""
-    shopping_list = get_shopping_list_by_id(list_id)
+    shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
     if not _can_edit_shopping_list(request, shopping_list):
@@ -1683,12 +1744,12 @@ async def shopping_list_add_item(
     if not department_id:
         raise HTTPException(status_code=400, detail="Department is required")
 
-    add_shopping_list_item(list_id, department_id, text, quantity)
+    add_shopping_list_item(list_id, department_id, text, quantity, conn=conn)
     lang = _resolve_request_lang(request)
 
     if request.headers.get("hx-request"):
-        items = get_shopping_list_items(list_id, lang=lang)
-        departments = get_shopping_departments(lang=lang)
+        items = get_shopping_list_items(list_id, lang=lang, conn=conn)
+        departments = get_shopping_departments(lang=lang, conn=conn)
         grouped: dict[int, dict[str, Any]] = {}
         for dept in departments:
             grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
@@ -1714,10 +1775,11 @@ async def shopping_list_add_item(
 @app.post("/shopping/items/{item_id}/toggle", response_model=None)
 async def shopping_item_toggle(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     item_id: int = Path(gt=0),
 ) -> HTMLResponse | RedirectResponse:
     """Toggle an item's done status."""
-    item = toggle_shopping_list_item(item_id)
+    item = toggle_shopping_list_item(item_id, conn=conn)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
@@ -1742,28 +1804,26 @@ async def shopping_item_toggle(
 @app.post("/shopping/items/{item_id}/remove", response_model=None)
 async def shopping_item_remove(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     item_id: int = Path(gt=0),
 ) -> HTMLResponse | RedirectResponse:
     """Remove an item from a shopping list."""
     list_id_before = None
     if request.headers.get("hx-request"):
-        from recipes.db import get_conn
+        row = conn.execute(
+            "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        if row:
+            list_id_before = int(str(row["list_id"]))
 
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
-            ).fetchone()
-            if row:
-                list_id_before = int(str(row["list_id"]))
-
-    removed = remove_shopping_list_item(item_id)
+    removed = remove_shopping_list_item(item_id, conn=conn)
     if not removed:
         raise HTTPException(status_code=404, detail="Item not found")
 
     if request.headers.get("hx-request") and list_id_before:
         lang = _resolve_request_lang(request)
-        items = get_shopping_list_items(list_id_before, lang=lang)
-        departments = get_shopping_departments(lang=lang)
+        items = get_shopping_list_items(list_id_before, lang=lang, conn=conn)
+        departments = get_shopping_departments(lang=lang, conn=conn)
         grouped: dict[int, dict[str, Any]] = {}
         for dept in departments:
             grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
@@ -1771,7 +1831,7 @@ async def shopping_item_remove(
             dept_id_val = int(str(item["department_id"]))
             if dept_id_val in grouped:
                 grouped[dept_id_val]["item_list"].append(item)
-        shopping_list = get_shopping_list_by_id(list_id_before)
+        shopping_list = get_shopping_list_by_id(list_id_before, conn=conn)
         mode = request.query_params.get("mode", "edit")
         return templates.TemplateResponse(
             request=request,
@@ -1792,6 +1852,7 @@ async def shopping_item_remove(
 @app.post("/shopping/items/{item_id}/update", response_model=None)
 async def shopping_item_update(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     item_id: int = Path(gt=0),
     text: str = Form(...),
     quantity: str | None = Form(None),
@@ -1800,41 +1861,38 @@ async def shopping_item_update(
     """Update an item's text, quantity, and/or department."""
     text = text.strip()
     quantity = quantity.strip() if quantity else None
-    updated = update_shopping_list_item(item_id, text, quantity, department_id)
+    updated = update_shopping_list_item(item_id, text, quantity, department_id, conn=conn)
 
     if not updated:
         raise HTTPException(status_code=404, detail="Item not found")
 
     if request.headers.get("hx-request"):
-        from recipes.db import get_conn
-
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
-            ).fetchone()
-            if row:
-                list_id = int(str(row["list_id"]))
-                lang = _resolve_request_lang(request)
-                items = get_shopping_list_items(list_id, lang=lang)
-                updated_item = None
-                for item in items:
-                    if int(str(item["id"])) == item_id:
-                        updated_item = item
-                        break
-                if not updated_item:
-                    raise HTTPException(status_code=404, detail="Item not found")
-                mode = request.query_params.get("mode", "edit")
-                return templates.TemplateResponse(
-                    request=request,
-                    name="partials/shopping_item_row.html",
-                    context=_base_context(
-                        request,
-                        item=updated_item,
-                        mode=mode,
-                        can_edit=True,
-                        lang=lang,
-                    ),
-                )
+        row = conn.execute(
+            "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        if row:
+            list_id = int(str(row["list_id"]))
+            lang = _resolve_request_lang(request)
+            items = get_shopping_list_items(list_id, lang=lang, conn=conn)
+            updated_item = None
+            for item in items:
+                if int(str(item["id"])) == item_id:
+                    updated_item = item
+                    break
+            if not updated_item:
+                raise HTTPException(status_code=404, detail="Item not found")
+            mode = request.query_params.get("mode", "edit")
+            return templates.TemplateResponse(
+                request=request,
+                name="partials/shopping_item_row.html",
+                context=_base_context(
+                    request,
+                    item=updated_item,
+                    mode=mode,
+                    can_edit=True,
+                    lang=lang,
+                ),
+            )
     return RedirectResponse(url="/shopping", status_code=303)
 
 
@@ -1842,20 +1900,21 @@ async def shopping_item_update(
 async def shopping_add_from_recipe(
     request: Request,
     data: RecipeIngredientsToShopping,
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, object]:
     """Add selected ingredients from a recipe to a shopping list."""
     lang = _resolve_request_lang(request)
     user_id = _shopping_list_user_id(request)
 
     if data.list_id:
-        shopping_list = get_shopping_list_by_id(data.list_id)
+        shopping_list = get_shopping_list_by_id(data.list_id, conn=conn)
         if not shopping_list:
             raise HTTPException(status_code=404, detail="Shopping list not found")
         if not _can_edit_shopping_list(request, shopping_list):
             raise HTTPException(status_code=403, detail="Not authorized")
         list_id = data.list_id
     elif data.new_list_name:
-        lst = create_shopping_list(data.new_list_name, user_id=user_id)
+        lst = create_shopping_list(data.new_list_name, user_id=user_id, conn=conn)
         list_id = int(str(lst["id"]))
     else:
         raise HTTPException(status_code=400, detail="List ID or name required")
@@ -1864,7 +1923,7 @@ async def shopping_add_from_recipe(
     if not recipe_id_param:
         raise HTTPException(status_code=400, detail="recipe_id required")
     recipe_id = int(recipe_id_param)
-    recipe = get_recipe(recipe_id, lang=lang)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -1872,7 +1931,7 @@ async def shopping_add_from_recipe(
     if not isinstance(ingredients, list):
         ingredients = []
 
-    departments = get_shopping_departments(lang=lang)
+    departments = get_shopping_departments(lang=lang, conn=conn)
     dept_map = {d["name"]: int(str(d["id"])) for d in departments}
 
     for idx in data.ingredient_indices:
@@ -1904,7 +1963,7 @@ async def shopping_add_from_recipe(
             dept_name = "autre"
         dept_id = dept_map.get(str(dept_name), dept_map.get("autre", 1))
 
-        add_shopping_list_item(list_id, dept_id, food, quantity_str)
+        add_shopping_list_item(list_id, dept_id, food, quantity_str, conn=conn)
 
     return {"ok": True, "list_id": list_id}
 
@@ -1912,6 +1971,7 @@ async def shopping_add_from_recipe(
 @app.post("/api/shopping/classify")
 async def shopping_classify_ingredients(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, object]:
     """Classify ingredient names into departments using the LLM."""
     body = await request.json()
@@ -1923,7 +1983,7 @@ async def shopping_classify_ingredients(
     ingredient_names = [str(i) for i in ingredients]
     dept_keys = classify_ingredients_llm(ingredient_names, lang=lang)
 
-    departments = get_shopping_departments(lang=lang)
+    departments = get_shopping_departments(lang=lang, conn=conn)
     dept_map = {d["name"]: dict(d) for d in departments}
 
     result = []
@@ -1942,15 +2002,16 @@ async def shopping_classify_ingredients(
 @app.get("/admin/shopping", response_class=HTMLResponse)
 async def admin_shopping_lists(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     """Admin page to view and manage all shopping lists."""
     lang = _resolve_request_lang(request)
-    lists = get_all_shopping_lists()
+    lists = get_all_shopping_lists(conn=conn)
 
     lists_with_details = []
     for lst in lists:
-        items = get_shopping_list_items(int(str(lst["id"])), lang=lang)
+        items = get_shopping_list_items(int(str(lst["id"])), lang=lang, conn=conn)
         lst["item_count"] = len(items)
         done_count = sum(1 for i in items if i["is_done"])
         lst["done_count"] = done_count
@@ -1969,18 +2030,19 @@ async def admin_shopping_lists(
 @app.get("/admin/shopping/{list_id}", response_class=HTMLResponse)
 async def admin_shopping_list_view(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
     mode: str = Query(default="edit"),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     """Admin view of a shopping list (read-only, doesn't affect counters)."""
     lang = _resolve_request_lang(request)
-    shopping_list = get_shopping_list_by_id(list_id)
+    shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
         raise HTTPException(status_code=404, detail="Shopping list not found")
 
-    items = get_shopping_list_items(list_id, lang=lang)
-    departments = get_shopping_departments(lang=lang)
+    items = get_shopping_list_items(list_id, lang=lang, conn=conn)
+    departments = get_shopping_departments(lang=lang, conn=conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -2011,11 +2073,12 @@ async def admin_shopping_list_view(
 @app.post("/admin/shopping/{list_id}/delete")
 async def admin_shopping_list_delete(
     request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> RedirectResponse:
     """Admin delete a shopping list."""
-    delete_shopping_list(list_id)
+    delete_shopping_list(list_id, conn=conn)
     return RedirectResponse(url="/admin/shopping", status_code=303)
 
 

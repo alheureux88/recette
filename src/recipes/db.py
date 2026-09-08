@@ -21,6 +21,8 @@ import json
 import os
 import re
 import sqlite3
+from collections.abc import Generator
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -140,11 +142,20 @@ SEED_SHOPPING_DEPARTMENTS: list[tuple[str, str, str, int, str]] = [
 
 def get_conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def get_db() -> Generator[sqlite3.Connection, None, None]:
+    conn = get_conn()
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -508,7 +519,7 @@ def _localize_recipe_translation(row: sqlite3.Row | None) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
-def upsert_recipe(data: dict[str, object]) -> int:
+def upsert_recipe(data: dict[str, object], conn: sqlite3.Connection | None = None) -> int:
     """Insert or update a recipe with bilingual translations.
 
     `data` must contain both `lang_fr` and `lang_en` payloads (or, for tests
@@ -518,13 +529,13 @@ def upsert_recipe(data: dict[str, object]) -> int:
     """
     payload_fr, payload_en = _extract_translation_payload(data)
 
-    with get_conn() as conn:
-        existing = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        existing = _conn.execute(
             "SELECT id FROM recipes WHERE source_file = ?", (data["source_file"],)
         ).fetchone()
 
         category_id = _resolve_category(
-            conn, str(data["category"]) if data.get("category") else None
+            _conn, str(data["category"]) if data.get("category") else None
         )
         servings = data.get("servings")
         if isinstance(servings, bool) or not isinstance(servings, (int, float)):
@@ -534,7 +545,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
 
         if existing:
             recipe_id = int(existing["id"])
-            conn.execute(
+            _conn.execute(
                 """
                 UPDATE recipes SET
                     servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
@@ -554,7 +565,7 @@ def upsert_recipe(data: dict[str, object]) -> int:
                 ),
             )
         else:
-            cur = conn.execute(
+            cur = _conn.execute(
                 """
                 INSERT INTO recipes
                     (servings, category_id, source_url, dropbox_url, source_file,
@@ -575,8 +586,8 @@ def upsert_recipe(data: dict[str, object]) -> int:
             assert cur.lastrowid is not None
             recipe_id = int(cur.lastrowid)
 
-        _upsert_translation(conn, recipe_id, "fr", payload_fr)
-        _upsert_translation(conn, recipe_id, "en", payload_en)
+        _upsert_translation(_conn, recipe_id, "fr", payload_fr)
+        _upsert_translation(_conn, recipe_id, "en", payload_en)
         return recipe_id
 
 
@@ -642,12 +653,14 @@ def _upsert_translation(
     )
 
 
-def sync_recipe_tags(recipe_id: int, tags_by_family: dict[str, list[str]]) -> None:
-    with get_conn() as conn:
+def sync_recipe_tags(
+    recipe_id: int, tags_by_family: dict[str, list[str]], conn: sqlite3.Connection | None = None
+) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
         tag_ids: set[int] = set()
 
         for family_name, tag_names in tags_by_family.items():
-            family = conn.execute(
+            family = _conn.execute(
                 "SELECT id FROM tag_families WHERE name = ?", (family_name,)
             ).fetchone()
             if not family:
@@ -655,17 +668,17 @@ def sync_recipe_tags(recipe_id: int, tags_by_family: dict[str, list[str]]) -> No
             family_id = family["id"]
 
             for tag_name in tag_names:
-                tag_id = _resolve_tag(conn, family_id, tag_name)
+                tag_id = _resolve_tag(_conn, family_id, tag_name)
                 if tag_id is not None:
                     tag_ids.add(tag_id)
 
         all_ids: set[int] = set(tag_ids)
         for tid in tag_ids:
-            _add_ancestors(conn, tid, all_ids)
+            _add_ancestors(_conn, tid, all_ids)
 
-        conn.execute("DELETE FROM recipe_tags WHERE recipe_id = ?", (recipe_id,))
+        _conn.execute("DELETE FROM recipe_tags WHERE recipe_id = ?", (recipe_id,))
         for tid in all_ids:
-            conn.execute(
+            _conn.execute(
                 "INSERT OR IGNORE INTO recipe_tags (recipe_id, tag_id) VALUES (?, ?)",
                 (recipe_id, tid),
             )
@@ -730,36 +743,38 @@ def _add_ancestors(conn: sqlite3.Connection, tag_id: int, collected: set[int]) -
             _add_ancestors(conn, parent_id, collected)
 
 
-def is_manually_edited(source_file: str) -> bool:
-    with get_conn() as conn:
-        row = conn.execute(
+def is_manually_edited(source_file: str, conn: sqlite3.Connection | None = None) -> bool:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT 1 FROM recipes WHERE source_file = ? AND manually_edited = 1",
             (source_file,),
         ).fetchone()
         return row is not None
 
 
-def update_recipe_manual(recipe_id: int, data: dict[str, object]) -> bool:
+def update_recipe_manual(
+    recipe_id: int, data: dict[str, object], conn: sqlite3.Connection | None = None
+) -> bool:
     """Met à jour une recette modifiée via l'écran d'administration.
 
     Marque la recette comme modifiée manuellement : le poller Dropbox ignorera
     alors les futures mises à jour du fichier source et les signalera dans
     les fichiers en erreur.
     """
-    with get_conn() as conn:
-        row = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if not row:
             return False
 
         payload_fr, payload_en = _extract_translation_payload(data)
         category_id = _resolve_category(
-            conn, str(data["category"]) if data.get("category") else None
+            _conn, str(data["category"]) if data.get("category") else None
         )
         servings = data.get("servings")
         if isinstance(servings, bool) or not isinstance(servings, (int, float)):
             servings = None
 
-        conn.execute(
+        _conn.execute(
             """
             UPDATE recipes SET
                 servings=?, category_id=?, source_url=?,
@@ -773,19 +788,21 @@ def update_recipe_manual(recipe_id: int, data: dict[str, object]) -> bool:
                 recipe_id,
             ),
         )
-        _upsert_translation(conn, recipe_id, "fr", payload_fr)
-        _upsert_translation(conn, recipe_id, "en", payload_en)
+        _upsert_translation(_conn, recipe_id, "fr", payload_fr)
+        _upsert_translation(_conn, recipe_id, "en", payload_en)
         return True
 
 
-def update_recipe_category(recipe_id: int, category: str | None) -> bool:
+def update_recipe_category(
+    recipe_id: int, category: str | None, conn: sqlite3.Connection | None = None
+) -> bool:
     """Édition inline de la catégorie. Marque la recette comme modifiée manuellement."""
-    with get_conn() as conn:
-        row = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if not row:
             return False
-        category_id = _resolve_category(conn, category or None)
-        conn.execute(
+        category_id = _resolve_category(_conn, category or None)
+        _conn.execute(
             """
             UPDATE recipes SET category_id=?, manually_edited=1,
                    updated_at=CURRENT_TIMESTAMP
@@ -796,28 +813,32 @@ def update_recipe_category(recipe_id: int, category: str | None) -> bool:
         return True
 
 
-def update_recipe_tags(recipe_id: int, tags_by_family: dict[str, list[str]]) -> bool:
+def update_recipe_tags(
+    recipe_id: int, tags_by_family: dict[str, list[str]], conn: sqlite3.Connection | None = None
+) -> bool:
     """Édition inline des étiquettes (remplacement complet). Marque la recette manuelle."""
-    with get_conn() as conn:
-        row = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if not row:
             return False
-        conn.execute(
+        _conn.execute(
             "UPDATE recipes SET manually_edited=1, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (recipe_id,),
         )
-    sync_recipe_tags(recipe_id, tags_by_family)
+        sync_recipe_tags(recipe_id, tags_by_family, conn=_conn)
     return True
 
 
-def bulk_update_category(recipe_ids: list[int], category: str | None) -> int:
+def bulk_update_category(
+    recipe_ids: list[int], category: str | None, conn: sqlite3.Connection | None = None
+) -> int:
     """Change la catégorie d'un lot de recettes et les marque comme modifiées."""
     if not recipe_ids:
         return 0
-    with get_conn() as conn:
-        category_id = _resolve_category(conn, category or None)
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        category_id = _resolve_category(_conn, category or None)
         placeholders = ", ".join("?" for _ in recipe_ids)
-        cur = conn.execute(
+        cur = _conn.execute(
             f"""
             UPDATE recipes SET category_id=?, manually_edited=1,
                    updated_at=CURRENT_TIMESTAMP
@@ -860,6 +881,7 @@ def bulk_update_tags(
     recipe_ids: list[int],
     add_by_family: dict[str, list[str]],
     remove_by_family: dict[str, list[str]],
+    conn: sqlite3.Connection | None = None,
 ) -> int:
     """Ajoute/retire des étiquettes sur un lot de recettes et les marque comme modifiées.
 
@@ -867,13 +889,13 @@ def bulk_update_tags(
     """
     if not recipe_ids:
         return 0
-    with get_conn() as conn:
-        add_ids = _resolve_tag_ids(conn, add_by_family, create=True)
-        remove_ids = _resolve_tag_ids(conn, remove_by_family, create=False)
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        add_ids = _resolve_tag_ids(_conn, add_by_family, create=True)
+        remove_ids = _resolve_tag_ids(_conn, remove_by_family, create=False)
 
         placeholders = ", ".join("?" for _ in recipe_ids)
         for tag_id in add_ids:
-            conn.execute(
+            _conn.execute(
                 f"""
                 INSERT OR IGNORE INTO recipe_tags (recipe_id, tag_id)
                 SELECT r.id, ? FROM recipes r WHERE r.id IN ({placeholders})
@@ -882,7 +904,7 @@ def bulk_update_tags(
             )
         if remove_ids:
             tag_placeholders = ", ".join("?" for _ in remove_ids)
-            conn.execute(
+            _conn.execute(
                 f"""
                 DELETE FROM recipe_tags
                 WHERE tag_id IN ({tag_placeholders}) AND recipe_id IN ({placeholders})
@@ -893,7 +915,7 @@ def bulk_update_tags(
         if not add_ids and not remove_ids:
             return 0
 
-        conn.execute(
+        _conn.execute(
             f"""
             UPDATE recipes SET manually_edited=1, updated_at=CURRENT_TIMESTAMP
             WHERE id IN ({placeholders})
@@ -908,25 +930,27 @@ def bulk_update_tags(
 # ---------------------------------------------------------------------------
 
 
-def get_recipe(recipe_id: int, lang: str = DEFAULT_LANGUAGE) -> dict[str, object] | None:
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+def get_recipe(
+    recipe_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if row is None:
             return None
 
         result: dict[str, object] = dict(row)
 
-        translation = _load_translation(conn, recipe_id, lang)
+        translation = _load_translation(_conn, recipe_id, lang)
         result.update(translation)
         result["title"] = translation["title"]  # backwards compat for templates
 
-        cat_row = conn.execute(
+        cat_row = _conn.execute(
             "SELECT * FROM categories WHERE id = ?",
             (result.get("category_id"),),
         ).fetchone()
         result["category"] = _localize_category(cat_row, lang) if cat_row else None
 
-        pc_row = conn.execute(
+        pc_row = _conn.execute(
             "SELECT id, name FROM dropbox_connections WHERE id = ?",
             (result.get("connection_id"),),
         ).fetchone()
@@ -936,7 +960,7 @@ def get_recipe(recipe_id: int, lang: str = DEFAULT_LANGUAGE) -> dict[str, object
             else {"id": None, "name": DEFAULT_ACCOUNT_NAME}
         )
 
-        tag_rows = conn.execute(
+        tag_rows = _conn.execute(
             """
             SELECT tf.name AS family,
                    tf.display_name_fr AS family_display_name_fr,
@@ -964,7 +988,7 @@ def get_recipe(recipe_id: int, lang: str = DEFAULT_LANGUAGE) -> dict[str, object
             tags_grouped[fam]["tags"].append(_localize_tag(tr, lang))
         result["tags"] = tags_grouped
 
-        result["images"] = get_recipe_images(recipe_id)
+        result["images"] = get_recipe_images(recipe_id, conn=_conn)
 
         return result
 
@@ -1068,6 +1092,7 @@ def search_recipes(
     category_id: int | None = None,
     connection_id: int | None = None,
     lang: str = DEFAULT_LANGUAGE,
+    conn: sqlite3.Connection | None = None,
 ) -> list[dict[str, object]]:
     """Recherche de recettes.
 
@@ -1079,12 +1104,12 @@ def search_recipes(
     if tag_ids is None:
         tag_ids = []
 
-    with get_conn() as conn:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
         conditions: list[str] = [
             "NOT EXISTS "
             "(SELECT 1 FROM dropbox_connections dc WHERE dc.id = r.connection_id AND dc.visible = 0)"
         ]
-        if not is_default_account_visible():
+        if not is_default_account_visible(conn=_conn):
             conditions.append("r.connection_id IS NOT NULL")
         params: list[object] = []
 
@@ -1101,7 +1126,7 @@ def search_recipes(
         if tag_ids:
             tag_to_family: dict[int, int] = {}
             for tid in tag_ids:
-                row = conn.execute("SELECT family_id FROM tags WHERE id = ?", (tid,)).fetchone()
+                row = _conn.execute("SELECT family_id FROM tags WHERE id = ?", (tid,)).fetchone()
                 if row:
                     tag_to_family[tid] = row["family_id"]
 
@@ -1128,7 +1153,7 @@ def search_recipes(
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        rows = conn.execute(
+        rows = _conn.execute(
             f"""
             SELECT r.*, c.name AS category_name,
                    c.display_name_fr AS category_display_name_fr,
@@ -1146,7 +1171,7 @@ def search_recipes(
         results = []
         cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
-            translation = _load_translation(conn, int(row["id"]), lang)
+            translation = _load_translation(_conn, int(row["id"]), lang)
             d: dict[str, object] = dict(row)
             d.update(translation)
             d["title"] = translation["title"]
@@ -1163,7 +1188,7 @@ def search_recipes(
             else:
                 d["provenance"] = {"id": None, "name": DEFAULT_ACCOUNT_NAME}
 
-            tag_rows = conn.execute(
+            tag_rows = _conn.execute(
                 """
                 SELECT t.id, t.name,
                        t.display_name_fr, t.display_name_en,
@@ -1178,16 +1203,18 @@ def search_recipes(
             ).fetchall()
             d["tags"] = [_localize_tag(tr, lang) | {"family": tr["family"]} for tr in tag_rows]
 
-            d["images"] = get_recipe_images(int(row["id"]))
+            d["images"] = get_recipe_images(int(row["id"]), conn=_conn)
 
             results.append(d)
 
         return results
 
 
-def get_all_tags_grouped(lang: str = DEFAULT_LANGUAGE) -> dict[str, dict[str, Any]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_all_tags_grouped(
+    lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+) -> dict[str, dict[str, Any]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             """
             SELECT tf.name AS family,
                    tf.display_name_fr AS family_display_name_fr,
@@ -1216,11 +1243,11 @@ def get_all_tags_grouped(lang: str = DEFAULT_LANGUAGE) -> dict[str, dict[str, An
 
 
 def get_all_categories(
-    only_used: bool = True, lang: str = DEFAULT_LANGUAGE
+    only_used: bool = True, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
 ) -> list[dict[str, object]]:
-    with get_conn() as conn:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
         if only_used:
-            rows = conn.execute(
+            rows = _conn.execute(
                 """
                 SELECT DISTINCT c.id, c.name,
                        c.display_name_fr, c.display_name_en
@@ -1230,7 +1257,7 @@ def get_all_categories(
                 """
             ).fetchall()
         else:
-            rows = conn.execute(
+            rows = _conn.execute(
                 "SELECT id, name, display_name_fr, display_name_en "
                 "FROM categories ORDER BY sort_order"
             ).fetchall()
@@ -1239,9 +1266,10 @@ def get_all_categories(
 
 def get_existing_tags_for_prompt(
     lang: str = DEFAULT_LANGUAGE,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, list[dict[str, object]]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             """
             SELECT tf.name AS family,
                    t.name, t.display_name_fr, t.display_name_en,
@@ -1270,17 +1298,19 @@ def get_existing_tags_for_prompt(
     return result
 
 
-def get_tag_families(lang: str = DEFAULT_LANGUAGE) -> list[dict[str, object]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_tag_families(
+    lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT name, display_name_fr, display_name_en FROM tag_families ORDER BY sort_order"
         ).fetchall()
     return [_localize_family(r, lang) for r in rows]
 
 
-def mark_processed(path: str, file_hash: str) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def mark_processed(path: str, file_hash: str, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             """
             INSERT INTO processed_files (path, file_hash) VALUES (?, ?)
             ON CONFLICT(path) DO UPDATE SET file_hash=excluded.file_hash, processed_at=CURRENT_TIMESTAMP
@@ -1289,39 +1319,45 @@ def mark_processed(path: str, file_hash: str) -> None:
         )
 
 
-def get_processed_hash(path: str) -> str | None:
-    with get_conn() as conn:
-        row = conn.execute(
+def get_processed_hash(path: str, conn: sqlite3.Connection | None = None) -> str | None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT file_hash FROM processed_files WHERE path = ?", (path,)
         ).fetchone()
         return row["file_hash"] if row else None
 
 
-def save_recipe_images(recipe_id: int, image_filenames: list[str]) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
+def save_recipe_images(
+    recipe_id: int, image_filenames: list[str], conn: sqlite3.Connection | None = None
+) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
         for idx, filename in enumerate(image_filenames):
-            conn.execute(
+            _conn.execute(
                 "INSERT INTO recipe_images (recipe_id, filename, sort_order) VALUES (?, ?, ?)",
                 (recipe_id, filename, idx),
             )
 
 
-def get_recipe_images(recipe_id: int) -> list[dict[str, object]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_recipe_images(
+    recipe_id: int, conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT id, filename, sort_order FROM recipe_images WHERE recipe_id = ? ORDER BY sort_order",
             (recipe_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def get_or_create_user(subject: str, email: str | None, name: str | None) -> int:
-    with get_conn() as conn:
-        row = conn.execute("SELECT id FROM users WHERE subject = ?", (subject,)).fetchone()
+def get_or_create_user(
+    subject: str, email: str | None, name: str | None, conn: sqlite3.Connection | None = None
+) -> int:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT id FROM users WHERE subject = ?", (subject,)).fetchone()
         if row:
             return int(row["id"])
-        cur = conn.execute(
+        cur = _conn.execute(
             "INSERT INTO users (subject, email, name) VALUES (?, ?, ?)",
             (subject, email, name),
         )
@@ -1329,42 +1365,44 @@ def get_or_create_user(subject: str, email: str | None, name: str | None) -> int
         return int(cur.lastrowid)
 
 
-def is_favorite(user_id: int, recipe_id: int) -> bool:
-    with get_conn() as conn:
-        row = conn.execute(
+def is_favorite(user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None) -> bool:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT 1 FROM favorites WHERE user_id = ? AND recipe_id = ?",
             (user_id, recipe_id),
         ).fetchone()
         return row is not None
 
 
-def add_favorite(user_id: int, recipe_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def add_favorite(user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             "INSERT OR IGNORE INTO favorites (user_id, recipe_id) VALUES (?, ?)",
             (user_id, recipe_id),
         )
 
 
-def remove_favorite(user_id: int, recipe_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def remove_favorite(user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             "DELETE FROM favorites WHERE user_id = ? AND recipe_id = ?",
             (user_id, recipe_id),
         )
 
 
-def get_user_favorite_ids(user_id: int) -> set[int]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_user_favorite_ids(user_id: int, conn: sqlite3.Connection | None = None) -> set[int]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT recipe_id FROM favorites WHERE user_id = ?", (user_id,)
         ).fetchall()
         return {int(r["recipe_id"]) for r in rows}
 
 
-def get_favorite_recipes(user_id: int, lang: str = DEFAULT_LANGUAGE) -> list[dict[str, object]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_favorite_recipes(
+    user_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             """
             SELECT r.*, c.name AS category_name,
                    c.display_name_fr AS category_display_name_fr,
@@ -1381,7 +1419,7 @@ def get_favorite_recipes(user_id: int, lang: str = DEFAULT_LANGUAGE) -> list[dic
         results = []
         cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
-            translation = _load_translation(conn, int(row["id"]), lang)
+            translation = _load_translation(_conn, int(row["id"]), lang)
             d: dict[str, object] = dict(row)
             d.update(translation)
             d["title"] = translation["title"]
@@ -1393,7 +1431,7 @@ def get_favorite_recipes(user_id: int, lang: str = DEFAULT_LANGUAGE) -> list[dic
             else:
                 d["category"] = None
 
-            tag_rows = conn.execute(
+            tag_rows = _conn.execute(
                 """
                 SELECT t.id, t.name,
                        t.display_name_fr, t.display_name_en,
@@ -1407,14 +1445,14 @@ def get_favorite_recipes(user_id: int, lang: str = DEFAULT_LANGUAGE) -> list[dic
                 (row["id"],),
             ).fetchall()
             d["tags"] = [_localize_tag(tr, lang) | {"family": tr["family"]} for tr in tag_rows]
-            d["images"] = get_recipe_images(int(row["id"]))
+            d["images"] = get_recipe_images(int(row["id"]), conn=_conn)
             results.append(d)
 
         return results
 
 
 def get_all_recipes_admin(
-    filter: str = "", lang: str = DEFAULT_LANGUAGE
+    filter: str = "", lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
 ) -> list[dict[str, object]]:
     where = ""
     if filter == "no_tags":
@@ -1422,8 +1460,8 @@ def get_all_recipes_admin(
     elif filter == "no_category":
         where = "WHERE r.category_id IS NULL"
 
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             f"""
             SELECT r.id, r.source_file, r.created_at, r.updated_at,
                    r.file_modified_at, r.manually_edited,
@@ -1444,7 +1482,7 @@ def get_all_recipes_admin(
         results = []
         cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
-            translation = _load_translation(conn, int(row["id"]), lang)
+            translation = _load_translation(_conn, int(row["id"]), lang)
             d: dict[str, object] = dict(row)
             d["title"] = translation["title"]
             d["description"] = translation["description"]
@@ -1459,7 +1497,7 @@ def get_all_recipes_admin(
                 d["category"] = None
             d["provenance"] = str(d["provenance"]) if d.get("provenance") else DEFAULT_ACCOUNT_NAME
 
-            tag_rows = conn.execute(
+            tag_rows = _conn.execute(
                 """
                 SELECT t.id, t.name,
                        t.display_name_fr, t.display_name_en,
@@ -1478,16 +1516,18 @@ def get_all_recipes_admin(
         return results
 
 
-def blacklist_and_delete_recipe(recipe_id: int) -> str | None:
-    with get_conn() as conn:
-        row = conn.execute("SELECT source_file FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+def blacklist_and_delete_recipe(
+    recipe_id: int, conn: sqlite3.Connection | None = None
+) -> str | None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT source_file FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if not row:
             return None
         source_file = str(row["source_file"])
 
-        conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
-        conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
-        conn.execute(
+        _conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+        _conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
+        _conn.execute(
             """
             INSERT INTO blacklist (path) VALUES (?)
             ON CONFLICT(path) DO UPDATE SET blacklisted_at=CURRENT_TIMESTAMP
@@ -1497,9 +1537,9 @@ def blacklist_and_delete_recipe(recipe_id: int) -> str | None:
         return source_file
 
 
-def is_blacklisted(path: str) -> bool:
-    with get_conn() as conn:
-        row = conn.execute("SELECT 1 FROM blacklist WHERE path = ?", (path,)).fetchone()
+def is_blacklisted(path: str, conn: sqlite3.Connection | None = None) -> bool:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT 1 FROM blacklist WHERE path = ?", (path,)).fetchone()
         return row is not None
 
 
@@ -1514,31 +1554,31 @@ def _provenance_from_path(path: str, conn_names: dict[int, str]) -> str:
     return DEFAULT_ACCOUNT_NAME
 
 
-def _connection_names() -> dict[int, str]:
-    return {int(str(c["id"])): str(c["name"]) for c in get_dropbox_connections()}
+def _connection_names(conn: sqlite3.Connection | None = None) -> dict[int, str]:
+    return {int(str(c["id"])): str(c["name"]) for c in get_dropbox_connections(conn=conn)}
 
 
-def get_blacklisted_files() -> list[dict[str, object]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_blacklisted_files(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT path, blacklisted_at FROM blacklist ORDER BY blacklisted_at DESC"
         ).fetchall()
-    conns = _connection_names()
+    conns = _connection_names(conn=_conn)
     result = [dict(r) for r in rows]
     for r in result:
         r["provenance"] = _provenance_from_path(str(r["path"]), conns)
     return result
 
 
-def remove_from_blacklist(path: str) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM blacklist WHERE path = ?", (path,))
-        conn.execute("DELETE FROM processed_files WHERE path = ?", (path,))
+def remove_from_blacklist(path: str, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute("DELETE FROM blacklist WHERE path = ?", (path,))
+        _conn.execute("DELETE FROM processed_files WHERE path = ?", (path,))
 
 
-def record_failed_file(path: str, error: str) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def record_failed_file(path: str, error: str, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             """
             INSERT INTO failed_files (path, error) VALUES (?, ?)
             ON CONFLICT(path) DO UPDATE SET error=excluded.error, failed_at=CURRENT_TIMESTAMP
@@ -1547,21 +1587,21 @@ def record_failed_file(path: str, error: str) -> None:
         )
 
 
-def get_failed_files() -> list[dict[str, object]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_failed_files(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT path, error, failed_at FROM failed_files ORDER BY failed_at DESC"
         ).fetchall()
-    conns = _connection_names()
+    conns = _connection_names(conn=_conn)
     result = [dict(r) for r in rows]
     for r in result:
         r["provenance"] = _provenance_from_path(str(r["path"]), conns)
     return result
 
 
-def remove_failed_file(path: str) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM failed_files WHERE path = ?", (path,))
+def remove_failed_file(path: str, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute("DELETE FROM failed_files WHERE path = ?", (path,))
 
 
 # ---------------------------------------------------------------------------
@@ -1569,9 +1609,9 @@ def remove_failed_file(path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_dropbox_connections() -> list[dict[str, object]]:
-    with get_conn() as conn:
-        rows = conn.execute(
+def get_dropbox_connections(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT id, name, folder, file_filter, active, visible, created_at "
             "FROM dropbox_connections ORDER BY name"
         ).fetchall()
@@ -1583,15 +1623,16 @@ def add_dropbox_connection(
     refresh_token: str,
     folder: str = "",
     file_filter: str = "",
+    conn: sqlite3.Connection | None = None,
 ) -> int | None:
     """Insère une nouvelle connexion Dropbox. Retourne None si le nom existe déjà."""
-    with get_conn() as conn:
-        existing = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        existing = _conn.execute(
             "SELECT id FROM dropbox_connections WHERE name = ?", (name,)
         ).fetchone()
         if existing:
             return None
-        cur = conn.execute(
+        cur = _conn.execute(
             """
             INSERT INTO dropbox_connections
                 (name, refresh_token, folder, file_filter)
@@ -1603,9 +1644,11 @@ def add_dropbox_connection(
         return int(cur.lastrowid)
 
 
-def get_dropbox_connection_credentials(connection_id: int) -> dict[str, object] | None:
-    with get_conn() as conn:
-        row = conn.execute(
+def get_dropbox_connection_credentials(
+    connection_id: int, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT id, name, refresh_token, folder, file_filter "
             "FROM dropbox_connections WHERE id = ?",
             (connection_id,),
@@ -1613,35 +1656,39 @@ def get_dropbox_connection_credentials(connection_id: int) -> dict[str, object] 
         return dict(row) if row else None
 
 
-def delete_dropbox_connection(connection_id: int) -> bool:
+def delete_dropbox_connection(connection_id: int, conn: sqlite3.Connection | None = None) -> bool:
     """Supprime une connexion et toutes ses recettes associees."""
-    with get_conn() as conn:
-        row = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT id FROM dropbox_connections WHERE id = ?", (connection_id,)
         ).fetchone()
         if not row:
             return False
 
-        conn.execute("DELETE FROM recipes WHERE connection_id = ?", (connection_id,))
+        _conn.execute("DELETE FROM recipes WHERE connection_id = ?", (connection_id,))
         prefix = f"account:{connection_id}:%"
-        conn.execute("DELETE FROM processed_files WHERE path LIKE ?", (prefix,))
-        conn.execute("DELETE FROM failed_files WHERE path LIKE ?", (prefix,))
-        conn.execute("DELETE FROM blacklist WHERE path LIKE ?", (prefix,))
-        conn.execute("DELETE FROM dropbox_connections WHERE id = ?", (connection_id,))
+        _conn.execute("DELETE FROM processed_files WHERE path LIKE ?", (prefix,))
+        _conn.execute("DELETE FROM failed_files WHERE path LIKE ?", (prefix,))
+        _conn.execute("DELETE FROM blacklist WHERE path LIKE ?", (prefix,))
+        _conn.execute("DELETE FROM dropbox_connections WHERE id = ?", (connection_id,))
         return True
 
 
-def set_dropbox_connection_active(connection_id: int, active: bool) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def set_dropbox_connection_active(
+    connection_id: int, active: bool, conn: sqlite3.Connection | None = None
+) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             "UPDATE dropbox_connections SET active = ? WHERE id = ?",
             (1 if active else 0, connection_id),
         )
 
 
-def set_dropbox_connection_visible(connection_id: int, visible: bool) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def set_dropbox_connection_visible(
+    connection_id: int, visible: bool, conn: sqlite3.Connection | None = None
+) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             "UPDATE dropbox_connections SET visible = ? WHERE id = ?",
             (1 if visible else 0, connection_id),
         )
@@ -1655,15 +1702,15 @@ DEFAULT_ACCOUNT_ID = -1
 DEFAULT_ACCOUNT_NAME = "Défaut"
 
 
-def get_setting(key: str, default: str = "") -> str:
-    with get_conn() as conn:
-        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+def get_setting(key: str, default: str = "", conn: sqlite3.Connection | None = None) -> str:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
         return str(row["value"]) if row else default
 
 
-def set_setting(key: str, value: str) -> None:
-    with get_conn() as conn:
-        conn.execute(
+def set_setting(key: str, value: str, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             """
             INSERT INTO app_settings (key, value) VALUES (?, ?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value
@@ -1672,31 +1719,31 @@ def set_setting(key: str, value: str) -> None:
         )
 
 
-def delete_setting(key: str) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+def delete_setting(key: str, conn: sqlite3.Connection | None = None) -> None:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
 
 
-def is_default_account_active() -> bool:
-    return get_setting("default_active", "1") != "0"
+def is_default_account_active(conn: sqlite3.Connection | None = None) -> bool:
+    return get_setting("default_active", "1", conn=conn) != "0"
 
 
-def set_default_account_active(active: bool) -> None:
-    set_setting("default_active", "1" if active else "0")
+def set_default_account_active(active: bool, conn: sqlite3.Connection | None = None) -> None:
+    set_setting("default_active", "1" if active else "0", conn=conn)
 
 
-def is_default_account_visible() -> bool:
-    return get_setting("default_visible", "1") != "0"
+def is_default_account_visible(conn: sqlite3.Connection | None = None) -> bool:
+    return get_setting("default_visible", "1", conn=conn) != "0"
 
 
-def set_default_account_visible(visible: bool) -> None:
-    set_setting("default_visible", "1" if visible else "0")
+def set_default_account_visible(visible: bool, conn: sqlite3.Connection | None = None) -> None:
+    set_setting("default_visible", "1" if visible else "0", conn=conn)
 
 
-def get_recipe_provenances() -> list[dict[str, object]]:
+def get_recipe_provenances(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
     """Liste des comptes Dropbox ayant au moins une recette visible."""
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             f"""
             SELECT c.id AS id, c.name AS name, COUNT(r.id) AS count
             FROM recipes r
@@ -1710,7 +1757,7 @@ def get_recipe_provenances() -> list[dict[str, object]]:
                    COUNT(id) AS count
             FROM recipes
             WHERE connection_id IS NULL AND
-                  {int(is_default_account_visible())} = 1
+                  {int(is_default_account_visible(conn=_conn))} = 1
 
             ORDER BY name
             """
@@ -1724,7 +1771,10 @@ def get_recipe_provenances() -> list[dict[str, object]]:
 
 
 def save_push_subscription(
-    user_id: int | None, endpoint: str, subscription: dict[str, object]
+    user_id: int | None,
+    endpoint: str,
+    subscription: dict[str, object],
+    conn: sqlite3.Connection | None = None,
 ) -> int:
     """Save or update a push subscription.
 
@@ -1737,12 +1787,12 @@ def save_push_subscription(
         The subscription ID.
     """
     subscription_json = json.dumps(subscription, ensure_ascii=False)
-    with get_conn() as conn:
-        existing = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        existing = _conn.execute(
             "SELECT id FROM push_subscriptions WHERE endpoint = ?", (endpoint,)
         ).fetchone()
         if existing:
-            conn.execute(
+            _conn.execute(
                 """
                 UPDATE push_subscriptions
                 SET subscription = ?, user_id = ?
@@ -1752,7 +1802,7 @@ def save_push_subscription(
             )
             return int(existing["id"])
         else:
-            cur = conn.execute(
+            cur = _conn.execute(
                 """
                 INSERT INTO push_subscriptions (user_id, endpoint, subscription)
                 VALUES (?, ?, ?)
@@ -1763,10 +1813,12 @@ def save_push_subscription(
             return int(cur.lastrowid)
 
 
-def get_push_subscription(endpoint: str) -> dict[str, object] | None:
+def get_push_subscription(
+    endpoint: str, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
     """Get a push subscription by endpoint."""
-    with get_conn() as conn:
-        row = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT id, user_id, endpoint, subscription FROM push_subscriptions WHERE endpoint = ?",
             (endpoint,),
         ).fetchone()
@@ -1780,17 +1832,17 @@ def get_push_subscription(endpoint: str) -> dict[str, object] | None:
         return result
 
 
-def delete_push_subscription(endpoint: str) -> bool:
+def delete_push_subscription(endpoint: str, conn: sqlite3.Connection | None = None) -> bool:
     """Delete a push subscription by endpoint."""
-    with get_conn() as conn:
-        cur = conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        cur = _conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
         return cur.rowcount > 0
 
 
-def get_all_push_subscriptions() -> list[dict[str, object]]:
+def get_all_push_subscriptions(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
     """Get all push subscriptions (for cleanup/testing)."""
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             "SELECT id, user_id, endpoint, subscription FROM push_subscriptions"
         ).fetchall()
         results = []
@@ -1809,11 +1861,13 @@ def get_all_push_subscriptions() -> list[dict[str, object]]:
 # ---------------------------------------------------------------------------
 
 
-def get_shopping_departments(lang: str = "fr") -> list[dict[str, object]]:
+def get_shopping_departments(
+    lang: str = "fr", conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
     """Return all shopping departments ordered by sort_order."""
     col = "display_name_en" if lang == "en" else "display_name_fr"
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             f"""
             SELECT id, name, {col} AS display_name, emoji, sort_order
             FROM shopping_departments
@@ -1823,10 +1877,12 @@ def get_shopping_departments(lang: str = "fr") -> list[dict[str, object]]:
         return [dict(r) for r in rows]
 
 
-def get_department_by_name(name: str) -> dict[str, object] | None:
+def get_department_by_name(
+    name: str, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
     """Return a department by its technical name."""
-    with get_conn() as conn:
-        row = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT id, name, display_name_fr, display_name_en, emoji, sort_order "
             "FROM shopping_departments WHERE name = ?",
             (name,),
@@ -1834,10 +1890,12 @@ def get_department_by_name(name: str) -> dict[str, object] | None:
         return dict(row) if row else None
 
 
-def get_department_by_id(dept_id: int) -> dict[str, object] | None:
+def get_department_by_id(
+    dept_id: int, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
     """Return a department by its ID."""
-    with get_conn() as conn:
-        row = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT id, name, display_name_fr, display_name_en, emoji, sort_order "
             "FROM shopping_departments WHERE id = ?",
             (dept_id,),
@@ -1854,13 +1912,14 @@ def create_shopping_list(
     name: str,
     user_id: int | None = None,
     share_token: str | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, object]:
     """Create a new shopping list. Returns the created list."""
     import secrets
 
     token = share_token or secrets.token_urlsafe(16)
-    with get_conn() as conn:
-        cur = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        cur = _conn.execute(
             """
             INSERT INTO shopping_lists (share_token, name, user_id)
             VALUES (?, ?, ?)
@@ -1869,35 +1928,39 @@ def create_shopping_list(
         )
         assert cur.lastrowid is not None
         list_id = int(cur.lastrowid)
-        row = conn.execute("SELECT * FROM shopping_lists WHERE id = ?", (list_id,)).fetchone()
+        row = _conn.execute("SELECT * FROM shopping_lists WHERE id = ?", (list_id,)).fetchone()
         return dict(row) if row else {}
 
 
-def get_shopping_list_by_id(list_id: int) -> dict[str, object] | None:
+def get_shopping_list_by_id(
+    list_id: int, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
     """Return a shopping list by ID."""
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM shopping_lists WHERE id = ?", (list_id,)).fetchone()
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT * FROM shopping_lists WHERE id = ?", (list_id,)).fetchone()
         return dict(row) if row else None
 
 
-def get_shopping_list_by_token(share_token: str) -> dict[str, object] | None:
+def get_shopping_list_by_token(
+    share_token: str, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
     """Return a shopping list by its share token."""
-    with get_conn() as conn:
-        row = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
             "SELECT * FROM shopping_lists WHERE share_token = ?", (share_token,)
         ).fetchone()
         return dict(row) if row else None
 
 
 def get_user_shopping_lists(
-    user_id: int | None, include_done: bool = True
+    user_id: int | None, include_done: bool = True, conn: sqlite3.Connection | None = None
 ) -> list[dict[str, object]]:
     """Return shopping lists for a user (or all if user_id is None for anon).
 
     For logged-in users, returns their lists.
     For anonymous (user_id=None), returns lists without a user_id.
     """
-    with get_conn() as conn:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
         if user_id is not None:
             query = "SELECT * FROM shopping_lists WHERE user_id = ?"
             params: tuple[object, ...] = (user_id,)
@@ -1909,26 +1972,30 @@ def get_user_shopping_lists(
             query += " AND all_done_at IS NULL"
 
         query += " ORDER BY updated_at DESC"
-        rows = conn.execute(query, params).fetchall()
+        rows = _conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
 
 
-def get_shopping_lists_by_ids(list_ids: list[int]) -> list[dict[str, object]]:
+def get_shopping_lists_by_ids(
+    list_ids: list[int], conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
     """Return shopping lists for the given IDs."""
     if not list_ids:
         return []
     placeholders = ",".join("?" for _ in list_ids)
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             f"SELECT * FROM shopping_lists WHERE id IN ({placeholders}) ORDER BY updated_at DESC",
             list_ids,
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def get_all_shopping_lists(include_done: bool = True) -> list[dict[str, object]]:
+def get_all_shopping_lists(
+    include_done: bool = True, conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
     """Return all shopping lists (for admin), with user name/email."""
-    with get_conn() as conn:
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
         query = """
             SELECT sl.*, u.name AS user_name, u.email AS user_email
             FROM shopping_lists sl
@@ -1937,21 +2004,21 @@ def get_all_shopping_lists(include_done: bool = True) -> list[dict[str, object]]
         if not include_done:
             query += " WHERE sl.all_done_at IS NULL"
         query += " ORDER BY sl.updated_at DESC"
-        rows = conn.execute(query).fetchall()
+        rows = _conn.execute(query).fetchall()
         return [dict(r) for r in rows]
 
 
-def delete_shopping_list(list_id: int) -> bool:
+def delete_shopping_list(list_id: int, conn: sqlite3.Connection | None = None) -> bool:
     """Delete a shopping list and all its items."""
-    with get_conn() as conn:
-        cur = conn.execute("DELETE FROM shopping_lists WHERE id = ?", (list_id,))
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        cur = _conn.execute("DELETE FROM shopping_lists WHERE id = ?", (list_id,))
         return cur.rowcount > 0
 
 
-def rename_shopping_list(list_id: int, name: str) -> None:
+def rename_shopping_list(list_id: int, name: str, conn: sqlite3.Connection | None = None) -> None:
     """Rename a shopping list."""
-    with get_conn() as conn:
-        conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             """
             UPDATE shopping_lists SET name = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -1960,10 +2027,10 @@ def rename_shopping_list(list_id: int, name: str) -> None:
         )
 
 
-def touch_shopping_list(list_id: int) -> None:
+def touch_shopping_list(list_id: int, conn: sqlite3.Connection | None = None) -> None:
     """Update the updated_at timestamp."""
-    with get_conn() as conn:
-        conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
@@ -2013,10 +2080,10 @@ def _check_shopping_list_completion(conn: sqlite3.Connection, list_id: int) -> N
         )
 
 
-def check_shopping_list_completion(list_id: int) -> None:
+def check_shopping_list_completion(list_id: int, conn: sqlite3.Connection | None = None) -> None:
     """Set all_done_at if all items are done, clear it otherwise."""
-    with get_conn() as conn:
-        _check_shopping_list_completion(conn, list_id)
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _check_shopping_list_completion(_conn, list_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2029,10 +2096,11 @@ def add_shopping_list_item(
     department_id: int,
     text: str,
     quantity: str | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, object]:
     """Add an item to a shopping list."""
-    with get_conn() as conn:
-        max_order = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        max_order = _conn.execute(
             """
             SELECT COALESCE(MAX(sort_order), 0) AS mx
             FROM shopping_list_items
@@ -2042,7 +2110,7 @@ def add_shopping_list_item(
         ).fetchone()
         next_order = (max_order["mx"] if max_order else 0) + 1
 
-        cur = conn.execute(
+        cur = _conn.execute(
             """
             INSERT INTO shopping_list_items
                 (list_id, department_id, text, quantity, sort_order)
@@ -2050,21 +2118,23 @@ def add_shopping_list_item(
             """,
             (list_id, department_id, text, quantity, next_order),
         )
-        conn.execute(
+        _conn.execute(
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
         assert cur.lastrowid is not None
         item_id = int(cur.lastrowid)
-        row = conn.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+        row = _conn.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
         return dict(row) if row else {}
 
 
-def get_shopping_list_items(list_id: int, lang: str = "fr") -> list[dict[str, object]]:
+def get_shopping_list_items(
+    list_id: int, lang: str = "fr", conn: sqlite3.Connection | None = None
+) -> list[dict[str, object]]:
     """Return all items for a shopping list, grouped by department."""
     dept_col = "display_name_en" if lang == "en" else "display_name_fr"
-    with get_conn() as conn:
-        rows = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
             f"""
             SELECT
                 i.id, i.list_id, i.department_id, i.text, i.quantity,
@@ -2082,58 +2152,66 @@ def get_shopping_list_items(list_id: int, lang: str = "fr") -> list[dict[str, ob
         return [dict(r) for r in rows]
 
 
-def toggle_shopping_list_item(item_id: int) -> dict[str, object] | None:
+def toggle_shopping_list_item(
+    item_id: int, conn: sqlite3.Connection | None = None
+) -> dict[str, object] | None:
     """Toggle the is_done flag on an item. Returns updated item."""
-    with get_conn() as conn:
-        item = conn.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        item = _conn.execute(
+            "SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)
+        ).fetchone()
         if not item:
             return None
         new_done = 0 if item["is_done"] else 1
-        conn.execute(
+        _conn.execute(
             "UPDATE shopping_list_items SET is_done = ? WHERE id = ?",
             (new_done, item_id),
         )
         list_id = int(item["list_id"])
-        conn.execute(
+        _conn.execute(
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
-        _check_shopping_list_completion(conn, list_id)
-        row = conn.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
+        _check_shopping_list_completion(_conn, list_id)
+        row = _conn.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
         return dict(row) if row else None
 
 
-def remove_shopping_list_item(item_id: int) -> bool:
+def remove_shopping_list_item(item_id: int, conn: sqlite3.Connection | None = None) -> bool:
     """Remove an item from a shopping list."""
-    with get_conn() as conn:
-        item = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        item = _conn.execute(
             "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
         ).fetchone()
         if not item:
             return False
         list_id = int(item["list_id"])
-        conn.execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
-        conn.execute(
+        _conn.execute("DELETE FROM shopping_list_items WHERE id = ?", (item_id,))
+        _conn.execute(
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
-        _check_shopping_list_completion(conn, list_id)
+        _check_shopping_list_completion(_conn, list_id)
         return True
 
 
 def update_shopping_list_item(
-    item_id: int, text: str, quantity: str | None = None, department_id: int | None = None
+    item_id: int,
+    text: str,
+    quantity: str | None = None,
+    department_id: int | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> bool:
     """Update an item's text, quantity, and/or department."""
-    with get_conn() as conn:
-        item = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        item = _conn.execute(
             "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
         ).fetchone()
         if not item:
             return False
         list_id = int(item["list_id"])
         if department_id is not None:
-            conn.execute(
+            _conn.execute(
                 """
                 UPDATE shopping_list_items
                 SET text = ?, quantity = ?, department_id = ?
@@ -2142,14 +2220,14 @@ def update_shopping_list_item(
                 (text, quantity, department_id, item_id),
             )
         else:
-            conn.execute(
+            _conn.execute(
                 """
                 UPDATE shopping_list_items SET text = ?, quantity = ?
                 WHERE id = ?
                 """,
                 (text, quantity, item_id),
             )
-        conn.execute(
+        _conn.execute(
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
@@ -2161,7 +2239,9 @@ def update_shopping_list_item(
 # ---------------------------------------------------------------------------
 
 
-def cleanup_expired_shopping_lists(retention_days: int = 7) -> int:
+def cleanup_expired_shopping_lists(
+    retention_days: int = 7, conn: sqlite3.Connection | None = None
+) -> int:
     """Delete expired shopping lists.
 
     - Anonymous lists (user_id IS NULL) older than retention_days.
@@ -2169,8 +2249,8 @@ def cleanup_expired_shopping_lists(retention_days: int = 7) -> int:
 
     Returns the number of lists deleted.
     """
-    with get_conn() as conn:
-        cur = conn.execute(
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        cur = _conn.execute(
             """
             DELETE FROM shopping_lists
             WHERE
