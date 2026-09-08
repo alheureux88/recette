@@ -12,6 +12,7 @@ from recipes.shared.db import (
     add_favorite,
     get_all_categories,
     get_all_tags_grouped,
+    get_db,
     get_favorite_recipes,
     get_recipe,
     get_recipe_provenances,
@@ -114,7 +115,7 @@ def _parse_account_param(raw: str | None) -> int | None:
 @router.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
     tags: list[int] = Query(default=[]),
 ) -> HTMLResponse:
     from recipes.main import _base_context, _provenance_context, _resolve_request_lang, templates
@@ -147,7 +148,7 @@ async def index(
 @router.get("/search", response_class=HTMLResponse)
 async def search(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
     q: str = Query(default=""),
     tags: list[int] = Query(default=[]),
     category: str | None = Query(default=None),
@@ -193,7 +194,7 @@ async def search(
 @router.get("/recipe/{recipe_id}", response_class=HTMLResponse)
 async def recipe_detail(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
@@ -268,7 +269,7 @@ async def recipe_detail(
 @router.get("/recipe/{recipe_id}/cook", response_class=HTMLResponse)
 async def recipe_cook(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
@@ -320,7 +321,7 @@ async def recipe_cook(
 @router.get("/recipe/{recipe_id}/ingredients", response_class=HTMLResponse)
 async def recipe_ingredients(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
@@ -353,7 +354,7 @@ async def recipe_ingredients(
 @router.post("/favorites/{recipe_id}")
 async def toggle_favorite(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     user: dict[str, Any] = Depends(require_user),
 ) -> HTMLResponse:
@@ -382,7 +383,7 @@ async def toggle_favorite(
 @router.get("/favorites", response_model=None)
 async def favorites_list(
     request: Request,
-    conn: sqlite3.Connection = Depends(lambda: None),
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse | RedirectResponse:
     from recipes.main import _base_context, _resolve_request_lang, templates
     from recipes.shared.auth import OIDC_ENABLED
