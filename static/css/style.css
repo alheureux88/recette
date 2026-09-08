@@ -1976,6 +1976,15 @@ body.cook-mode main {
     min-width: 3rem;
 }
 
+/* Shopping cook mode - hide checked items */
+.cook-item-done {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+.cook-item-done .cook-check {
+    pointer-events: none;
+}
+
 /* ==========================================================================
    Shopping Lists
    ========================================================================== */

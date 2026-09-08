@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}{{ shopping_list.name }} — Magasinage{% endblock %}
+{% block body_class %}cook-mode{% endblock %}
+{% block content %}
+
+<div class="cook-page"
+     data-list-id="{{ shopping_list.id }}"
+     data-item-count="{{ total_items }}"
+     data-progress-template="{{ done_items }}/{{ total_items }} {{ item_label }}"
+     data-item-singular="{{ _('shopping.progress_item_one') }}"
+     data-item-plural="{{ _('shopping.progress_item_other') }}">
+    <header class="cook-bar">
+        <a href="/shopping/{{ shopping_list.id }}" class="cook-exit" aria-label="{{ _('shopping.back_aria') }}"><span aria-hidden="true">←</span> {{ _('shopping.back') }}</a>
+        <h1 class="cook-title">{{ shopping_list.name }}</h1>
+        <button type="button" class="cook-reset" id="shopping-reset">{{ _('shopping.reset') }}</button>
+    </header>
+
+    <div class="cook-progress" id="shopping-progress" aria-live="polite"></div>
+    <div class="cook-wake-status" id="shopping-wake-status" role="status" aria-live="polite" hidden></div>
+
+    {% for group in grouped_departments %}
+    {% if group.item_list %}
+    <section class="cook-section" data-dept-id="{{ group.department.id }}">
+        <h2 class="cook-section-title">
+            <span aria-hidden="true">{{ group.department.emoji }}</span>
+            {{ group.department.display_name }}
+        </h2>
+        <ul class="cook-list">
+            {% for item in group.item_list %}
+            <li class="{% if item.is_done %}cook-item-done{% endif %}" data-item-id="{{ item.id }}">
+                <label class="cook-item">
+                    <input type="checkbox" class="cook-check" data-item-id="{{ item.id }}" {% if item.is_done %}checked{% endif %}>
+                    <span class="cook-bullet" aria-hidden="true"></span>
+                    <span class="cook-text">
+                        {% if item.quantity %}<span class="cook-qty">{{ item.quantity }}</span>{% endif %}
+                        {{ item.text }}
+                    </span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {% if total_items == 0 %}
+    <p class="shopping-all-done">{{ _('shopping.all_done') }}</p>
+    {% endif %}
+</div>
+
+<script>
+    (function () {
+        var page = document.querySelector('.cook-page');
+        if (!page) return;
+        var listId = page.dataset.listId;
+        var storageKey = 'recette:shopping:' + listId;
+        var checks = page.querySelectorAll('.cook-check');
+        var progress = document.getElementById('shopping-progress');
+        var resetBtn = document.getElementById('shopping-reset');
+
+        function loadState() {
+            try {
+                var raw = localStorage.getItem(storageKey);
+                if (!raw) return null;
+                var data = JSON.parse(raw);
+                return (data && typeof data === 'object') ? data : null;
+            } catch (e) { return null; }
+        }
+
+        function saveState() {
+            var state = {};
+            checks.forEach(function (cb) {
+                var itemId = cb.dataset.itemId;
+                state[itemId] = cb.checked;
+            });
+            try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
+        }
+
+        function updateProgress() {
+            var totalItems = checks.length;
+            var doneItems = page.querySelectorAll('.cook-check:checked').length;
+            if (totalItems === 0) {
+                progress.textContent = '';
+                return;
+            }
+            var itemLabel = totalItems > 1 ? page.dataset.itemPlural : page.dataset.itemSingular;
+            progress.textContent = doneItems + '/' + totalItems + ' ' + itemLabel;
+        }
+
+        function applyState(state) {
+            if (!state) return;
+            checks.forEach(function (cb) {
+                var itemId = cb.dataset.itemId;
+                cb.checked = !!state[itemId];
+            });
+        }
+
+        function clearAll() {
+            checks.forEach(function (cb) { cb.checked = false; });
+            try { localStorage.removeItem(storageKey); } catch (e) {}
+            updateProgress();
+        }
+
+        var wakeStatus = document.getElementById('shopping-wake-status');
+        var unsupportedMsg = {{ _('shopping.wake_lock_unsupported')|tojson }};
+        var releasedMsg = {{ _('shopping.wake_lock_released')|tojson }};
+        var wakeSentinel = null;
+
+        function showWakeStatus(msg) {
+            if (!wakeStatus) return;
+            wakeStatus.textContent = msg;
+            wakeStatus.hidden = false;
+        }
+
+        function hideWakeStatus() {
+            if (!wakeStatus) return;
+            wakeStatus.hidden = true;
+            wakeStatus.textContent = '';
+        }
+
+        async function requestWakeLock() {
+            if (!('wakeLock' in navigator)) {
+                showWakeStatus(unsupportedMsg);
+                return;
+            }
+            try {
+                wakeSentinel = await navigator.wakeLock.request('screen');
+                wakeSentinel.addEventListener('release', function () {
+                    if (document.visibilityState !== 'visible') {
+                        showWakeStatus(releasedMsg);
+                    }
+                });
+                hideWakeStatus();
+            } catch (e) {
+                showWakeStatus(unsupportedMsg);
+            }
+        }
+
+        async function releaseWakeLock() {
+            if (wakeSentinel) {
+                try { await wakeSentinel.release(); } catch (e) {}
+                wakeSentinel = null;
+            }
+        }
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') {
+                requestWakeLock();
+            } else {
+                releaseWakeLock();
+            }
+        });
+
+        window.addEventListener('pagehide', function () {
+            releaseWakeLock();
+        });
+
+        requestWakeLock();
+
+        checks.forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var itemId = cb.dataset.itemId;
+                var isChecked = cb.checked;
+
+                // Update UI immediately
+                var li = cb.closest('li');
+                if (li) {
+                    if (isChecked) {
+                        li.classList.add('cook-item-done');
+                    } else {
+                        li.classList.remove('cook-item-done');
+                    }
+                }
+
+                saveState();
+                updateProgress();
+
+                // Sync with server
+                fetch('/shopping/items/' + itemId + '/toggle', {
+                    method: 'POST',
+                    headers: { 'HX-Request': 'true' }
+                }).catch(function (e) {
+                    console.warn('Toggle failed:', e);
+                });
+            });
+        });
+
+        resetBtn.addEventListener('click', function () {
+            if (confirm('{{ _('shopping.reset_confirm') }}')) {
+                clearAll();
+            }
+        });
+
+        applyState(loadState());
+        updateProgress();
+    })();
+</script>
+
+{% endblock %}

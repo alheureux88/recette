@@ -4,7 +4,7 @@
           hx-target="closest li"
           hx-swap="outerHTML"
           class="shopping-item-toggle-form">
-        <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check">
+        <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check" onchange="this.form.submit()">
     </form>
     <span class="shopping-item-text">
         {% if item.quantity %}<span class="shopping-item-qty">{{ item.quantity }}</span>{% endif %}

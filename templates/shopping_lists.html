@@ -22,7 +22,7 @@
         <a href="/shopping/{{ lst.id }}" class="shopping-list-card">
             <div class="shopping-list-card-header">
                 <h2 class="shopping-list-card-name">{{ lst.name }}</h2>
-                <span class="shopping-list-card-count">{{ lst.item_count }} {{ _('shopping.items_count', n=lst.item_count) }}</span>
+                <span class="shopping-list-card-count">{{ ngettext('shopping.items_count_one', 'shopping.items_count_other', lst.item_count, n=lst.item_count) }}</span>
             </div>
             <div class="shopping-list-card-progress">
                 {% if lst.item_count > 0 %}

@@ -1509,6 +1509,52 @@ async def shopping_list_detail(
     )
 
 
+@app.get("/shopping/{list_id}/cook", response_class=HTMLResponse)
+async def shopping_list_cook(
+    request: Request,
+    list_id: int = Path(gt=0),
+) -> HTMLResponse:
+    """Shopping mode - cook-like view for checking off items while shopping."""
+    lang = _resolve_request_lang(request)
+    shopping_list = get_shopping_list_by_id(list_id)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+
+    user_id = _shopping_list_user_id(request)
+    if user_id is None:
+        _add_anon_list_id(request, list_id)
+
+    items = get_shopping_list_items(list_id, lang=lang)
+    departments = get_shopping_departments(lang=lang)
+
+    grouped: dict[int, dict[str, Any]] = {}
+    for dept in departments:
+        grouped[int(str(dept["id"]))] = {
+            "department": dept,
+            "item_list": [],
+        }
+    for item in items:
+        dept_id = int(str(item["department_id"]))
+        if dept_id in grouped:
+            grouped[dept_id]["item_list"].append(item)
+
+    total_items = len(items)
+    done_items = sum(1 for item in items if item.get("is_done"))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="shopping_cook.html",
+        context=_base_context(
+            request,
+            shopping_list=shopping_list,
+            grouped_departments=list(grouped.values()),
+            total_items=total_items,
+            done_items=done_items,
+            item_label="article" if lang == "fr" else "item",
+        ),
+    )
+
+
 @app.get("/shopping/shared/{token}", response_class=HTMLResponse)
 async def shopping_list_shared(
     request: Request,

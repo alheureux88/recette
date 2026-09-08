@@ -18,7 +18,7 @@
                   hx-target="closest li"
                   hx-swap="outerHTML"
                   class="shopping-item-toggle-form">
-                <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check">
+                <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check" onchange="this.form.submit()">
             </form>
             {% else %}
             <span class="shopping-item-check{% if item.is_done %} checked{% endif %}" aria-hidden="true"></span>

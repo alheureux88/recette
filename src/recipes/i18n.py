@@ -464,7 +464,8 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "shopping.create": {"fr": "Créer", "en": "Create"},
     "shopping.list_name_placeholder": {"fr": "Nom de la liste", "en": "List name"},
     "shopping.no_lists": {"fr": "Aucune liste d'épicerie", "en": "No shopping lists"},
-    "shopping.items_count": {"fr": "{n} article(s)", "en": "{n} item(s)"},
+    "shopping.items_count_one": {"fr": "{n} article", "en": "{n} item"},
+    "shopping.items_count_other": {"fr": "{n} articles", "en": "{n} items"},
     "shopping.last_updated": {"fr": "Modifiée : {date}", "en": "Updated: {date}"},
     "shopping.delete_list": {"fr": "Supprimer la liste", "en": "Delete list"},
     "shopping.confirm_delete": {
@@ -506,6 +507,23 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "shopping.completed_notice": {
         "fr": "Les listes complétées sont supprimées 7 jours après.",
         "en": "Completed lists are deleted after 7 days.",
+    },
+    "shopping.progress_item_one": {"fr": "article", "en": "item"},
+    "shopping.progress_item_other": {"fr": "articles", "en": "items"},
+    "shopping.back_aria": {"fr": "Retour à la liste", "en": "Back to list"},
+    "shopping.back": {"fr": "Retour", "en": "Back"},
+    "shopping.reset": {"fr": "Réinitialiser", "en": "Reset"},
+    "shopping.reset_confirm": {
+        "fr": "Réinitialiser tous les articles?",
+        "en": "Reset all items?",
+    },
+    "shopping.wake_lock_unsupported": {
+        "fr": "L'écran ne peut pas rester allumé automatiquement sur cet appareil.",
+        "en": "The screen cannot be kept awake automatically on this device.",
+    },
+    "shopping.wake_lock_released": {
+        "fr": "L'écran se verrouillera normalement hors de cette page.",
+        "en": "The screen will lock normally outside this page.",
     },
     # --- Administration : listes d'épicerie ---
     "admin.shopping_title": {
