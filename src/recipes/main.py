@@ -23,6 +23,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from recipes.features.auth.controllers import router as auth_router
+from recipes.features.push.controllers import router as push_router
+from recipes.features.push.controllers import set_scheduler as set_push_scheduler
 from recipes.shared.auth import (
     OIDC_ENABLED,
     get_user,
@@ -43,7 +45,6 @@ from recipes.shared.db import (
     cleanup_expired_shopping_lists,
     create_shopping_list,
     delete_dropbox_connection,
-    delete_push_subscription,
     delete_setting,
     delete_shopping_list,
     get_all_categories,
@@ -57,7 +58,6 @@ from recipes.shared.db import (
     get_existing_tags_for_prompt,
     get_failed_files,
     get_favorite_recipes,
-    get_push_subscription,
     get_recipe,
     get_recipe_provenances,
     get_setting,
@@ -78,7 +78,6 @@ from recipes.shared.db import (
     remove_from_blacklist,
     remove_shopping_list_item,
     rename_shopping_list,
-    save_push_subscription,
     search_recipes,
     set_default_account_active,
     set_default_account_visible,
@@ -107,10 +106,7 @@ from recipes.shared.models import (
     BulkTagsUpdate,
     InlineCategoryUpdate,
     InlineTagsUpdate,
-    PushSubscriptionRegister,
     RecipeIngredientsToShopping,
-    TimerCancelRequest,
-    TimerScheduleRequest,
 )
 from recipes.shared.poller import (
     DROPBOX_FOLDER,
@@ -124,8 +120,6 @@ from recipes.shared.poller import (
 from recipes.shared.poller import run as poll_dropbox
 from recipes.shared.push import (
     VAPID_PUBLIC_KEY,
-    cancel_timer_notification,
-    schedule_timer_notification,
 )
 from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.shared.units import format_ingredient, format_quantity_string, parse_quantity
@@ -175,11 +169,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     global _scheduler
     _scheduler = scheduler
+    set_push_scheduler(scheduler)
 
     yield
 
     scheduler.shutdown(wait=False)
     _scheduler = None
+    set_push_scheduler(None)
     log.info("Scheduler stopped.")
 
 
@@ -189,6 +185,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/images", StaticFiles(directory=str(IMAGES_DIR), check_dir=False), name="images")
 
 app.include_router(auth_router)
+app.include_router(push_router)
 
 
 @app.middleware("http")
@@ -1342,73 +1339,6 @@ async def admin_retry_failed(
 
 
 # ---------------------------------------------------------------------------
-# Push notifications
-# ---------------------------------------------------------------------------
-
-
-@app.get("/api/push/vapid-public-key")
-async def push_vapid_public_key() -> dict[str, str]:
-    """Return the VAPID public key for the browser to subscribe to push."""
-    return {"vapid_public_key": VAPID_PUBLIC_KEY}
-
-
-@app.post("/api/push/subscribe")
-async def push_subscribe(
-    data: PushSubscriptionRegister, conn: sqlite3.Connection = Depends(get_db)
-) -> dict[str, object]:
-    """Register a push subscription from the browser."""
-    user = get_user_from_request_safe(None)
-    user_id = user["id"] if user else None
-    sub_id = save_push_subscription(user_id, data.endpoint, data.subscription, conn=conn)
-    return {"ok": True, "id": sub_id}
-
-
-@app.post("/api/push/unsubscribe")
-async def push_unsubscribe(
-    endpoint: str = Query(...), conn: sqlite3.Connection = Depends(get_db)
-) -> dict[str, object]:
-    """Unregister a push subscription."""
-    deleted = delete_push_subscription(endpoint, conn=conn)
-    return {"ok": True, "deleted": deleted}
-
-
-@app.post("/api/push/schedule-timer")
-async def push_schedule_timer(
-    data: TimerScheduleRequest, conn: sqlite3.Connection = Depends(get_db)
-) -> dict[str, object]:
-    """Schedule a push notification for when a timer completes."""
-    if not _scheduler:
-        raise HTTPException(status_code=503, detail="Scheduler not available")
-
-    sub = get_push_subscription(data.endpoint, conn=conn)
-    if not sub:
-        raise HTTPException(status_code=404, detail="Subscription not found")
-
-    subscription_obj = sub["subscription"]
-    if not isinstance(subscription_obj, dict):
-        raise HTTPException(status_code=500, detail="Invalid subscription data")
-
-    job_id = schedule_timer_notification(
-        _scheduler,
-        data.recipe_id,
-        data.step_index,
-        data.duration_seconds,
-        subscription_obj,
-    )
-    return {"ok": True, "job_id": job_id}
-
-
-@app.post("/api/push/cancel-timer")
-async def push_cancel_timer(data: TimerCancelRequest) -> dict[str, object]:
-    """Cancel scheduled timer notifications for a recipe step."""
-    if not _scheduler:
-        raise HTTPException(status_code=503, detail="Scheduler not available")
-
-    removed = cancel_timer_notification(_scheduler, data.recipe_id, data.step_index)
-    return {"ok": True, "removed": removed}
-
-
-# ---------------------------------------------------------------------------
 # Shopping lists
 # ---------------------------------------------------------------------------
 
@@ -2040,13 +1970,3 @@ async def admin_shopping_list_delete(
     """Admin delete a shopping list."""
     delete_shopping_list(list_id, conn=conn)
     return RedirectResponse(url="/admin/shopping", status_code=303)
-
-
-def get_user_from_request_safe(request: Request | None) -> dict[str, Any] | None:
-    """Safely get user from request, returning None if no request or no user."""
-    if request is None:
-        return None
-    try:
-        return get_user(request)
-    except Exception:
-        return None
