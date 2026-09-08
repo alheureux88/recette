@@ -85,8 +85,10 @@
                 {% for step in steps_list %}
                     {% if step.text.strip() %}
                     <li class="instruction-step{% if step.has_timer %} instruction-step--timer{% endif %}">
-                        <span class="instruction-number" aria-hidden="true">{{ loop.index }}</span>
-                        <span class="instruction-text">{{ step.text }}</span>
+                        <div class="instruction-step-content">
+                            <span class="instruction-number" aria-hidden="true">{{ loop.index }}</span>
+                            <span class="instruction-text">{{ step.text }}</span>
+                        </div>
                         {% if step.has_timer %}
                         <div class="instruction-timer-widget" data-step-index="{{ loop.index0 }}" data-default-duration="{{ step.duration_seconds }}">
                             <span class="instruction-timer-display" data-role="remaining">{{ step.duration_seconds }}</span>
