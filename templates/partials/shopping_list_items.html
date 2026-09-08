@@ -42,6 +42,17 @@
     {% elif mode == 'edit' %}
     <p class="shopping-dept-empty">{{ _('shopping.empty_department') }}</p>
     {% endif %}
+    {% if can_edit and mode == 'edit' %}
+    <form hx-post="/shopping/lists/{{ shopping_list.id }}/items"
+          hx-target="#shopping-items-container"
+          hx-swap="innerHTML"
+          class="shopping-dept-add-form">
+        <input type="hidden" name="department_id" value="{{ group.department.id }}">
+        <input type="text" name="text" placeholder="{{ _('shopping.item_placeholder') }}" required maxlength="500" class="shopping-dept-add-input">
+        <input type="text" name="quantity" placeholder="{{ _('shopping.quantity_placeholder') }}" maxlength="100" class="shopping-dept-add-qty">
+        <button type="submit" class="shopping-dept-add-btn">+</button>
+    </form>
+    {% endif %}
 </section>
 {% endif %}
 {% endfor %}

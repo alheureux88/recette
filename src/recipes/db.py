@@ -119,20 +119,17 @@ SEED_CATEGORIES: list[tuple[str, str, str, int]] = [
 ]
 
 SEED_SHOPPING_DEPARTMENTS: list[tuple[str, str, str, int, str]] = [
-    ("fruits", "Fruits", "Fruits", 1, "🍎"),
-    ("vegetables", "Légumes", "Vegetables", 2, "🥦"),
-    ("boucherie", "Boucherie", "Butcher", 3, "🥩"),
-    ("poissonnerie", "Poissonnerie", "Fish counter", 4, "🐟"),
-    ("charcuterie", "Charcuterie", "Deli / Charcuterie", 5, "🥓"),
-    ("boulangerie", "Boulangerie", "Bakery", 6, "🥖"),
-    ("produits-laitiers", "Produits laitiers", "Dairy", 7, "🧀"),
-    ("surgelés", "Surgelés", "Frozen goods", 8, "🧊"),
-    ("produits-secs", "Produits secs", "Dry goods", 9, "🫘"),
-    ("garde-manger", "Garde-manger", "Pantry", 10, "🥫"),
-    ("condiments", "Condiments / Sauces", "Condiments / Sauces", 11, "🫙"),
-    ("pret-a-manger", "Prêt-à-manger", "Ready to eat", 12, "🥡"),
-    ("boissons", "Boissons", "Beverages", 13, "🥤"),
-    ("entretien", "Entretien / Ménage", "Household / Cleaning", 14, "🧹"),
+    ("fruits-legumes", "Fruits et légumes", "Fruits & Vegetables", 1, "🥬"),
+    ("boucherie", "Boucherie", "Butcher", 2, "🥩"),
+    ("poissonnerie", "Poissonnerie", "Fish counter", 3, "🐟"),
+    ("charcuterie", "Charcuterie", "Deli / Charcuterie", 4, "🥓"),
+    ("boulangerie", "Boulangerie", "Bakery", 5, "🥖"),
+    ("produits-laitiers", "Produits laitiers", "Dairy", 6, "🧀"),
+    ("surgelés", "Surgelés", "Frozen goods", 7, "🧊"),
+    ("epicerie", "Épicerie", "Grocery / Pantry", 8, "🥫"),
+    ("pret-a-manger", "Prêt-à-manger", "Ready to eat", 9, "🥡"),
+    ("boissons", "Boissons", "Beverages", 10, "🥤"),
+    ("entretien", "Entretien / Ménage", "Household / Cleaning", 11, "🧹"),
     ("autre", "Autre / Indéterminé", "Other / Unknown", 99, "❓"),
 ]
 

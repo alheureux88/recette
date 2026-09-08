@@ -219,7 +219,7 @@ def build_system_prompt() -> str:
             '      "quantity_min": 1.5,',
             '      "quantity_max": 2,',
             '      "unit": "tasse",',
-            '      "department": "produits-secs"',
+            '      "department": "epicerie"',
             "    }",
             "  ],",
             '  "steps_fr": [',

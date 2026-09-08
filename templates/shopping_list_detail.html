@@ -19,41 +19,19 @@
     <div id="shopping-items-container">
         {% include "partials/shopping_list_items.html" %}
     </div>
-
-    {% if can_edit and mode == 'edit' %}
-    <div class="shopping-add-form" id="shopping-add-form">
-        <h3 class="shopping-add-title">{{ _('shopping.add_item') }}</h3>
-        <form hx-post="/shopping/lists/{{ shopping_list.id }}/items"
-              hx-target="#shopping-items-container"
-              hx-swap="innerHTML"
-              class="shopping-add-row">
-            <input type="text" name="text" placeholder="{{ _('shopping.item_placeholder') }}" required maxlength="500" class="shopping-add-input">
-            <input type="text" name="quantity" placeholder="{{ _('shopping.quantity_placeholder') }}" maxlength="100" class="shopping-add-qty">
-            <select name="department_id" class="shopping-add-dept" required>
-                {% for dept in departments %}
-                <option value="{{ dept.id }}">{{ dept.emoji }} {{ dept.display_name }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="shopping-add-btn">{{ _('shopping.add_item') }}</button>
-        </form>
-    </div>
-    {% endif %}
 </div>
 
 <script>
     (function () {
-        var container = document.querySelector('.shopping-detail');
-        if (!container) return;
-
         document.body.addEventListener('htmx:afterSwap', function (evt) {
             if (evt.detail.target && evt.detail.target.id === 'shopping-items-container') {
-                var form = document.getElementById('shopping-add-form');
-                if (form) {
+                var forms = document.querySelectorAll('.shopping-dept-add-form');
+                forms.forEach(function (form) {
                     var textInput = form.querySelector('input[name="text"]');
                     if (textInput) textInput.value = '';
                     var qtyInput = form.querySelector('input[name="quantity"]');
                     if (qtyInput) qtyInput.value = '';
-                }
+                });
             }
         });
     })();

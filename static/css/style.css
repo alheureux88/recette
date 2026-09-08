@@ -2370,6 +2370,59 @@ span.shopping-item-check.checked {
     padding: 2rem 0;
 }
 
+/* Department add form */
+.shopping-dept-add-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+}
+.shopping-dept-add-input {
+    flex: 2;
+    min-width: 0;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-dept-add-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.shopping-dept-add-qty {
+    flex: 1;
+    min-width: 0;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-dept-add-qty:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.shopping-dept-add-btn {
+    padding: 0.375rem 0.75rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    line-height: 1;
+}
+.shopping-dept-add-btn:hover {
+    background: var(--accent-dk);
+}
+
 /* Add item form */
 .shopping-add-form {
     margin-top: 2rem;
