@@ -6,13 +6,13 @@ from typing import Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from recipes.shared.auth import get_user
-from recipes.shared.db import (
+from recipes.features.push.services import (
     delete_push_subscription,
-    get_db,
     get_push_subscription,
     save_push_subscription,
 )
+from recipes.shared.auth import get_user
+from recipes.shared.db import get_db
 from recipes.shared.models import (
     PushSubscriptionRegister,
     TimerCancelRequest,

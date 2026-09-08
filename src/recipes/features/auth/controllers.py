@@ -5,8 +5,9 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from recipes.features.auth.services import get_or_create_user
 from recipes.shared.auth import OIDC_ENABLED, authorize_redirect, fetch_token
-from recipes.shared.db import get_db, get_or_create_user
+from recipes.shared.db import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

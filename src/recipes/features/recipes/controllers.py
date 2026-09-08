@@ -7,19 +7,21 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from recipes.features.admin.services import get_recipe_provenances
+from recipes.features.recipes.services import (
+    add_favorite,
+    get_favorite_recipes,
+    get_user_favorite_ids,
+    is_favorite,
+    remove_favorite,
+)
+from recipes.features.shopping.services import get_user_shopping_lists
 from recipes.shared.auth import get_user, require_user
 from recipes.shared.db import (
-    add_favorite,
     get_all_categories,
     get_all_tags_grouped,
     get_db,
-    get_favorite_recipes,
     get_recipe,
-    get_recipe_provenances,
-    get_user_favorite_ids,
-    get_user_shopping_lists,
-    is_favorite,
-    remove_favorite,
     search_recipes,
 )
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext

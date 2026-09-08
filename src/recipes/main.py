@@ -21,11 +21,13 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from recipes.features.admin.controllers import router as admin_router
+from recipes.features.admin.services import get_recipe_provenances
 from recipes.features.auth.controllers import router as auth_router
 from recipes.features.push.controllers import router as push_router
 from recipes.features.push.controllers import set_scheduler as set_push_scheduler
 from recipes.features.recipes.controllers import router as recipes_router
 from recipes.features.shopping.controllers import router as shopping_router
+from recipes.features.shopping.services import cleanup_expired_shopping_lists
 from recipes.shared.auth import (
     OIDC_ENABLED,
     get_user,
@@ -35,8 +37,6 @@ from recipes.shared.auth import (
 )
 from recipes.shared.db import (
     DEFAULT_ACCOUNT_ID,
-    cleanup_expired_shopping_lists,
-    get_recipe_provenances,
     init_db,
 )
 from recipes.shared.i18n import (

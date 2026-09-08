@@ -128,7 +128,7 @@ def schedule_timer_notification(
     Returns:
         The job ID for the scheduled notification.
     """
-    from recipes.db import get_recipe
+    from recipes.shared.db import get_recipe
 
     recipe = get_recipe(recipe_id)
     recipe_title = recipe["title"] if recipe else "Recipe"

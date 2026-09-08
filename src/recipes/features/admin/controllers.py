@@ -10,30 +10,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from recipes.shared.auth import require_admin
-from recipes.shared.db import (
+from recipes.features.admin.services import (
     add_dropbox_connection,
     blacklist_and_delete_recipe,
-    bulk_update_category,
-    bulk_update_tags,
     delete_dropbox_connection,
     delete_setting,
-    delete_shopping_list,
-    get_all_categories,
-    get_all_recipes_admin,
-    get_all_shopping_lists,
     get_blacklisted_files,
-    get_db,
     get_dropbox_connection_credentials,
     get_dropbox_connections,
-    get_existing_tags_for_prompt,
     get_failed_files,
-    get_recipe,
     get_setting,
-    get_shopping_departments,
-    get_shopping_list_by_id,
-    get_shopping_list_items,
-    get_tag_families,
     is_default_account_active,
     is_default_account_visible,
     remove_failed_file,
@@ -43,6 +29,26 @@ from recipes.shared.db import (
     set_dropbox_connection_active,
     set_dropbox_connection_visible,
     set_setting,
+)
+from recipes.features.recipes.services import (
+    bulk_update_category,
+    bulk_update_tags,
+    get_all_recipes_admin,
+)
+from recipes.features.shopping.services import (
+    delete_shopping_list,
+    get_all_shopping_lists,
+    get_shopping_departments,
+    get_shopping_list_by_id,
+    get_shopping_list_items,
+)
+from recipes.shared.auth import require_admin
+from recipes.shared.db import (
+    get_all_categories,
+    get_db,
+    get_existing_tags_for_prompt,
+    get_recipe,
+    get_tag_families,
     sync_recipe_tags,
     update_recipe_category,
     update_recipe_manual,

@@ -6,13 +6,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from recipes.shared.auth import get_user
-from recipes.shared.db import (
+from recipes.features.shopping.services import (
     add_shopping_list_item,
     create_shopping_list,
     delete_shopping_list,
-    get_db,
-    get_recipe,
     get_shopping_departments,
     get_shopping_list_by_id,
     get_shopping_list_by_token,
@@ -24,6 +21,8 @@ from recipes.shared.db import (
     toggle_shopping_list_item,
     update_shopping_list_item,
 )
+from recipes.shared.auth import get_user
+from recipes.shared.db import get_db, get_recipe
 from recipes.shared.models import RecipeIngredientsToShopping
 from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.shared.units import format_quantity_string
