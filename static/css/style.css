@@ -2464,6 +2464,9 @@ span.shopping-item-check.checked {
     background: rgba(0, 0, 0, 0.5);
     z-index: 100;
 }
+.shopping-modal-backdrop[hidden] {
+    display: none;
+}
 .shopping-modal {
     position: fixed;
     inset: 0;
@@ -2472,6 +2475,9 @@ span.shopping-item-check.checked {
     align-items: center;
     justify-content: center;
     padding: 1rem;
+}
+.shopping-modal[hidden] {
+    display: none;
 }
 .shopping-modal-content {
     background: var(--surface);

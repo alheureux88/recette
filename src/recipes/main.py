@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi import Depends, FastAPI, Form, HTTPException, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -109,7 +109,6 @@ from recipes.models import (
     InlineTagsUpdate,
     PushSubscriptionRegister,
     RecipeIngredientsToShopping,
-    ShoppingListCreate,
     ShoppingListItemAdd,
     ShoppingListItemUpdate,
     ShoppingListRename,
@@ -1561,11 +1560,11 @@ async def shopping_list_shared(
 @app.post("/shopping/lists")
 async def shopping_list_create(
     request: Request,
-    data: ShoppingListCreate,
+    name: str = Form(...),
 ) -> RedirectResponse:
     """Create a new shopping list."""
     user_id = _shopping_list_user_id(request)
-    lst = create_shopping_list(data.name, user_id=user_id)
+    lst = create_shopping_list(name, user_id=user_id)
     if user_id is None:
         _add_anon_list_id(request, int(str(lst["id"])))
     return RedirectResponse(url=f"/shopping/{lst['id']}", status_code=303)
