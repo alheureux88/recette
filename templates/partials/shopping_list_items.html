@@ -1,16 +1,16 @@
 {% for group in grouped_departments %}
-{% if group.items or mode == 'edit' %}
-<section class="shopping-department{% if mode == 'shopping' and not group.items %} shopping-dept-hidden{% endif %}" data-dept-id="{{ group.department.id }}">
+{% if group.item_list or mode == 'edit' %}
+<section class="shopping-department{% if mode == 'shopping' and not group.item_list %} shopping-dept-hidden{% endif %}" data-dept-id="{{ group.department.id }}">
     <h2 class="shopping-dept-title">
         <span class="shopping-dept-emoji" aria-hidden="true">{{ group.department.emoji }}</span>
         <span class="shopping-dept-name">{{ group.department.display_name }}</span>
-        {% if group.items %}
-        <span class="shopping-dept-count">{{ group.items|length }}</span>
+        {% if group.item_list %}
+        <span class="shopping-dept-count">{{ group.item_list|length }}</span>
         {% endif %}
     </h2>
-    {% if group.items %}
+    {% if group.item_list %}
     <ul class="shopping-dept-items">
-        {% for item in group.items %}
+        {% for item in group.item_list %}
         <li class="shopping-item{% if item.is_done %} shopping-item-done{% endif %}" data-item-id="{{ item.id }}">
             {% if can_edit %}
             <form method="post" action="/shopping/items/{{ item.id }}/toggle"
@@ -49,7 +49,7 @@
 {% if mode == 'shopping' %}
 {% set has_items = [] %}
 {% for group in grouped_departments %}
-{% if group.items %}{% set has_items = has_items + [1] %}{% endif %}
+{% if group.item_list %}{% set has_items = has_items + [1] %}{% endif %}
 {% endfor %}
 {% if not has_items %}
 <p class="shopping-all-done">{{ _('shopping.all_done') }}</p>

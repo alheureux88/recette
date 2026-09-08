@@ -1491,12 +1491,12 @@ async def shopping_list_detail(
     for dept in departments:
         grouped[int(str(dept["id"]))] = {
             "department": dept,
-            "items": [],
+            "item_list": [],
         }
     for item in items:
         dept_id = int(str(item["department_id"]))
         if dept_id in grouped:
-            grouped[dept_id]["items"].append(item)
+            grouped[dept_id]["item_list"].append(item)
 
     return templates.TemplateResponse(
         request=request,
@@ -1535,12 +1535,12 @@ async def shopping_list_shared(
     for dept in departments:
         grouped[int(str(dept["id"]))] = {
             "department": dept,
-            "items": [],
+            "item_list": [],
         }
     for item in items:
         dept_id = int(str(item["department_id"]))
         if dept_id in grouped:
-            grouped[dept_id]["items"].append(item)
+            grouped[dept_id]["item_list"].append(item)
 
     return templates.TemplateResponse(
         request=request,
@@ -1946,12 +1946,12 @@ async def admin_shopping_list_view(
     for dept in departments:
         grouped[int(str(dept["id"]))] = {
             "department": dept,
-            "items": [],
+            "item_list": [],
         }
     for item in items:
         dept_id = int(str(item["department_id"]))
         if dept_id in grouped:
-            grouped[dept_id]["items"].append(item)
+            grouped[dept_id]["item_list"].append(item)
 
     return templates.TemplateResponse(
         request=request,
