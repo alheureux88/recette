@@ -1,3 +1,4 @@
+<a href="/shopping" class="nav-link">{{ _('shopping.nav_lists') }}</a>
 {% if auth_enabled %}
     {% if user %}
         <a href="/favorites" class="nav-link">{{ _('nav.favorites') }}</a>
@@ -10,6 +11,7 @@
                 {% if is_admin %}
                 <a href="/admin" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_recipes') }}</a>
                 <a href="/admin/config" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_system') }}</a>
+                <a href="/admin/shopping" class="nav-dropdown-item" role="menuitem">{{ _('admin.nav_admin_shopping') }}</a>
                 {% endif %}
                 <a href="{{ logout_url }}" class="nav-dropdown-item" role="menuitem">{{ _('nav.logout') }}</a>
             </div>

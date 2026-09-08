@@ -1,0 +1,73 @@
+<div class="shopping-detail-nav">
+    {% if is_admin_view %}
+    <a href="/admin/shopping" class="back">{{ _('admin.back_to_admin') }}</a>
+    {% else %}
+    <a href="/shopping" class="back">{{ _('shopping.back_to_lists') }}</a>
+    {% endif %}
+    {% if can_edit and not is_admin_view %}
+    <div class="shopping-detail-actions">
+        <button type="button" class="shopping-share-btn" data-share-url="/shopping/shared/{{ shopping_list.share_token }}" title="{{ _('shopping.share') }}">
+            {{ _('shopping.share') }}
+        </button>
+        <form method="post" action="/shopping/lists/{{ shopping_list.id }}/delete" class="shopping-delete-form" onsubmit="return confirm('{{ _('shopping.confirm_delete') }}')">
+            <button type="submit" class="shopping-delete-btn">{{ _('shopping.delete_list') }}</button>
+        </form>
+    </div>
+    {% elif is_admin_view %}
+    <div class="shopping-detail-actions">
+        <form method="post" action="/admin/shopping/{{ shopping_list.id }}/delete" class="shopping-delete-form" onsubmit="return confirm('{{ _('admin.shopping_confirm_delete') }}')">
+            <button type="submit" class="shopping-delete-btn">{{ _('admin.shopping_action_delete') }}</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+<h1 class="shopping-detail-title" id="shopping-list-name">
+    {% if can_edit %}
+    <span class="shopping-list-name-text">{{ shopping_list.name }}</span>
+    <button type="button" class="shopping-rename-btn" id="shopping-rename-toggle" aria-label="{{ _('shopping.rename') }}">✏️</button>
+    {% else %}
+    {{ shopping_list.name }}
+    {% endif %}
+</h1>
+{% if can_edit %}
+<form method="post" action="/shopping/lists/{{ shopping_list.id }}/rename" class="shopping-rename-form" id="shopping-rename-form" hidden>
+    <input type="text" name="name" value="{{ shopping_list.name }}" required maxlength="200" class="shopping-rename-input">
+    <button type="submit" class="shopping-rename-save">{{ _('shopping.save_name') }}</button>
+    <button type="button" class="shopping-rename-cancel" id="shopping-rename-cancel">{{ _('shopping.cancel') }}</button>
+</form>
+{% endif %}
+{% if is_shared and not can_edit %}
+<span class="shopping-shared-badge">{{ _('shopping.shared_list') }}</span>
+{% endif %}
+<script>
+    (function () {
+        var toggle = document.getElementById('shopping-rename-toggle');
+        var form = document.getElementById('shopping-rename-form');
+        var cancel = document.getElementById('shopping-rename-cancel');
+        var nameText = document.querySelector('.shopping-list-name-text');
+        if (toggle && form && cancel && nameText) {
+            toggle.addEventListener('click', function () {
+                nameText.hidden = true;
+                toggle.hidden = true;
+                form.hidden = false;
+                form.querySelector('input').focus();
+            });
+            cancel.addEventListener('click', function () {
+                form.hidden = true;
+                nameText.hidden = false;
+                toggle.hidden = false;
+            });
+        }
+        var shareBtn = document.querySelector('.shopping-share-btn');
+        if (shareBtn) {
+            shareBtn.addEventListener('click', function () {
+                var url = window.location.origin + shareBtn.dataset.shareUrl;
+                navigator.clipboard.writeText(url).then(function () {
+                    var orig = shareBtn.textContent;
+                    shareBtn.textContent = '{{ _('shopping.share_link_copied') }}';
+                    setTimeout(function () { shareBtn.textContent = orig; }, 2000);
+                });
+            });
+        }
+    })();
+</script>

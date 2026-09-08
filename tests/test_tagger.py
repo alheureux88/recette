@@ -425,19 +425,45 @@ class TestIngredientNormalization:
     def test_string_ingredients_fallback(self):
         result = self._tag(["sel au goût", "poivre"])
         assert result == [
-            {"food": "sel au goût", "quantity_min": None, "quantity_max": None, "unit": None},
-            {"food": "poivre", "quantity_min": None, "quantity_max": None, "unit": None},
+            {
+                "food": "sel au goût",
+                "quantity_min": None,
+                "quantity_max": None,
+                "unit": None,
+                "department": "autre",
+            },
+            {
+                "food": "poivre",
+                "quantity_min": None,
+                "quantity_max": None,
+                "unit": None,
+                "department": "autre",
+            },
         ]
 
     def test_name_field_fallback(self):
         result = self._tag([{"name": "farine", "quantity": 2, "unit": "tasse"}])
         assert result == [
-            {"food": "farine", "quantity_min": 2.0, "quantity_max": None, "unit": "tasse"}
+            {
+                "food": "farine",
+                "quantity_min": 2.0,
+                "quantity_max": None,
+                "unit": "tasse",
+                "department": "autre",
+            }
         ]
 
     def test_invalid_entries_dropped(self):
         result = self._tag(["", 42, None, {"food_fr": "sel", "food_en": "salt"}])
-        assert result == [{"food": "sel", "quantity_min": None, "quantity_max": None, "unit": None}]
+        assert result == [
+            {
+                "food": "sel",
+                "quantity_min": None,
+                "quantity_max": None,
+                "unit": None,
+                "department": "autre",
+            }
+        ]
 
     def test_non_list_returns_empty(self):
         assert self._tag("not a list") == []
@@ -454,7 +480,15 @@ class TestIngredientNormalization:
                 }
             ]
         )
-        assert result == [{"food": "sel", "quantity_min": None, "quantity_max": None, "unit": None}]
+        assert result == [
+            {
+                "food": "sel",
+                "quantity_min": None,
+                "quantity_max": None,
+                "unit": None,
+                "department": "autre",
+            }
+        ]
 
     def test_falls_back_to_other_language(self):
         """If `food_fr` is missing, the parser falls back on `food_en` for the

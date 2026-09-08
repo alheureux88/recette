@@ -37,8 +37,9 @@ from recipes.db import (
 from recipes.parsers import extract_images, extract_text
 from recipes.tagger import tag_recipe
 
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger(__name__)

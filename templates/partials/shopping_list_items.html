@@ -1,0 +1,57 @@
+{% for group in grouped_departments %}
+{% if group.items or mode == 'edit' %}
+<section class="shopping-department{% if mode == 'shopping' and not group.items %} shopping-dept-hidden{% endif %}" data-dept-id="{{ group.department.id }}">
+    <h2 class="shopping-dept-title">
+        <span class="shopping-dept-emoji" aria-hidden="true">{{ group.department.emoji }}</span>
+        <span class="shopping-dept-name">{{ group.department.display_name }}</span>
+        {% if group.items %}
+        <span class="shopping-dept-count">{{ group.items|length }}</span>
+        {% endif %}
+    </h2>
+    {% if group.items %}
+    <ul class="shopping-dept-items">
+        {% for item in group.items %}
+        <li class="shopping-item{% if item.is_done %} shopping-item-done{% endif %}" data-item-id="{{ item.id }}">
+            {% if can_edit %}
+            <form method="post" action="/shopping/items/{{ item.id }}/toggle"
+                  hx-post="/shopping/items/{{ item.id }}/toggle"
+                  hx-target="closest li"
+                  hx-swap="outerHTML"
+                  class="shopping-item-toggle-form">
+                <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check">
+            </form>
+            {% else %}
+            <span class="shopping-item-check{% if item.is_done %} checked{% endif %}" aria-hidden="true"></span>
+            {% endif %}
+            <span class="shopping-item-text">
+                {% if item.quantity %}<span class="shopping-item-qty">{{ item.quantity }}</span>{% endif %}
+                {{ item.text }}
+            </span>
+            {% if can_edit and mode == 'edit' %}
+            <form method="post" action="/shopping/items/{{ item.id }}/remove"
+                  hx-post="/shopping/items/{{ item.id }}/remove?mode={{ mode }}"
+                  hx-target="#shopping-items-container"
+                  hx-swap="innerHTML"
+                  class="shopping-item-remove-form">
+                <button type="submit" class="shopping-item-remove" title="{{ _('shopping.remove_item') }}">×</button>
+            </form>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% elif mode == 'edit' %}
+    <p class="shopping-dept-empty">{{ _('shopping.empty_department') }}</p>
+    {% endif %}
+</section>
+{% endif %}
+{% endfor %}
+
+{% if mode == 'shopping' %}
+{% set has_items = [] %}
+{% for group in grouped_departments %}
+{% if group.items %}{% set has_items = has_items + [1] %}{% endif %}
+{% endfor %}
+{% if not has_items %}
+<p class="shopping-all-done">{{ _('shopping.all_done') }}</p>
+{% endif %}
+{% endif %}

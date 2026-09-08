@@ -1,0 +1,13 @@
+<li class="shopping-item{% if item.is_done %} shopping-item-done{% endif %}" data-item-id="{{ item.id }}">
+    <form method="post" action="/shopping/items/{{ item.id }}/toggle"
+          hx-post="/shopping/items/{{ item.id }}/toggle"
+          hx-target="closest li"
+          hx-swap="outerHTML"
+          class="shopping-item-toggle-form">
+        <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check">
+    </form>
+    <span class="shopping-item-text">
+        {% if item.quantity %}<span class="shopping-item-qty">{{ item.quantity }}</span>{% endif %}
+        {{ item.text }}
+    </span>
+</li>

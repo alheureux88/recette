@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ _('shopping.title') }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<div class="shopping-page">
+    <div class="shopping-header">
+        <h1>{{ _('shopping.title') }}</h1>
+    </div>
+
+    {% if not user and auth_enabled %}
+    <p class="shopping-notice">{{ _('shopping.anonymous_notice') }}</p>
+    {% endif %}
+
+    <form method="post" action="/shopping/lists" class="shopping-create-form">
+        <input type="text" name="name" placeholder="{{ _('shopping.list_name_placeholder') }}" required maxlength="200" class="shopping-create-input">
+        <button type="submit" class="shopping-create-btn">{{ _('shopping.create') }}</button>
+    </form>
+
+    {% if lists %}
+    <div class="shopping-lists-grid">
+        {% for lst in lists %}
+        <a href="/shopping/{{ lst.id }}" class="shopping-list-card">
+            <div class="shopping-list-card-header">
+                <h2 class="shopping-list-card-name">{{ lst.name }}</h2>
+                <span class="shopping-list-card-count">{{ lst.item_count }} {{ _('shopping.items_count', n=lst.item_count) }}</span>
+            </div>
+            <div class="shopping-list-card-progress">
+                {% if lst.item_count > 0 %}
+                <div class="shopping-progress-bar">
+                    <div class="shopping-progress-fill" style="width: {{ (lst.done_count / lst.item_count * 100)|int }}%"></div>
+                </div>
+                <span class="shopping-progress-text">{{ lst.done_count }}/{{ lst.item_count }}</span>
+                {% endif %}
+            </div>
+            {% if lst.updated_at %}
+            <span class="shopping-list-card-date">{{ _('shopping.last_updated', date=lst.updated_at[:10]) }}</span>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="shopping-empty">{{ _('shopping.no_lists') }}</p>
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -79,6 +79,10 @@
     <div class="recipe-body">
         {% include "partials/ingredients.html" %}
 
+        <div class="shopping-recipe-action">
+            <button type="button" class="btn-shopping-add" id="btn-shopping-add">{{ _('shopping.add_from_recipe') }}</button>
+        </div>
+
         <section class="instructions">
             <h2>{{ _('recipe.instructions') }}</h2>
             <ol class="instruction-list">
@@ -419,6 +423,150 @@
 
         window.addEventListener('beforeunload', saveTimerStates);
     })();
+
+    (function () {
+        var btn = document.getElementById('btn-shopping-add');
+        if (!btn) return;
+        var recipeId = {{ recipe.id }};
+        var modal = document.getElementById('shopping-modal');
+        var backdrop = document.getElementById('shopping-modal-backdrop');
+
+        var existingLists = {{ shopping_lists|tojson }};
+        var lang = '{{ lang }}';
+
+        var deptLabels = {
+            "fruits": {"fr": "Fruits", "en": "Fruits"},
+            "vegetables": {"fr": "Légumes", "en": "Vegetables"},
+            "boucherie": {"fr": "Boucherie", "en": "Butcher"},
+            "poissonnerie": {"fr": "Poissonnerie", "en": "Fish counter"},
+            "charcuterie": {"fr": "Charcuterie", "en": "Deli"},
+            "boulangerie": {"fr": "Boulangerie", "en": "Bakery"},
+            "produits-laitiers": {"fr": "Produits laitiers", "en": "Dairy"},
+            "surgelés": {"fr": "Surgelés", "en": "Frozen"},
+            "produits-secs": {"fr": "Produits secs", "en": "Dry goods"},
+            "garde-manger": {"fr": "Garde-manger", "en": "Pantry"},
+            "condiments": {"fr": "Condiments", "en": "Condiments"},
+            "pret-a-manger": {"fr": "Prêt-à-manger", "en": "Ready to eat"},
+            "boissons": {"fr": "Boissons", "en": "Beverages"},
+            "entretien": {"fr": "Entretien", "en": "Household"},
+            "autre": {"fr": "Autre", "en": "Other"}
+        };
+
+        function openModal() {
+            modal.hidden = false;
+            backdrop.hidden = false;
+            renderModalContent();
+        }
+        function closeModal() {
+            modal.hidden = true;
+            backdrop.hidden = true;
+        }
+
+        function renderModalContent() {
+            var listsHtml = '';
+            if (existingLists && existingLists.length > 0) {
+                listsHtml += '<h3>{{ _('shopping.select_list') }}</h3>';
+                listsHtml += '<div class="shopping-modal-lists">';
+                existingLists.forEach(function (lst) {
+                    listsHtml += '<button type="button" class="shopping-modal-list-btn" data-list-id="' + lst.id + '">' + lst.name + '</button>';
+                });
+                listsHtml += '</div>';
+                listsHtml += '<hr class="shopping-modal-divider">';
+            }
+            listsHtml += '<h3>{{ _('shopping.or_create_new') }}</h3>';
+            listsHtml += '<div class="shopping-modal-new">';
+            listsHtml += '<input type="text" id="shopping-new-list-name" placeholder="{{ _('shopping.list_name_placeholder') }}" class="shopping-modal-input">';
+            listsHtml += '</div>';
+            listsHtml += '<div class="shopping-modal-ingredients">';
+            listsHtml += '<h3>{{ _('recipe.ingredients') }}</h3>';
+            listsHtml += '<div class="shopping-modal-select-actions">';
+            listsHtml += '<button type="button" id="shopping-select-all">{{ _('shopping.select_all') }}</button>';
+            listsHtml += '<button type="button" id="shopping-deselect-all">{{ _('shopping.deselect_all') }}</button>';
+            listsHtml += '</div>';
+            var ings = {{ ingredients_json|safe }};
+            ings.forEach(function (ing, idx) {
+                var display = ing.display || ing.food || '';
+                listsHtml += '<label class="shopping-modal-ing">';
+                listsHtml += '<input type="checkbox" class="shopping-modal-ing-check" data-index="' + idx + '" checked>';
+                listsHtml += '<span>' + display + '</span>';
+                listsHtml += '</label>';
+            });
+            listsHtml += '</div>';
+            listsHtml += '<div class="shopping-modal-actions">';
+            listsHtml += '<button type="button" id="shopping-modal-cancel" class="shopping-modal-cancel">{{ _('shopping.cancel') }}</button>';
+            listsHtml += '<button type="button" id="shopping-modal-submit" class="shopping-modal-submit">{{ _('shopping.add_selected') }}</button>';
+            listsHtml += '</div>';
+
+            document.getElementById('shopping-modal-body').innerHTML = listsHtml;
+
+            document.getElementById('shopping-modal-cancel').addEventListener('click', closeModal);
+            document.getElementById('shopping-select-all').addEventListener('click', function () {
+                document.querySelectorAll('.shopping-modal-ing-check').forEach(function (cb) { cb.checked = true; });
+            });
+            document.getElementById('shopping-deselect-all').addEventListener('click', function () {
+                document.querySelectorAll('.shopping-modal-ing-check').forEach(function (cb) { cb.checked = false; });
+            });
+
+            document.querySelectorAll('.shopping-modal-list-btn').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    document.querySelectorAll('.shopping-modal-list-btn').forEach(function (x) { x.classList.remove('active'); });
+                    b.classList.add('active');
+                    var nameInput = document.getElementById('shopping-new-list-name');
+                    if (nameInput) nameInput.value = '';
+                });
+            });
+
+            document.getElementById('shopping-modal-submit').addEventListener('click', submitToShoppingList);
+        }
+
+        function submitToShoppingList() {
+            var selectedListBtn = document.querySelector('.shopping-modal-list-btn.active');
+            var newListName = document.getElementById('shopping-new-list-name').value.trim();
+            var listId = selectedListBtn ? parseInt(selectedListBtn.dataset.listId) : null;
+
+            if (!listId && !newListName) {
+                return;
+            }
+
+            var indices = [];
+            document.querySelectorAll('.shopping-modal-ing-check:checked').forEach(function (cb) {
+                indices.push(parseInt(cb.dataset.index));
+            });
+
+            if (indices.length === 0) return;
+
+            var body = {
+                ingredient_indices: indices,
+                list_id: listId,
+                new_list_name: newListName || null
+            };
+
+            fetch('/api/shopping/from-recipe?recipe_id=' + recipeId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (resp) {
+                if (resp.ok) return resp.json();
+                throw new Error('Failed');
+            }).then(function (data) {
+                closeModal();
+                window.location.href = '/shopping/' + data.list_id;
+            }).catch(function () {
+                alert('{{ _('admin.alert_save_error') }}');
+            });
+        }
+
+        btn.addEventListener('click', openModal);
+        backdrop.addEventListener('click', closeModal);
+    })();
 </script>
+
+<div id="shopping-modal-backdrop" class="shopping-modal-backdrop" hidden></div>
+<div id="shopping-modal" class="shopping-modal" hidden role="dialog" aria-modal="true">
+    <div class="shopping-modal-content">
+        <h2>{{ _('shopping.add_from_recipe') }}</h2>
+        <div id="shopping-modal-body"></div>
+    </div>
+</div>
 
 {% endblock %}

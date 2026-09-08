@@ -5,6 +5,7 @@ title / description / instructions / ingredients payload.
 """
 
 import json
+import logging
 import os
 import threading
 import uuid
@@ -14,8 +15,11 @@ from recipes.db import (
     get_all_categories,
     get_existing_tags_for_prompt,
     get_setting,
+    get_shopping_departments,
 )
 from recipes.units import parse_quantity
+
+log = logging.getLogger(__name__)
 
 _client: Any = None
 _client_lock = threading.Lock()
@@ -95,7 +99,7 @@ def build_system_prompt() -> str:
         "Tu es un parseur de recettes. À partir du texte brut extrait d'un fichier de",
         "recette, retourne un objet JSON avec exactement les champs décrits ci-dessous.",
         "",
-        "=== IMPORTANT : sortie bilingue français / anglais ===",
+        "=== IMPORTANT : sortie bilingue ===",
         "",
         "Le texte source peut être en français ou en anglais. Tu dois TOUJOURS retourner",
         "les champs textuels (title, description, ingredients[].food, instructions)",
@@ -139,44 +143,48 @@ def build_system_prompt() -> str:
     lines.append(f"  {cat_list}")
     lines.append("")
 
+    try:
+        departments = get_shopping_departments("fr")
+        if departments:
+            lines.append("=== Départements d'épicerie ===")
+            lines.append("")
+            lines.append(
+                "Pour chaque ingrédient, indique le département d'épicerie où on peut le trouver."
+            )
+            lines.append("Utilise la clé (name) d'un des départements suivants :")
+            lines.append("")
+            for dept in departments:
+                lines.append(f'  - "{dept["name"]}" ({dept["display_name"]})')
+            lines.append("")
+    except Exception:
+        pass
+
     lines.extend(
         [
             "=== Instructions ===",
             "",
             'Utilise les étiquettes existantes quand possible (utilise la clé, p.ex. "japonais", "braise").',
-            "Use existing tag keys whenever possible (e.g. 'japonais', 'braise').",
             "Tu peux créer de nouvelles étiquettes si aucune ne convient.",
-            "You can create new tags when none fit.",
             "Pour les étiquettes hiérarchiques (Origine), inclus toujours les étiquettes parentes.",
-            "For hierarchical tags (Origin), always include parent tags.",
             "Pour la catégorie, utilise le nom exact d'une des catégories disponibles.",
-            "For category, use the exact name of one of the available categories.",
             "",
-            "=== IMPORTANT pour les étapes / IMPORTANT for steps ===",
+            "=== IMPORTANT pour les étapes ===",
             "",
             "Les étapes de la recette doivent être retournées dans un tableau 'steps_fr' et 'steps_en'.",
             "Chaque étape est un objet avec 'text' (le texte de l'étape) et 'timer_seconds' (entier ou null).",
             "",
-            "Recipe steps must be returned as 'steps_fr' and 'steps_en' arrays.",
-            "Each step is an object with 'text' (the step text) and 'timer_seconds' (integer or null).",
-            "",
             "Si une étape mentionne un temps d'attente, de cuisson, de repos, de marinade, etc.",
-            "(ex: 'cuire 5 minutes', 'laisser reposer 10 min', 'bake for 25 min'), mets la durée",
+            "(ex: 'cuire 5 minutes', 'laisser reposer 10 min'), mets la durée",
             "en SECONDES dans 'timer_seconds'. Sinon, mets null.",
             "",
-            "If a step mentions a waiting, cooking, resting, marinating time, etc.",
-            "(e.g. 'cook for 5 minutes', 'let rest 10 min', 'bake for 25 min'), put the duration",
-            "in SECONDS in 'timer_seconds'. Otherwise, put null.",
-            "",
-            "=== IMPORTANT pour les ingrédients / IMPORTANT for ingredients ===",
+            "=== IMPORTANT pour les ingrédients ===",
             "",
             "Chaque ingrédient est un objet avec les champs 'food_fr', 'food_en',",
             "'quantity_min', 'quantity_max' et 'unit'.",
             "",
             "'food_fr' : l'aliment en français, sans quantité ni unité, avec sa préparation",
             'ou ses qualificatifs (ex: "oignon rouge, haché finement", "boeuf haché").',
-            "'food_en' : la traduction anglaise du même aliment (ex: \"red onion, finely chopped\",",
-            '"ground beef"). Si tu n\'es pas sûr, donne une approximation naturelle en anglais.',
+            "'food_en' : la traduction anglaise du même aliment.",
             "",
             "'quantity_min' et 'quantity_max' : des nombres décimaux (0.5 pour 1/2, 1.5 pour 1 1/2).",
             "Si l'ingrédient a une plage (ex: \"1 à 2 tasses\"), mets le minimum dans 'quantity_min' et le",
@@ -185,25 +193,18 @@ def build_system_prompt() -> str:
             "",
             "'unit' : l'unité de mesure, au singulier. Utilise TOUJOURS la clé canonique française",
             'parmi : "g", "kg", "oz", "lb", "ml", "l", "tasse", "c. à soupe", "c. à thé", "oz liquide".',
-            "Always return the canonical French key, even if the source text or the",
-            "recipe language is English (so 'cup' → 'tasse', 'tbsp' → 'c. à soupe',",
-            "'tsp' → 'c. à thé'). The display layer will translate the unit name",
-            "into the user's chosen language.",
-            "If the unit isn't convertible (e.g. 'pincée', 'gousse', 'boîte', 'tranche', 'botte',",
-            "'pinch', 'clove', 'can', 'slice', 'bunch'), keep the original unit from the source text.",
+            "Si l'unité n'est pas convertible (ex: 'pincée', 'gousse', 'boîte', 'tranche'), garde l'unité originale.",
             "null s'il n'y a pas d'unité. Si le texte donne la même quantité dans deux systèmes",
             '(ex: "450 g / 1 lb"), garde la première.',
             "",
-            "=== IMPORTANT pour les portions / IMPORTANT for servings ===",
+            "=== IMPORTANT pour les portions ===",
             "",
             "'servings' : le nombre de portions que la recette produit, SEULEMENT si le texte le",
-            'mentionne explicitement (ex: "pour 4 personnes", "4 portions", "serves 4",',
-            '"yield: 4"). Si le texte ne mentionne PAS explicitement un nombre de portions,',
-            "retourne null. N'ESTIME PAS et NE DEVINE PAS le nombre de portions à partir des",
-            "quantités : retourne null plutôt que d'inventer une valeur.",
-            "The value must be a number, not text.",
+            'mentionne explicitement (ex: "pour 4 personnes", "4 portions"). Si le texte ne mentionne PAS',
+            "explicitement un nombre de portions, retourne null. N'ESTIME PAS et NE DEVINE PAS le nombre",
+            "de portions à partir des quantités : retourne null plutôt que d'inventer une valeur.",
             "",
-            "=== Format de sortie JSON / JSON output format ===",
+            "=== Format de sortie JSON ===",
             "",
             "{",
             '  "title_fr": "Nom de la recette en français",',
@@ -217,32 +218,17 @@ def build_system_prompt() -> str:
             '      "food_en": "flour",',
             '      "quantity_min": 1.5,',
             '      "quantity_max": 2,',
-            '      "unit": "tasse"',
-            "    },",
-            "    {",
-            '      "food_fr": "oeufs",',
-            '      "food_en": "eggs",',
-            '      "quantity_min": 2,',
-            '      "quantity_max": null,',
-            '      "unit": null',
-            "    },",
-            "    {",
-            '      "food_fr": "sel au goût",',
-            '      "food_en": "salt to taste",',
-            '      "quantity_min": null,',
-            '      "quantity_max": null,',
-            '      "unit": null',
+            '      "unit": "tasse",',
+            '      "department": "produits-secs"',
             "    }",
             "  ],",
             '  "steps_fr": [',
             '    {"text": "Étape 1.", "timer_seconds": null},',
-            '    {"text": "Cuire 5 minutes.", "timer_seconds": 300},',
-            '    {"text": "Étape 3.", "timer_seconds": null}',
+            '    {"text": "Cuire 5 minutes.", "timer_seconds": 300}',
             "  ],",
             '  "steps_en": [',
             '    {"text": "Step 1.", "timer_seconds": null},',
-            '    {"text": "Cook for 5 minutes.", "timer_seconds": 300},',
-            '    {"text": "Step 3.", "timer_seconds": null}',
+            '    {"text": "Cook for 5 minutes.", "timer_seconds": 300}',
             "  ],",
             '  "category": "plat-principal",',
             '  "tags": {',
@@ -254,11 +240,9 @@ def build_system_prompt() -> str:
             '  "source_url": "https://..." ou null',
             "}",
             "",
-            "Pour source_url : si le texte contient une URL vers un site de recettes, extrais-la.",
-            "Sinon, retourne null.",
+            "Pour source_url : si le texte contient une URL vers un site de recettes, extrais-la. Sinon, retourne null.",
             "",
             "Retourne UNIQUEMENT du JSON valide. Pas de markdown, pas d'explication, pas de blocs de code.",
-            "Return ONLY valid JSON. No markdown, no explanations, no code blocks.",
         ]
     )
 
@@ -281,77 +265,135 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
         }
     """
     system_prompt = build_system_prompt()
+    log.debug("System prompt length: %d chars", len(system_prompt))
 
-    if _get_provider() == "anthropic":
-        response = _get_client().messages.create(
-            model=_get_model(),
-            max_tokens=4000,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": raw_text},
-            ],
-        )
-        raw = response.content[0].text.strip()
-    else:
-        response = _get_client().chat.completions.create(
-            model=_get_model(),
-            max_tokens=4000,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": raw_text},
-            ],
-        )
-        raw = (response.choices[0].message.content or "").strip()
+    max_retries = 3
+    last_error: Exception | None = None
 
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    for attempt in range(max_retries):
+        try:
+            if _get_provider() == "anthropic":
+                model = _get_model()
+                log.debug("Calling Anthropic API with model: %s", model)
+                response = _get_client().messages.create(
+                    model=model,
+                    max_tokens=16000,
+                    system=system_prompt,
+                    messages=[
+                        {"role": "user", "content": raw_text},
+                    ],
+                )
+                log.debug("Anthropic full response: %s", response)
+                log.debug("Anthropic response content: %s", response.content)
+                log.debug(
+                    "Anthropic response stop_reason: %s", getattr(response, "stop_reason", None)
+                )
+                log.debug("Anthropic response usage: %s", getattr(response, "usage", None))
+                raw = response.content[0].text.strip() if response.content else ""
+            else:
+                model = _get_model()
+                log.debug("Calling OpenAI API with model: %s", model)
+                response = _get_client().chat.completions.create(
+                    model=model,
+                    max_tokens=16000,
+                    temperature=0.2,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": raw_text},
+                    ],
+                )
+                log.debug("OpenAI full response: %s", response)
+                log.debug("OpenAI response choices: %s", response.choices)
+                if response.choices:
+                    log.debug("First choice: %s", response.choices[0])
+                    log.debug("First choice message: %s", response.choices[0].message)
+                    log.debug("First choice finish_reason: %s", response.choices[0].finish_reason)
+                log.debug("OpenAI response usage: %s", getattr(response, "usage", None))
+                if not response.choices or not response.choices[0].message:
+                    raise ValueError("LLM returned no choices or message")
+                raw = (response.choices[0].message.content or "").strip()
 
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"LLM returned invalid JSON: {e}\n\nRaw response:\n{raw}") from None
+            if not raw:
+                log.warning(
+                    "LLM returned empty response on attempt %d/%d", attempt + 1, max_retries
+                )
+                if attempt < max_retries - 1:
+                    import time
 
-    payload_fr, payload_en = _extract_bilingual_payload(data, default_title)
-    ingredients_fr = _normalize_ingredients(data.get("ingredients"), "fr")
-    ingredients_en = _normalize_ingredients(data.get("ingredients"), "en")
-    payload_fr["ingredients"] = ingredients_fr
-    payload_en["ingredients"] = ingredients_en
+                    time.sleep(1 * (attempt + 1))
+                    continue
+                log.error(
+                    "LLM returned empty response for recipe text (first 100 chars): %s",
+                    raw_text[:100],
+                )
+                raise ValueError("LLM returned empty response")
 
-    steps_fr = _normalize_steps(data.get("steps_fr"), "fr")
-    steps_en = _normalize_steps(data.get("steps_en"), "en")
-    payload_fr["steps"] = steps_fr
-    payload_en["steps"] = steps_en
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
 
-    tags = data.get("tags") if isinstance(data.get("tags"), dict) else {}
-    tags = {str(k): v for k, v in tags.items()}
-    for family_key in list(tags.keys()):
-        tag_list = tags[family_key]
-        if isinstance(tag_list, list):
-            tags[family_key] = sorted(
-                {str(t).lower().strip().replace(" ", "-") for t in tag_list if t}
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"LLM returned invalid JSON: {e}\n\nRaw response:\n{raw}"
+                ) from None
+
+            payload_fr, payload_en = _extract_bilingual_payload(data, default_title)
+            ingredients_fr = _normalize_ingredients(data.get("ingredients"), "fr")
+            ingredients_en = _normalize_ingredients(data.get("ingredients"), "en")
+            payload_fr["ingredients"] = ingredients_fr
+            payload_en["ingredients"] = ingredients_en
+
+            steps_fr = _normalize_steps(data.get("steps_fr"), "fr")
+            steps_en = _normalize_steps(data.get("steps_en"), "en")
+            payload_fr["steps"] = steps_fr
+            payload_en["steps"] = steps_en
+
+            tags = data.get("tags") if isinstance(data.get("tags"), dict) else {}
+            tags = {str(k): v for k, v in tags.items()}
+            for family_key in list(tags.keys()):
+                tag_list = tags[family_key]
+                if isinstance(tag_list, list):
+                    tags[family_key] = sorted(
+                        {str(t).lower().strip().replace(" ", "-") for t in tag_list if t}
+                    )
+                else:
+                    tags[family_key] = []
+
+            category = data.get("category")
+            category = (
+                category.lower().strip().replace(" ", "-") if isinstance(category, str) else None
             )
-        else:
-            tags[family_key] = []
 
-    category = data.get("category")
-    category = category.lower().strip().replace(" ", "-") if isinstance(category, str) else None
+            source_url = data.get("source_url")
+            if source_url and not (isinstance(source_url, str) and source_url.startswith("http")):
+                source_url = None
 
-    source_url = data.get("source_url")
-    if source_url and not (isinstance(source_url, str) and source_url.startswith("http")):
-        source_url = None
+            return {
+                "lang_fr": payload_fr,
+                "lang_en": payload_en,
+                "tags": tags,
+                "category": category,
+                "source_url": source_url,
+                "servings": _parse_servings(data.get("servings")),
+            }
 
-    return {
-        "lang_fr": payload_fr,
-        "lang_en": payload_en,
-        "tags": tags,
-        "category": category,
-        "source_url": source_url,
-        "servings": _parse_servings(data.get("servings")),
-    }
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                log.warning("LLM call failed on attempt %d/%d: %s", attempt + 1, max_retries, e)
+                import time
+
+                time.sleep(1 * (attempt + 1))
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise ValueError("LLM call failed after all retries")
 
 
 def _extract_bilingual_payload(
@@ -433,12 +475,19 @@ def _normalize_ingredients(raw: object, lang: str) -> list[dict[str, object]]:
                 "quantity_min": qmin,
                 "quantity_max": parse_quantity(item.get("quantity_max")),
                 "unit": _clean_unit(item.get("unit")),
+                "department": _clean_department(item.get("department")),
             }
             if entry["food"] or entry["quantity_min"] is not None:
                 normalized.append(entry)
         elif isinstance(item, str) and item.strip():
             normalized.append(
-                {"food": item.strip(), "quantity_min": None, "quantity_max": None, "unit": None}
+                {
+                    "food": item.strip(),
+                    "quantity_min": None,
+                    "quantity_max": None,
+                    "unit": None,
+                    "department": "autre",
+                }
             )
     return normalized
 
@@ -471,3 +520,84 @@ def _normalize_steps(raw: object, lang: str) -> list[dict[str, object]]:
                 timer_seconds = int(timer)
             result.append({"text": text.strip(), "timer_seconds": timer_seconds})
     return result
+
+
+def _clean_department(value: object) -> str:
+    """Normalize a department key from the LLM response."""
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower().replace(" ", "-")
+    return "autre"
+
+
+def classify_ingredients(ingredients: list[str], lang: str = "fr") -> list[str]:
+    """Ask the LLM to classify a list of ingredient names into departments.
+
+    Returns a list of department keys (one per ingredient, same order).
+    """
+    if not ingredients:
+        return []
+
+    departments = get_shopping_departments(lang)
+    dept_list = ", ".join(f'"{d["name"]}"' for d in departments)
+
+    prompt = (
+        "Tu es un classificateur d'ingrédients d'épicerie. "
+        "Pour chaque ingrédient donné, retourne le département d'épicerie "
+        "où on peut le trouver.\n\n"
+        "You are a grocery ingredient classifier. "
+        "For each given ingredient, return the grocery department "
+        "where it can be found.\n\n"
+        f"Départements disponibles / Available departments: {dept_list}\n\n"
+        "Retourne UNIQUEMENT un tableau JSON de clés de département, "
+        "dans le même ordre que les ingrédients fournis.\n"
+        "Return ONLY a JSON array of department keys, "
+        "in the same order as the provided ingredients.\n"
+        "Pas de markdown, pas d'explication.\n"
+        "No markdown, no explanation.\n\n"
+        "Exemple / Example:\n"
+        'Input: ["farine", "lait", "poulet"]\n'
+        'Output: ["produits-secs", "produits-laitiers", "boucherie"]\n\n'
+        f"Input: {json.dumps(ingredients, ensure_ascii=False)}\n"
+        "Output:"
+    )
+
+    if _get_provider() == "anthropic":
+        response = _get_client().messages.create(
+            model=_get_model(),
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+    else:
+        response = _get_client().chat.completions.create(
+            model=_get_model(),
+            max_tokens=1000,
+            temperature=0.0,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = (response.choices[0].message.content or "").strip()
+
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return ["autre"] * len(ingredients)
+
+    if not isinstance(data, list):
+        return ["autre"] * len(ingredients)
+
+    valid_keys = {d["name"] for d in departments}
+    result: list[str] = []
+    for item in data:
+        key = item.strip().lower().replace(" ", "-") if isinstance(item, str) else "autre"
+        result.append(key if key in valid_keys else "autre")
+
+    while len(result) < len(ingredients):
+        result.append("autre")
+
+    return result[: len(ingredients)]

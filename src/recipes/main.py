@@ -36,14 +36,19 @@ from recipes.db import (
     DEFAULT_ACCOUNT_ID,
     add_dropbox_connection,
     add_favorite,
+    add_shopping_list_item,
     blacklist_and_delete_recipe,
     bulk_update_category,
     bulk_update_tags,
+    cleanup_expired_shopping_lists,
+    create_shopping_list,
     delete_dropbox_connection,
     delete_push_subscription,
     delete_setting,
+    delete_shopping_list,
     get_all_categories,
     get_all_recipes_admin,
+    get_all_shopping_lists,
     get_all_tags_grouped,
     get_blacklisted_files,
     get_dropbox_connection_credentials,
@@ -56,8 +61,14 @@ from recipes.db import (
     get_recipe,
     get_recipe_provenances,
     get_setting,
+    get_shopping_departments,
+    get_shopping_list_by_id,
+    get_shopping_list_by_token,
+    get_shopping_list_items,
+    get_shopping_lists_by_ids,
     get_tag_families,
     get_user_favorite_ids,
+    get_user_shopping_lists,
     init_db,
     is_default_account_active,
     is_default_account_visible,
@@ -65,6 +76,8 @@ from recipes.db import (
     remove_failed_file,
     remove_favorite,
     remove_from_blacklist,
+    remove_shopping_list_item,
+    rename_shopping_list,
     save_push_subscription,
     search_recipes,
     set_default_account_active,
@@ -73,9 +86,11 @@ from recipes.db import (
     set_dropbox_connection_visible,
     set_setting,
     sync_recipe_tags,
+    toggle_shopping_list_item,
     update_recipe_category,
     update_recipe_manual,
     update_recipe_tags,
+    update_shopping_list_item,
 )
 from recipes.i18n import (
     COOKIE_MAX_AGE,
@@ -93,6 +108,11 @@ from recipes.models import (
     InlineCategoryUpdate,
     InlineTagsUpdate,
     PushSubscriptionRegister,
+    RecipeIngredientsToShopping,
+    ShoppingListCreate,
+    ShoppingListItemAdd,
+    ShoppingListItemUpdate,
+    ShoppingListRename,
     TimerCancelRequest,
     TimerScheduleRequest,
 )
@@ -111,6 +131,7 @@ from recipes.push import (
     cancel_timer_notification,
     schedule_timer_notification,
 )
+from recipes.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.units import format_ingredient, parse_quantity
 
 log = logging.getLogger(__name__)
@@ -144,6 +165,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         id="dropbox_poll",
         max_instances=1,
         misfire_grace_time=60,
+    )
+    scheduler.add_job(
+        cleanup_expired_shopping_lists,
+        trigger="interval",
+        hours=6,
+        id="shopping_cleanup",
+        max_instances=1,
+        misfire_grace_time=300,
     )
     scheduler.start()
     log.info(f"Scheduler started — polling every {POLL_INTERVAL_MINUTES} min.")
@@ -449,6 +478,27 @@ async def recipe_detail(
                         else 0,
                     }
                 )
+
+    user_id = _shopping_list_user_id(request)
+    user_shopping_lists = get_user_shopping_lists(user_id, include_done=False)
+    shopping_lists_data = [
+        {"id": int(str(lst["id"])), "name": str(lst["name"])} for lst in user_shopping_lists
+    ]
+
+    ingredients_raw = recipe.get("ingredients") or []
+    ingredients_for_json = []
+    if isinstance(ingredients_raw, list):
+        for _idx, ing in enumerate(ingredients_raw):
+            if isinstance(ing, dict):
+                display = format_ingredient(ing, lang=lang)
+                ingredients_for_json.append(
+                    {
+                        "display": display,
+                        "food": ing.get("food", ""),
+                        "department": ing.get("department", "autre"),
+                    }
+                )
+
     return templates.TemplateResponse(
         request=request,
         name="recipe.html",
@@ -458,6 +508,8 @@ async def recipe_detail(
             is_favorite=is_fav,
             show_provenance=len(get_recipe_provenances()) > 1,
             steps_list=steps_list,
+            shopping_lists=shopping_lists_data,
+            ingredients_json=json.dumps(ingredients_for_json, ensure_ascii=False),
             **_ingredient_context(
                 recipe,
                 _parse_servings_param(servings),
@@ -1346,6 +1398,586 @@ async def push_cancel_timer(data: TimerCancelRequest) -> dict[str, object]:
 
     removed = cancel_timer_notification(_scheduler, data.recipe_id, data.step_index)
     return {"ok": True, "removed": removed}
+
+
+# ---------------------------------------------------------------------------
+# Shopping lists
+# ---------------------------------------------------------------------------
+
+
+def _shopping_list_user_id(request: Request) -> int | None:
+    """Return the user ID for shopping list ownership, or None for anonymous."""
+    user = get_user(request)
+    return user["id"] if user else None
+
+
+def _get_anon_list_ids(request: Request) -> list[int]:
+    """Get the list IDs stored in the session for anonymous users."""
+    ids = request.session.get("shopping_list_ids", [])
+    return [int(i) for i in ids]
+
+
+def _add_anon_list_id(request: Request, list_id: int) -> None:
+    """Add a list ID to the session for anonymous users."""
+    ids = _get_anon_list_ids(request)
+    if list_id not in ids:
+        ids.append(list_id)
+        request.session["shopping_list_ids"] = ids
+
+
+def _can_edit_shopping_list(request: Request, shopping_list: dict[str, object]) -> bool:
+    """Check if the current user can edit this shopping list.
+
+    Anyone with the direct link (share token) can edit.
+    """
+    user = get_user(request)
+    list_user_id = shopping_list.get("user_id")
+    if list_user_id is None:
+        return True
+    if user is None:
+        return False
+    return bool(user["id"]) == int(str(list_user_id))
+
+
+@app.get("/shopping", response_class=HTMLResponse)
+async def shopping_lists_page(request: Request) -> HTMLResponse:
+    """Show all shopping lists for the current user (or anonymous)."""
+    lang = _resolve_request_lang(request)
+    user_id = _shopping_list_user_id(request)
+
+    if user_id is not None:
+        lists = get_user_shopping_lists(user_id)
+    else:
+        lists = get_shopping_lists_by_ids(_get_anon_list_ids(request))
+
+    lists_with_counts = []
+    for lst in lists:
+        items = get_shopping_list_items(int(str(lst["id"])), lang=lang)
+        lst["item_count"] = len(items)
+        done_count = sum(1 for i in items if i["is_done"])
+        lst["done_count"] = done_count
+        lists_with_counts.append(lst)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="shopping_lists.html",
+        context=_base_context(
+            request,
+            lists=lists_with_counts,
+            user_id=user_id,
+        ),
+    )
+
+
+@app.get("/shopping/{list_id}", response_class=HTMLResponse, response_model=None)
+async def shopping_list_detail(
+    request: Request,
+    list_id: int = Path(gt=0),
+    mode: str = Query(default="edit"),
+) -> HTMLResponse | RedirectResponse:
+    """Show a shopping list detail page."""
+    lang = _resolve_request_lang(request)
+    shopping_list = get_shopping_list_by_id(list_id)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+
+    user_id = _shopping_list_user_id(request)
+    if user_id is None:
+        _add_anon_list_id(request, list_id)
+
+    items = get_shopping_list_items(list_id, lang=lang)
+    departments = get_shopping_departments(lang=lang)
+
+    grouped: dict[int, dict[str, Any]] = {}
+    for dept in departments:
+        grouped[int(str(dept["id"]))] = {
+            "department": dept,
+            "items": [],
+        }
+    for item in items:
+        dept_id = int(str(item["department_id"]))
+        if dept_id in grouped:
+            grouped[dept_id]["items"].append(item)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="shopping_list_detail.html",
+        context=_base_context(
+            request,
+            shopping_list=shopping_list,
+            departments=departments,
+            grouped_departments=list(grouped.values()),
+            mode=mode,
+            can_edit=True,
+        ),
+    )
+
+
+@app.get("/shopping/shared/{token}", response_class=HTMLResponse)
+async def shopping_list_shared(
+    request: Request,
+    token: str,
+    mode: str = Query(default="shopping"),
+) -> HTMLResponse:
+    """View a shared shopping list. Anyone with the link can edit."""
+    lang = _resolve_request_lang(request)
+    shopping_list = get_shopping_list_by_token(token)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+
+    user_id = _shopping_list_user_id(request)
+    if user_id is None:
+        _add_anon_list_id(request, int(str(shopping_list["id"])))
+
+    items = get_shopping_list_items(int(str(shopping_list["id"])), lang=lang)
+    departments = get_shopping_departments(lang=lang)
+
+    grouped: dict[int, dict[str, Any]] = {}
+    for dept in departments:
+        grouped[int(str(dept["id"]))] = {
+            "department": dept,
+            "items": [],
+        }
+    for item in items:
+        dept_id = int(str(item["department_id"]))
+        if dept_id in grouped:
+            grouped[dept_id]["items"].append(item)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="shopping_list_detail.html",
+        context=_base_context(
+            request,
+            shopping_list=shopping_list,
+            departments=departments,
+            grouped_departments=list(grouped.values()),
+            mode=mode,
+            can_edit=True,
+            is_shared=True,
+        ),
+    )
+
+
+@app.post("/shopping/lists")
+async def shopping_list_create(
+    request: Request,
+    data: ShoppingListCreate,
+) -> RedirectResponse:
+    """Create a new shopping list."""
+    user_id = _shopping_list_user_id(request)
+    lst = create_shopping_list(data.name, user_id=user_id)
+    if user_id is None:
+        _add_anon_list_id(request, int(str(lst["id"])))
+    return RedirectResponse(url=f"/shopping/{lst['id']}", status_code=303)
+
+
+@app.post("/shopping/lists/{list_id}/delete")
+async def shopping_list_delete(
+    request: Request,
+    list_id: int = Path(gt=0),
+) -> RedirectResponse:
+    """Delete a shopping list."""
+    shopping_list = get_shopping_list_by_id(list_id)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+    if not _can_edit_shopping_list(request, shopping_list):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    delete_shopping_list(list_id)
+    return RedirectResponse(url="/shopping", status_code=303)
+
+
+@app.post("/shopping/lists/{list_id}/rename", response_model=None)
+async def shopping_list_rename(
+    request: Request,
+    list_id: int = Path(gt=0),
+    data: ShoppingListRename | None = None,
+) -> RedirectResponse | HTMLResponse:
+    """Rename a shopping list."""
+    shopping_list = get_shopping_list_by_id(list_id)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+    if not _can_edit_shopping_list(request, shopping_list):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    name = data.name if data else request.query_params.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    rename_shopping_list(list_id, name)
+
+    if request.headers.get("hx-request"):
+        shopping_list = get_shopping_list_by_id(list_id)
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/shopping_list_header.html",
+            context=_base_context(
+                request,
+                shopping_list=shopping_list,
+                can_edit=True,
+            ),
+        )
+    return RedirectResponse(url=f"/shopping/{list_id}", status_code=303)
+
+
+@app.post("/shopping/lists/{list_id}/items", response_model=None)
+async def shopping_list_add_item(
+    request: Request,
+    list_id: int = Path(gt=0),
+    data: ShoppingListItemAdd | None = None,
+) -> HTMLResponse | RedirectResponse:
+    """Add an item to a shopping list."""
+    shopping_list = get_shopping_list_by_id(list_id)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+    if not _can_edit_shopping_list(request, shopping_list):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if data:
+        department_id = data.department_id
+        text = data.text
+        quantity = data.quantity
+    else:
+        form = await request.form()
+        department_id = int(str(form.get("department_id", 0)))
+        text = str(form.get("text", "")).strip()
+        quantity = str(form.get("quantity", "")).strip() or None
+
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    if not department_id:
+        raise HTTPException(status_code=400, detail="Department is required")
+
+    add_shopping_list_item(list_id, department_id, text, quantity)
+    lang = _resolve_request_lang(request)
+
+    if request.headers.get("hx-request"):
+        items = get_shopping_list_items(list_id, lang=lang)
+        departments = get_shopping_departments(lang=lang)
+        grouped: dict[int, dict[str, Any]] = {}
+        for dept in departments:
+            grouped[int(str(dept["id"]))] = {"department": dept, "items": []}
+        for item in items:
+            dept_id_val = int(str(item["department_id"]))
+            if dept_id_val in grouped:
+                grouped[dept_id_val]["items"].append(item)
+        mode = request.query_params.get("mode", "edit")
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/shopping_list_items.html",
+            context=_base_context(
+                request,
+                grouped_departments=list(grouped.values()),
+                mode=mode,
+                can_edit=True,
+                shopping_list=shopping_list,
+            ),
+        )
+    return RedirectResponse(url=f"/shopping/{list_id}", status_code=303)
+
+
+@app.post("/shopping/items/{item_id}/toggle", response_model=None)
+async def shopping_item_toggle(
+    request: Request,
+    item_id: int = Path(gt=0),
+) -> HTMLResponse | RedirectResponse:
+    """Toggle an item's done status."""
+    item = toggle_shopping_list_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if request.headers.get("hx-request"):
+        lang = _resolve_request_lang(request)
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/shopping_item_row.html",
+            context=_base_context(
+                request,
+                item=item,
+                lang=lang,
+            ),
+        )
+    list_id = int(str(item["list_id"]))
+    return RedirectResponse(url=f"/shopping/{list_id}", status_code=303)
+
+
+@app.post("/shopping/items/{item_id}/remove", response_model=None)
+async def shopping_item_remove(
+    request: Request,
+    item_id: int = Path(gt=0),
+) -> HTMLResponse | RedirectResponse:
+    """Remove an item from a shopping list."""
+    list_id_before = None
+    if request.headers.get("hx-request"):
+        from recipes.db import get_conn
+
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+            ).fetchone()
+            if row:
+                list_id_before = int(str(row["list_id"]))
+
+    removed = remove_shopping_list_item(item_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if request.headers.get("hx-request") and list_id_before:
+        lang = _resolve_request_lang(request)
+        items = get_shopping_list_items(list_id_before, lang=lang)
+        departments = get_shopping_departments(lang=lang)
+        grouped: dict[int, dict[str, Any]] = {}
+        for dept in departments:
+            grouped[int(str(dept["id"]))] = {"department": dept, "items": []}
+        for item in items:
+            dept_id_val = int(str(item["department_id"]))
+            if dept_id_val in grouped:
+                grouped[dept_id_val]["items"].append(item)
+        shopping_list = get_shopping_list_by_id(list_id_before)
+        mode = request.query_params.get("mode", "edit")
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/shopping_list_items.html",
+            context=_base_context(
+                request,
+                grouped_departments=list(grouped.values()),
+                mode=mode,
+                can_edit=True,
+                shopping_list=shopping_list,
+            ),
+        )
+    if list_id_before:
+        return RedirectResponse(url=f"/shopping/{list_id_before}", status_code=303)
+    return RedirectResponse(url="/shopping", status_code=303)
+
+
+@app.post("/shopping/items/{item_id}/update", response_model=None)
+async def shopping_item_update(
+    request: Request,
+    item_id: int = Path(gt=0),
+    data: ShoppingListItemUpdate | None = None,
+) -> HTMLResponse | RedirectResponse:
+    """Update an item's text, quantity, and/or department."""
+    if data:
+        updated = update_shopping_list_item(item_id, data.text, data.quantity, data.department_id)
+    else:
+        form = await request.form()
+        text = str(form.get("text", "")).strip()
+        quantity = str(form.get("quantity", "")).strip() or None
+        dept_raw = form.get("department_id")
+        department_id = int(str(dept_raw)) if dept_raw else None
+        updated = update_shopping_list_item(item_id, text, quantity, department_id)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if request.headers.get("hx-request"):
+        from recipes.db import get_conn
+
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+            ).fetchone()
+            if row:
+                list_id = int(str(row["list_id"]))
+                shopping_list = get_shopping_list_by_id(list_id)
+                lang = _resolve_request_lang(request)
+                items = get_shopping_list_items(list_id, lang=lang)
+                departments = get_shopping_departments(lang=lang)
+                grouped: dict[int, dict[str, Any]] = {}
+                for dept in departments:
+                    grouped[int(str(dept["id"]))] = {"department": dept, "items": []}
+                for item in items:
+                    dept_id_val = int(str(item["department_id"]))
+                    if dept_id_val in grouped:
+                        grouped[dept_id_val]["items"].append(item)
+                mode = request.query_params.get("mode", "edit")
+                return templates.TemplateResponse(
+                    request=request,
+                    name="partials/shopping_list_items.html",
+                    context=_base_context(
+                        request,
+                        grouped_departments=list(grouped.values()),
+                        mode=mode,
+                        can_edit=True,
+                        shopping_list=shopping_list,
+                    ),
+                )
+    return RedirectResponse(url="/shopping", status_code=303)
+
+
+@app.post("/api/shopping/from-recipe")
+async def shopping_add_from_recipe(
+    request: Request,
+    data: RecipeIngredientsToShopping,
+) -> dict[str, object]:
+    """Add selected ingredients from a recipe to a shopping list."""
+    lang = _resolve_request_lang(request)
+    user_id = _shopping_list_user_id(request)
+
+    if data.list_id:
+        shopping_list = get_shopping_list_by_id(data.list_id)
+        if not shopping_list:
+            raise HTTPException(status_code=404, detail="Shopping list not found")
+        if not _can_edit_shopping_list(request, shopping_list):
+            raise HTTPException(status_code=403, detail="Not authorized")
+        list_id = data.list_id
+    elif data.new_list_name:
+        lst = create_shopping_list(data.new_list_name, user_id=user_id)
+        list_id = int(str(lst["id"]))
+    else:
+        raise HTTPException(status_code=400, detail="List ID or name required")
+
+    recipe_id_param = request.query_params.get("recipe_id")
+    if not recipe_id_param:
+        raise HTTPException(status_code=400, detail="recipe_id required")
+    recipe_id = int(recipe_id_param)
+    recipe = get_recipe(recipe_id, lang=lang)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    ingredients = recipe.get("ingredients", [])
+    if not isinstance(ingredients, list):
+        ingredients = []
+
+    departments = get_shopping_departments(lang=lang)
+    dept_map = {d["name"]: int(str(d["id"])) for d in departments}
+
+    for idx in data.ingredient_indices:
+        if idx < 0 or idx >= len(ingredients):
+            continue
+        ing = ingredients[idx]
+        if not isinstance(ing, dict):
+            continue
+
+        food = str(ing.get("food", ""))
+        if not food:
+            continue
+
+        quantity_parts = []
+        qmin = ing.get("quantity_min")
+        if qmin is not None:
+            quantity_parts.append(format_ingredient(ing, lang=lang))
+        elif food:
+            quantity_parts.append(food)
+        quantity_str = quantity_parts[0] if quantity_parts else food
+
+        dept_name = ing.get("department")
+        if not dept_name or dept_name not in dept_map:
+            dept_name = "autre"
+        dept_id = dept_map.get(str(dept_name), dept_map.get("autre", 1))
+
+        add_shopping_list_item(list_id, dept_id, food, quantity_str)
+
+    return {"ok": True, "list_id": list_id}
+
+
+@app.post("/api/shopping/classify")
+async def shopping_classify_ingredients(
+    request: Request,
+) -> dict[str, object]:
+    """Classify ingredient names into departments using the LLM."""
+    body = await request.json()
+    ingredients = body.get("ingredients", [])
+    if not isinstance(ingredients, list) or not ingredients:
+        return {"departments": []}
+
+    lang = _resolve_request_lang(request)
+    ingredient_names = [str(i) for i in ingredients]
+    dept_keys = classify_ingredients_llm(ingredient_names, lang=lang)
+
+    departments = get_shopping_departments(lang=lang)
+    dept_map = {d["name"]: dict(d) for d in departments}
+
+    result = []
+    for key in dept_keys:
+        dept = dept_map.get(key, dept_map.get("autre", {}))
+        result.append(dept)
+
+    return {"departments": result}
+
+
+# ---------------------------------------------------------------------------
+# Admin: Shopping list management
+# ---------------------------------------------------------------------------
+
+
+@app.get("/admin/shopping", response_class=HTMLResponse)
+async def admin_shopping_lists(
+    request: Request,
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    """Admin page to view and manage all shopping lists."""
+    lang = _resolve_request_lang(request)
+    lists = get_all_shopping_lists()
+
+    lists_with_details = []
+    for lst in lists:
+        items = get_shopping_list_items(int(str(lst["id"])), lang=lang)
+        lst["item_count"] = len(items)
+        done_count = sum(1 for i in items if i["is_done"])
+        lst["done_count"] = done_count
+        lists_with_details.append(lst)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_shopping.html",
+        context=_base_context(
+            request,
+            lists=lists_with_details,
+        ),
+    )
+
+
+@app.get("/admin/shopping/{list_id}", response_class=HTMLResponse)
+async def admin_shopping_list_view(
+    request: Request,
+    list_id: int = Path(gt=0),
+    mode: str = Query(default="edit"),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    """Admin view of a shopping list (read-only, doesn't affect counters)."""
+    lang = _resolve_request_lang(request)
+    shopping_list = get_shopping_list_by_id(list_id)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail="Shopping list not found")
+
+    items = get_shopping_list_items(list_id, lang=lang)
+    departments = get_shopping_departments(lang=lang)
+
+    grouped: dict[int, dict[str, Any]] = {}
+    for dept in departments:
+        grouped[int(str(dept["id"]))] = {
+            "department": dept,
+            "items": [],
+        }
+    for item in items:
+        dept_id = int(str(item["department_id"]))
+        if dept_id in grouped:
+            grouped[dept_id]["items"].append(item)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="shopping_list_detail.html",
+        context=_base_context(
+            request,
+            shopping_list=shopping_list,
+            departments=departments,
+            grouped_departments=list(grouped.values()),
+            mode=mode,
+            can_edit=False,
+            is_admin_view=True,
+        ),
+    )
+
+
+@app.post("/admin/shopping/{list_id}/delete")
+async def admin_shopping_list_delete(
+    request: Request,
+    list_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> RedirectResponse:
+    """Admin delete a shopping list."""
+    delete_shopping_list(list_id)
+    return RedirectResponse(url="/admin/shopping", status_code=303)
 
 
 def get_user_from_request_safe(request: Request | None) -> dict[str, Any] | None:

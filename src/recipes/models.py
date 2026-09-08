@@ -55,3 +55,31 @@ class TimerScheduleRequest(BaseModel):
 class TimerCancelRequest(BaseModel):
     recipe_id: int = Field(description="Recipe ID")
     step_index: int = Field(description="Step index (0-based)")
+
+
+class ShoppingListCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="List name")
+
+
+class ShoppingListRename(BaseModel):
+    name: str = Field(min_length=1, max_length=200, description="New list name")
+
+
+class ShoppingListItemAdd(BaseModel):
+    department_id: int = Field(description="Department ID")
+    text: str = Field(min_length=1, max_length=500, description="Item text")
+    quantity: str | None = Field(default=None, max_length=100, description="Optional quantity")
+
+
+class ShoppingListItemUpdate(BaseModel):
+    text: str = Field(min_length=1, max_length=500, description="Item text")
+    quantity: str | None = Field(default=None, max_length=100, description="Optional quantity")
+    department_id: int | None = Field(default=None, description="Optional department change")
+
+
+class RecipeIngredientsToShopping(BaseModel):
+    ingredient_indices: list[int] = Field(description="Indices of ingredients to add")
+    list_id: int | None = Field(default=None, description="Existing list ID, or None to create new")
+    new_list_name: str | None = Field(
+        default=None, description="Name for new list if list_id is None"
+    )

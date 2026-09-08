@@ -1976,3 +1976,636 @@ body.cook-mode main {
     min-width: 3rem;
 }
 
+/* ==========================================================================
+   Shopping Lists
+   ========================================================================== */
+
+.shopping-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+.shopping-header h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+.shopping-notice {
+    color: var(--muted);
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-alt);
+    border-radius: var(--radius);
+}
+.shopping-create-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+.shopping-create-input {
+    flex: 1;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.9375rem;
+}
+.shopping-create-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.shopping-create-btn {
+    padding: 0.625rem 1.25rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.shopping-create-btn:hover {
+    background: var(--accent-dk);
+}
+.shopping-lists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.shopping-list-card {
+    display: block;
+    padding: 1.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.shopping-list-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 2px 8px var(--accent-soft);
+}
+.shopping-list-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.shopping-list-card-name {
+    font-size: 1.125rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.shopping-list-card-count {
+    font-size: 0.8125rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.shopping-list-card-progress {
+    margin-bottom: 0.5rem;
+}
+.shopping-progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 0.25rem;
+}
+.shopping-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+.shopping-progress-text {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.shopping-list-card-date {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+.shopping-empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+/* Detail page */
+.shopping-detail {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+.shopping-detail-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+.shopping-detail-nav .back {
+    font-size: 0.875rem;
+    color: var(--muted);
+    text-decoration: none;
+}
+.shopping-detail-nav .back:hover {
+    color: var(--text);
+}
+.shopping-detail-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.shopping-share-btn,
+.shopping-delete-btn {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+.shopping-share-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+.shopping-delete-btn {
+    color: #c0392b;
+    border-color: #e6b8b4;
+}
+.shopping-delete-btn:hover {
+    background: #fdf0ef;
+}
+[data-theme="dark"] .shopping-delete-btn {
+    color: #e74c3c;
+    border-color: #5a302d;
+}
+[data-theme="dark"] .shopping-delete-btn:hover {
+    background: #2d1f1e;
+}
+.shopping-delete-form {
+    display: inline;
+}
+.shopping-detail-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.shopping-rename-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0.25rem;
+    opacity: 0.5;
+}
+.shopping-rename-btn:hover {
+    opacity: 1;
+}
+.shopping-rename-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.shopping-rename-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 1rem;
+}
+.shopping-rename-save {
+    padding: 0.5rem 0.75rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    cursor: pointer;
+}
+.shopping-rename-cancel {
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    cursor: pointer;
+}
+.shopping-shared-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+}
+.shopping-done-notice {
+    margin-bottom: 1rem;
+}
+
+/* Mode toggle */
+.shopping-mode-toggle {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    width: fit-content;
+}
+.shopping-mode-btn {
+    padding: 0.5rem 1.25rem;
+    text-decoration: none;
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-weight: 500;
+    background: var(--surface);
+    transition: all 0.15s;
+}
+.shopping-mode-btn:first-child {
+    border-right: 1px solid var(--border);
+}
+.shopping-mode-btn.active {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+.shopping-mode-btn:hover:not(.active) {
+    background: var(--surface-alt);
+    color: var(--text);
+}
+
+/* Departments */
+.shopping-department {
+    margin-bottom: 1.5rem;
+}
+.shopping-dept-hidden {
+    display: none;
+}
+.shopping-dept-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.375rem;
+    border-bottom: 1px solid var(--border);
+}
+.shopping-dept-emoji {
+    font-size: 1.25rem;
+}
+.shopping-dept-count {
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: var(--surface-alt);
+    padding: 0.125rem 0.5rem;
+    border-radius: 99px;
+    margin-left: auto;
+}
+.shopping-dept-items {
+    list-style: none;
+}
+.shopping-dept-empty {
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-style: italic;
+    padding: 0.5rem 0;
+}
+
+/* Items */
+.shopping-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--surface-alt);
+    transition: opacity 0.2s;
+}
+.shopping-item:last-child {
+    border-bottom: none;
+}
+.shopping-item-done {
+    opacity: 0.45;
+}
+.shopping-item-done .shopping-item-text {
+    text-decoration: line-through;
+}
+.shopping-item-toggle-form {
+    display: flex;
+    align-items: center;
+}
+.shopping-item-check {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+span.shopping-item-check {
+    display: inline-block;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+span.shopping-item-check.checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+.shopping-item-text {
+    flex: 1;
+    font-size: 0.9375rem;
+}
+.shopping-item-qty {
+    font-weight: 500;
+    color: var(--accent-dk);
+    margin-right: 0.25rem;
+}
+[data-theme="dark"] .shopping-item-qty {
+    color: var(--accent);
+}
+.shopping-item-remove-form {
+    display: flex;
+}
+.shopping-item-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    line-height: 1;
+    opacity: 0.5;
+}
+.shopping-item-remove:hover {
+    opacity: 1;
+    color: #c0392b;
+}
+.shopping-all-done {
+    text-align: center;
+    color: var(--accent);
+    font-size: 1.25rem;
+    font-weight: 500;
+    padding: 2rem 0;
+}
+
+/* Add item form */
+.shopping-add-form {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+}
+.shopping-add-title {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+}
+.shopping-add-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.shopping-add-input {
+    flex: 2;
+    min-width: 150px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-add-qty {
+    flex: 1;
+    min-width: 100px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-add-dept {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-add-btn {
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.shopping-add-btn:hover {
+    background: var(--accent-dk);
+}
+
+/* Recipe page: Add to shopping list */
+.shopping-recipe-action {
+    margin: 1.5rem 0;
+    text-align: center;
+}
+.btn-shopping-add {
+    padding: 0.625rem 1.25rem;
+    background: var(--surface);
+    color: var(--accent);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-shopping-add:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+/* Shopping modal */
+.shopping-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+}
+.shopping-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 101;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.shopping-modal-content {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    max-width: 500px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+.shopping-modal-content h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+.shopping-modal-content h3 {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    margin-top: 0.75rem;
+}
+.shopping-modal-lists {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.shopping-modal-list-btn {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+.shopping-modal-list-btn.active {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+}
+.shopping-modal-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+}
+.shopping-modal-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-modal-ingredients {
+    margin-top: 1rem;
+}
+.shopping-modal-select-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.shopping-modal-select-actions button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.shopping-modal-ing {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.shopping-modal-ing input {
+    accent-color: var(--accent);
+}
+.shopping-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+.shopping-modal-cancel {
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.shopping-modal-submit {
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+.shopping-modal-submit:hover {
+    background: var(--accent-dk);
+}
+
+@media (max-width: 600px) {
+    .shopping-add-row {
+        flex-direction: column;
+    }
+    .shopping-add-input,
+    .shopping-add-qty,
+    .shopping-add-dept {
+        min-width: 0;
+        width: 100%;
+    }
+    .shopping-lists-grid {
+        grid-template-columns: 1fr;
+    }
+    .shopping-detail-actions {
+        flex-direction: column;
+    }
+}
+

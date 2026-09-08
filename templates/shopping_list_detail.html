@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ shopping_list.name }} — {{ _('shopping.title') }}{% endblock %}
+{% block content %}
+
+<div class="shopping-detail" data-list-id="{{ shopping_list.id }}" data-mode="{{ mode }}">
+    <div class="shopping-detail-header" id="shopping-list-header">
+        {% include "partials/shopping_list_header.html" %}
+    </div>
+
+    <div class="shopping-mode-toggle">
+        <a href="?mode=edit" class="shopping-mode-btn{% if mode == 'edit' %} active{% endif %}">{{ _('shopping.edit_mode') }}</a>
+        <a href="?mode=shopping" class="shopping-mode-btn{% if mode == 'shopping' %} active{% endif %}">{{ _('shopping.shopping_mode') }}</a>
+    </div>
+
+    {% if shopping_list.all_done_at %}
+    <p class="shopping-notice shopping-done-notice">{{ _('shopping.completed_notice') }}</p>
+    {% endif %}
+
+    <div id="shopping-items-container">
+        {% include "partials/shopping_list_items.html" %}
+    </div>
+
+    {% if can_edit and mode == 'edit' %}
+    <div class="shopping-add-form" id="shopping-add-form">
+        <h3 class="shopping-add-title">{{ _('shopping.add_item') }}</h3>
+        <form hx-post="/shopping/lists/{{ shopping_list.id }}/items"
+              hx-target="#shopping-items-container"
+              hx-swap="innerHTML"
+              class="shopping-add-row">
+            <input type="text" name="text" placeholder="{{ _('shopping.item_placeholder') }}" required maxlength="500" class="shopping-add-input">
+            <input type="text" name="quantity" placeholder="{{ _('shopping.quantity_placeholder') }}" maxlength="100" class="shopping-add-qty">
+            <select name="department_id" class="shopping-add-dept" required>
+                {% for dept in departments %}
+                <option value="{{ dept.id }}">{{ dept.emoji }} {{ dept.display_name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="shopping-add-btn">{{ _('shopping.add_item') }}</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    (function () {
+        var container = document.querySelector('.shopping-detail');
+        if (!container) return;
+
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            if (evt.detail.target && evt.detail.target.id === 'shopping-items-container') {
+                var form = document.getElementById('shopping-add-form');
+                if (form) {
+                    var textInput = form.querySelector('input[name="text"]');
+                    if (textInput) textInput.value = '';
+                    var qtyInput = form.querySelector('input[name="quantity"]');
+                    if (qtyInput) qtyInput.value = '';
+                }
+            }
+        });
+    })();
+</script>
+
+{% endblock %}
