@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from recipes.auth import (
+from recipes.shared.auth import (
     OIDC_ENABLED,
     authorize_redirect,
     fetch_token,
@@ -33,7 +33,7 @@ from recipes.auth import (
     require_admin,
     require_user,
 )
-from recipes.db import (
+from recipes.shared.db import (
     DEFAULT_ACCOUNT_ID,
     add_dropbox_connection,
     add_favorite,
@@ -94,7 +94,7 @@ from recipes.db import (
     update_recipe_tags,
     update_shopping_list_item,
 )
-from recipes.i18n import (
+from recipes.shared.i18n import (
     COOKIE_MAX_AGE,
     DEFAULT_LANGUAGE,
     LANGUAGE_COOKIE,
@@ -104,7 +104,7 @@ from recipes.i18n import (
     ngettext,
     resolve_language,
 )
-from recipes.models import (
+from recipes.shared.models import (
     BulkCategoryUpdate,
     BulkTagsUpdate,
     InlineCategoryUpdate,
@@ -114,7 +114,7 @@ from recipes.models import (
     TimerCancelRequest,
     TimerScheduleRequest,
 )
-from recipes.poller import (
+from recipes.shared.poller import (
     DROPBOX_FOLDER,
     IMAGES_DIR,
     build_oauth_authorize_url,
@@ -123,14 +123,14 @@ from recipes.poller import (
     has_env_dropbox_credentials,
     verify_connection_credentials,
 )
-from recipes.poller import run as poll_dropbox
-from recipes.push import (
+from recipes.shared.poller import run as poll_dropbox
+from recipes.shared.push import (
     VAPID_PUBLIC_KEY,
     cancel_timer_notification,
     schedule_timer_notification,
 )
-from recipes.tagger import classify_ingredients as classify_ingredients_llm
-from recipes.units import format_ingredient, format_quantity_string, parse_quantity
+from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
+from recipes.shared.units import format_ingredient, format_quantity_string, parse_quantity
 
 log = logging.getLogger(__name__)
 

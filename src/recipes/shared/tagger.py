@@ -11,13 +11,13 @@ import threading
 import uuid
 from typing import Any
 
-from recipes.db import (
+from recipes.shared.db import (
     get_all_categories,
     get_existing_tags_for_prompt,
     get_setting,
     get_shopping_departments,
 )
-from recipes.units import parse_quantity
+from recipes.shared.units import parse_quantity
 
 log = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from recipes.models import SearchQuery
+from recipes.shared.models import SearchQuery
 
 
 class TestSearchQuery:

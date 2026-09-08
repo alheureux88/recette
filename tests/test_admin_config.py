@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipes.db import (
+from recipes.shared.db import (
     DEFAULT_ACCOUNT_ID,
     add_dropbox_connection,
     blacklist_and_delete_recipe,
@@ -177,9 +177,9 @@ class TestProvenanceRoutes:
 
 @pytest.fixture()
 def admin(client, monkeypatch):
-    monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+    monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
     monkeypatch.setattr(
-        "recipes.auth.get_user",
+        "recipes.shared.auth.get_user",
         lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
     )
     return client
@@ -432,7 +432,7 @@ class TestOauthFlow:
 
 class TestModelOverride:
     def test_get_model_prefers_override(self, monkeypatch):
-        from recipes.tagger import _get_model
+        from recipes.shared.tagger import _get_model
 
         monkeypatch.setenv("LLM_MODEL", "env-model")
         assert _get_model() == "env-model"
@@ -465,7 +465,7 @@ class TestModelOverride:
 
 class TestPollerMultiAccount:
     def test_env_credentials_detection(self, monkeypatch):
-        from recipes.poller import has_env_dropbox_credentials
+        from recipes.shared.poller import has_env_dropbox_credentials
 
         monkeypatch.delenv("DROPBOX_REFRESH_TOKEN", raising=False)
         monkeypatch.delenv("DROPBOX_TOKEN", raising=False)
@@ -478,7 +478,7 @@ class TestPollerMultiAccount:
 
     def test_run_polls_extra_connection(self, temp_db, monkeypatch):
         """run() should scan the folder of each DB connection."""
-        import recipes.poller as poller
+        import recipes.shared.poller as poller
 
         monkeypatch.delenv("DROPBOX_REFRESH_TOKEN", raising=False)
         monkeypatch.delenv("DROPBOX_TOKEN", raising=False)
@@ -510,7 +510,7 @@ class TestPollerMultiAccount:
         assert captured["client"] == mock_client
 
     def test_verify_connection_credentials(self, monkeypatch):
-        from recipes.poller import verify_connection_credentials
+        from recipes.shared.poller import verify_connection_credentials
 
         monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
@@ -524,8 +524,8 @@ class TestPollerMultiAccount:
         account.email = "alice@example.com"
 
         with (
-            patch("recipes.poller.requests.post", return_value=mock_response) as mock_post,
-            patch("recipes.poller.dropbox.Dropbox") as mock_dropbox,
+            patch("recipes.shared.poller.requests.post", return_value=mock_response) as mock_post,
+            patch("recipes.shared.poller.dropbox.Dropbox") as mock_dropbox,
         ):
             mock_dropbox.return_value.users_get_current_account.return_value = account
             label = verify_connection_credentials("rt")
@@ -534,7 +534,7 @@ class TestPollerMultiAccount:
         assert mock_post.call_args[1]["data"]["client_id"] == "key-123"
 
     def test_build_and_exchange_oauth(self, monkeypatch):
-        from recipes.poller import build_oauth_authorize_url, exchange_authorization_code
+        from recipes.shared.poller import build_oauth_authorize_url, exchange_authorization_code
 
         monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
@@ -549,7 +549,7 @@ class TestPollerMultiAccount:
         mock_response.ok = True
         mock_response.json.return_value = {}
 
-        with patch("recipes.poller.requests.post", return_value=mock_response) as mock_post:
+        with patch("recipes.shared.poller.requests.post", return_value=mock_response) as mock_post:
             with pytest.raises(ValueError, match="did not return"):
                 exchange_authorization_code("c", "cb")
 

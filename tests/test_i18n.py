@@ -2,8 +2,8 @@
 
 import pytest
 
-from recipes.db import init_db, sync_recipe_tags, upsert_recipe
-from recipes.i18n import (
+from recipes.shared.db import init_db, sync_recipe_tags, upsert_recipe
+from recipes.shared.i18n import (
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,
     gettext,

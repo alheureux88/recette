@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from recipes.parsers import (
+from recipes.shared.parsers import (
     _decode_with_fallback,
     extract_images,
     extract_images_doc,
@@ -109,7 +109,7 @@ def test_extract_text_doc():
     pytest.importorskip("textract")
     # .doc files are complex binary format, so we just test that the function
     # can be called without crashing on invalid data
-    from recipes.parsers import parse_doc
+    from recipes.shared.parsers import parse_doc
 
     # This will raise a ValueError because either antiword is not installed
     # or the content is not a valid .doc file

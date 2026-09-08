@@ -26,7 +26,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-from recipes.i18n import DEFAULT_LANGUAGE
+from recipes.shared.i18n import DEFAULT_LANGUAGE
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/data/recipes.db"))
 

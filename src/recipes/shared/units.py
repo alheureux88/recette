@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 
-from recipes.i18n import DEFAULT_LANGUAGE
+from recipes.shared.i18n import DEFAULT_LANGUAGE
 
 # --- Facteurs de base -------------------------------------------------------
 

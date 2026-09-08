@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipes.db import init_db
-from recipes.tagger import (
+from recipes.shared.db import init_db
+from recipes.shared.tagger import (
     build_system_prompt,
     reset_client,
     tag_recipe,
@@ -137,7 +137,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("Some raw recipe text")
 
         assert result["lang_fr"]["title"] == "Tarte Tatin"
@@ -171,7 +171,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["lang_fr"]["title"] == "Tarte Tatin"
@@ -186,7 +186,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(wrapped)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["lang_fr"]["title"] == "Test Recipe"
@@ -198,7 +198,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text", default_title="Fallback Title")
 
         assert result["lang_fr"]["title"] == "Fallback Title"
@@ -212,7 +212,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text", default_title="From Filename")
 
         assert result["lang_fr"]["title"] == "From Filename"
@@ -230,7 +230,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["tags"]["origin"] == ["chinois", "japonais"]
@@ -248,7 +248,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["category"] == "plat-principal"
@@ -266,7 +266,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["source_url"] is None
@@ -284,7 +284,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["source_url"] == "https://example.com/recipe"
@@ -294,7 +294,7 @@ class TestTagRecipe:
         mock_client.chat.completions.create.return_value = self._mock_openai_response("not json")
 
         with (
-            patch("recipes.tagger._get_client", return_value=mock_client),
+            patch("recipes.shared.tagger._get_client", return_value=mock_client),
             pytest.raises(ValueError, match="invalid JSON"),
         ):
             tag_recipe("text")
@@ -305,7 +305,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["lang_fr"]["description"] == ""
@@ -331,7 +331,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["tags"] == {}
@@ -348,7 +348,7 @@ class TestTagRecipe:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["tags"]["origin"] == []
@@ -362,8 +362,8 @@ class TestTagRecipe:
         mock_client.messages.create.return_value = self._mock_anthropic_response(recipe_json)
 
         with (
-            patch("recipes.tagger._get_client", return_value=mock_client),
-            patch("recipes.tagger._get_provider", return_value="anthropic"),
+            patch("recipes.shared.tagger._get_client", return_value=mock_client),
+            patch("recipes.shared.tagger._get_provider", return_value="anthropic"),
         ):
             result = tag_recipe("text")
 
@@ -379,7 +379,7 @@ class TestTagRecipe:
 
         long_text = "x" * 10000
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             tag_recipe(long_text)
 
         call_args = mock_client.chat.completions.create.call_args
@@ -394,7 +394,7 @@ class TestIngredientNormalization:
         )
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _mock_openai_response(recipe_json)
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
         value = result["lang_fr"]["ingredients"]
         assert isinstance(value, list)
@@ -507,7 +507,7 @@ class TestServingsParsing:
         )
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _mock_openai_response(recipe_json)
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
         return result["servings"]
 
@@ -540,7 +540,7 @@ class TestNormalizeSteps:
     """Tests for _normalize_steps function."""
 
     def test_normalize_steps_with_timers(self):
-        from recipes.tagger import _normalize_steps
+        from recipes.shared.tagger import _normalize_steps
 
         raw = [
             {"text": "Cuire 5 minutes", "timer_seconds": 300},
@@ -554,7 +554,7 @@ class TestNormalizeSteps:
         assert result[2] == {"text": "Laisser reposer 10 min", "timer_seconds": 600}
 
     def test_normalize_steps_empty_text_filtered(self):
-        from recipes.tagger import _normalize_steps
+        from recipes.shared.tagger import _normalize_steps
 
         raw = [
             {"text": "", "timer_seconds": 300},
@@ -566,7 +566,7 @@ class TestNormalizeSteps:
         assert result[0] == {"text": "Valid step", "timer_seconds": None}
 
     def test_normalize_steps_invalid_timer(self):
-        from recipes.tagger import _normalize_steps
+        from recipes.shared.tagger import _normalize_steps
 
         raw = [
             {"text": "Step 1", "timer_seconds": -10},
@@ -580,14 +580,14 @@ class TestNormalizeSteps:
         assert result[2]["timer_seconds"] is None
 
     def test_normalize_steps_non_list(self):
-        from recipes.tagger import _normalize_steps
+        from recipes.shared.tagger import _normalize_steps
 
         assert _normalize_steps(None, "fr") == []
         assert _normalize_steps("not a list", "fr") == []
         assert _normalize_steps({}, "fr") == []
 
     def test_normalize_steps_missing_fields(self):
-        from recipes.tagger import _normalize_steps
+        from recipes.shared.tagger import _normalize_steps
 
         raw = [
             {"text": "Step 1"},
@@ -631,7 +631,7 @@ class TestTagRecipeWithSteps:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert len(result["lang_fr"]["steps"]) == 2
@@ -658,7 +658,7 @@ class TestTagRecipeWithSteps:
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
 
-        with patch("recipes.tagger._get_client", return_value=mock_client):
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
             result = tag_recipe("text")
 
         assert result["lang_fr"]["steps"] == []

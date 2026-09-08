@@ -19,7 +19,7 @@ import requests
 from dropbox.exceptions import ApiError, AuthError
 from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 
-from recipes.db import (
+from recipes.shared.db import (
     get_dropbox_connection_credentials,
     get_dropbox_connections,
     get_processed_hash,
@@ -34,8 +34,8 @@ from recipes.db import (
     sync_recipe_tags,
     upsert_recipe,
 )
-from recipes.parsers import extract_images, extract_text
-from recipes.tagger import tag_recipe
+from recipes.shared.parsers import extract_images, extract_text
+from recipes.shared.tagger import tag_recipe
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(

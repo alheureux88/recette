@@ -4,21 +4,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipes.db import init_db
+from recipes.shared.db import init_db
 
 
 class TestMatchesFilter:
     def test_empty_filter_matches_all(self, monkeypatch):
-        monkeypatch.setattr("recipes.poller.DROPBOX_FILE_FILTER", "")
-        from recipes.poller import matches_filter
+        monkeypatch.setattr("recipes.shared.poller.DROPBOX_FILE_FILTER", "")
+        from recipes.shared.poller import matches_filter
 
         assert matches_filter("BOEUF Bouilli d'antan.odt")
         assert matches_filter("DESSERT Tarte aux pommes.docx")
         assert matches_filter("anything.txt")
 
     def test_prefix_filter(self, monkeypatch):
-        monkeypatch.setattr("recipes.poller.DROPBOX_FILE_FILTER", "BOEUF*")
-        from recipes.poller import matches_filter
+        monkeypatch.setattr("recipes.shared.poller.DROPBOX_FILE_FILTER", "BOEUF*")
+        from recipes.shared.poller import matches_filter
 
         assert matches_filter("BOEUF Bouilli d'antan.odt")
         assert matches_filter("boeuf something.doc")
@@ -26,8 +26,8 @@ class TestMatchesFilter:
         assert not matches_filter("POULET Poulet roti.txt")
 
     def test_suffix_filter(self, monkeypatch):
-        monkeypatch.setattr("recipes.poller.DROPBOX_FILE_FILTER", "*.odt")
-        from recipes.poller import matches_filter
+        monkeypatch.setattr("recipes.shared.poller.DROPBOX_FILE_FILTER", "*.odt")
+        from recipes.shared.poller import matches_filter
 
         assert matches_filter("BOEUF Bouilli d'antan.odt")
         assert matches_filter("DESSERT Tarte.odt")
@@ -35,8 +35,8 @@ class TestMatchesFilter:
         assert not matches_filter("recipe.txt")
 
     def test_exact_match(self, monkeypatch):
-        monkeypatch.setattr("recipes.poller.DROPBOX_FILE_FILTER", "recipe.txt")
-        from recipes.poller import matches_filter
+        monkeypatch.setattr("recipes.shared.poller.DROPBOX_FILE_FILTER", "recipe.txt")
+        from recipes.shared.poller import matches_filter
 
         assert matches_filter("recipe.txt")
         assert matches_filter("RECIPE.TXT")  # case insensitive
@@ -44,8 +44,8 @@ class TestMatchesFilter:
         assert not matches_filter("recipe.docx")
 
     def test_wildcard_in_middle(self, monkeypatch):
-        monkeypatch.setattr("recipes.poller.DROPBOX_FILE_FILTER", "DESSERT*aux*")
-        from recipes.poller import matches_filter
+        monkeypatch.setattr("recipes.shared.poller.DROPBOX_FILE_FILTER", "DESSERT*aux*")
+        from recipes.shared.poller import matches_filter
 
         assert matches_filter("DESSERT Tarte aux pommes.odt")
         assert matches_filter("DESSERT aux bleuets.docx")
@@ -56,33 +56,33 @@ class TestMatchesFilter:
 
 class TestExtractTitleFromFilename:
     def test_category_prefix(self):
-        from recipes.poller import extract_title_from_filename
+        from recipes.shared.poller import extract_title_from_filename
 
         assert extract_title_from_filename("BOEUF Bouilli d'antan.odt") == "Bouilli d'antan"
         assert extract_title_from_filename("DESSERT Tarte aux pommes.docx") == "Tarte aux pommes"
         assert extract_title_from_filename("POULET Poulet roti.txt") == "Poulet roti"
 
     def test_no_category_prefix(self):
-        from recipes.poller import extract_title_from_filename
+        from recipes.shared.poller import extract_title_from_filename
 
         assert extract_title_from_filename("Ma recette favorite.docx") == "Ma recette favorite"
         assert extract_title_from_filename("recipe.txt") == "recipe"
 
     def test_lowercase_first_word(self):
         # If first word is not all uppercase, treat whole name as title
-        from recipes.poller import extract_title_from_filename
+        from recipes.shared.poller import extract_title_from_filename
 
         assert extract_title_from_filename("Boeuf bouilli.odt") == "Boeuf bouilli"
         assert extract_title_from_filename("Dessert aux pommes.docx") == "Dessert aux pommes"
 
     def test_single_word(self):
-        from recipes.poller import extract_title_from_filename
+        from recipes.shared.poller import extract_title_from_filename
 
         assert extract_title_from_filename("Recette.txt") == "Recette"
         assert extract_title_from_filename("SOUP.odt") == "SOUP"
 
     def test_removes_extension(self):
-        from recipes.poller import extract_title_from_filename
+        from recipes.shared.poller import extract_title_from_filename
 
         assert extract_title_from_filename("DESSERT Tarte.odt") == "Tarte"
         assert extract_title_from_filename("recipe.docx") == "recipe"
@@ -90,14 +90,14 @@ class TestExtractTitleFromFilename:
 
 class TestFileHash:
     def test_returns_sha256_hex(self):
-        from recipes.poller import file_hash
+        from recipes.shared.poller import file_hash
 
         result = file_hash(b"hello world")
         assert len(result) == 64
         assert result == "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
 
     def test_different_content_different_hash(self):
-        from recipes.poller import file_hash
+        from recipes.shared.poller import file_hash
 
         assert file_hash(b"hello") != file_hash(b"world")
 
@@ -114,7 +114,7 @@ class TestListRecipeFiles:
         return entry
 
     def test_filters_by_extension(self):
-        from recipes.poller import list_recipe_files
+        from recipes.shared.poller import list_recipe_files
 
         mock_dbx = MagicMock()
         mock_result = MagicMock()
@@ -142,9 +142,9 @@ class TestListRecipeFiles:
         assert "image.jpg" not in names
 
     def test_applies_file_filter(self, monkeypatch):
-        from recipes.poller import list_recipe_files
+        from recipes.shared.poller import list_recipe_files
 
-        monkeypatch.setattr("recipes.poller.DROPBOX_FILE_FILTER", "BOEUF*")
+        monkeypatch.setattr("recipes.shared.poller.DROPBOX_FILE_FILTER", "BOEUF*")
 
         mock_dbx = MagicMock()
         mock_result = MagicMock()
@@ -167,7 +167,7 @@ class TestListRecipeFiles:
         assert files[0].name == "BOEUF Bourguignon.docx"
 
     def test_handles_pagination(self):
-        from recipes.poller import list_recipe_files
+        from recipes.shared.poller import list_recipe_files
 
         mock_dbx = MagicMock()
 
@@ -198,7 +198,7 @@ class TestListRecipeFiles:
 
 class TestGetOrCreateSharedLink:
     def test_reuses_existing_link(self):
-        from recipes.poller import get_or_create_shared_link
+        from recipes.shared.poller import get_or_create_shared_link
 
         mock_dbx = MagicMock()
         mock_links = MagicMock()
@@ -210,7 +210,7 @@ class TestGetOrCreateSharedLink:
         mock_dbx.sharing_create_shared_link_with_settings.assert_not_called()
 
     def test_creates_new_link_when_none_exists(self):
-        from recipes.poller import get_or_create_shared_link
+        from recipes.shared.poller import get_or_create_shared_link
 
         mock_dbx = MagicMock()
         mock_links = MagicMock()
@@ -227,7 +227,7 @@ class TestGetOrCreateSharedLink:
     def test_returns_none_on_api_error(self):
         from dropbox.exceptions import ApiError
 
-        from recipes.poller import get_or_create_shared_link
+        from recipes.shared.poller import get_or_create_shared_link
 
         mock_dbx = MagicMock()
         mock_dbx.sharing_list_shared_links.side_effect = ApiError(
@@ -244,8 +244,8 @@ class TestProcessFile:
         init_db()
 
     def test_skips_unchanged_file(self, setup_db):
-        from recipes.db import mark_processed
-        from recipes.poller import file_hash, process_file
+        from recipes.shared.db import mark_processed
+        from recipes.shared.poller import file_hash, process_file
 
         content = b"recipe content"
         content_hash = file_hash(content)
@@ -260,13 +260,13 @@ class TestProcessFile:
         mock_entry.name = "test.txt"
         mock_entry.path_lower = "/recipes/test.txt"
 
-        with patch("recipes.poller.extract_text") as mock_extract:
+        with patch("recipes.shared.poller.extract_text") as mock_extract:
             process_file(mock_dbx, mock_entry)
 
         mock_extract.assert_not_called()
 
     def test_processes_new_file(self, setup_db):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         content = b"Recette de tarte aux pommes"
 
@@ -285,9 +285,9 @@ class TestProcessFile:
         mock_entry.client_modified = None
 
         with (
-            patch("recipes.poller.extract_text", return_value="Tarte aux pommes recipe"),
+            patch("recipes.shared.poller.extract_text", return_value="Tarte aux pommes recipe"),
             patch(
-                "recipes.poller.tag_recipe",
+                "recipes.shared.poller.tag_recipe",
                 return_value={
                     "lang_fr": {
                         "title": "Tarte aux pommes",
@@ -312,7 +312,7 @@ class TestProcessFile:
         mock_dbx.files_download.assert_called_once()
 
     def test_handles_parse_error(self, setup_db):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         content = b"bad content"
 
@@ -325,11 +325,11 @@ class TestProcessFile:
         mock_entry.name = "bad.docx"
         mock_entry.path_lower = "/recipes/bad.docx"
 
-        with patch("recipes.poller.extract_text", side_effect=ValueError("Parse error")):
+        with patch("recipes.shared.poller.extract_text", side_effect=ValueError("Parse error")):
             process_file(mock_dbx, mock_entry)
 
     def test_handles_empty_text(self, setup_db):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         content = b"   "
 
@@ -343,14 +343,14 @@ class TestProcessFile:
         mock_entry.path_lower = "/recipes/empty.txt"
 
         with (
-            patch("recipes.poller.extract_text", return_value="   "),
-            patch("recipes.poller.tag_recipe") as mock_tag,
+            patch("recipes.shared.poller.extract_text", return_value="   "),
+            patch("recipes.shared.poller.tag_recipe") as mock_tag,
         ):
             process_file(mock_dbx, mock_entry)
             mock_tag.assert_not_called()
 
     def test_handles_tagging_error(self, setup_db):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         content = b"Some recipe text"
 
@@ -364,15 +364,15 @@ class TestProcessFile:
         mock_entry.path_lower = "/recipes/recipe.txt"
 
         with (
-            patch("recipes.poller.extract_text", return_value="Recipe text"),
-            patch("recipes.poller.tag_recipe", side_effect=ValueError("LLM error")),
+            patch("recipes.shared.poller.extract_text", return_value="Recipe text"),
+            patch("recipes.shared.poller.tag_recipe", side_effect=ValueError("LLM error")),
         ):
             process_file(mock_dbx, mock_entry)
 
 
 class TestDropboxTokenRefresh:
     def test_refresh_token_success(self, monkeypatch):
-        from recipes.poller import _refresh_dropbox_token
+        from recipes.shared.poller import _refresh_dropbox_token
 
         monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "test_refresh_token")
         monkeypatch.setenv("DROPBOX_APP_KEY", "test_app_key")
@@ -385,7 +385,7 @@ class TestDropboxTokenRefresh:
             "expires_in": 14400,
         }
 
-        with patch("recipes.poller.requests.post", return_value=mock_response) as mock_post:
+        with patch("recipes.shared.poller.requests.post", return_value=mock_response) as mock_post:
             token, expiry = _refresh_dropbox_token()
 
         assert token == "new_access_token"
@@ -394,7 +394,7 @@ class TestDropboxTokenRefresh:
         assert mock_post.call_args[1]["data"]["refresh_token"] == "test_refresh_token"
 
     def test_refresh_token_failure_logs_error(self, monkeypatch):
-        from recipes.poller import _refresh_dropbox_token
+        from recipes.shared.poller import _refresh_dropbox_token
 
         monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "test_refresh_token")
         monkeypatch.setenv("DROPBOX_APP_KEY", "test_app_key")
@@ -406,13 +406,13 @@ class TestDropboxTokenRefresh:
         mock_response.text = '{"error": "invalid_grant"}'
 
         with (
-            patch("recipes.poller.requests.post", return_value=mock_response),
+            patch("recipes.shared.poller.requests.post", return_value=mock_response),
             pytest.raises(ValueError, match="invalid_grant"),
         ):
             _refresh_dropbox_token()
 
     def test_refresh_token_missing_env_vars(self, monkeypatch):
-        from recipes.poller import _refresh_dropbox_token
+        from recipes.shared.poller import _refresh_dropbox_token
 
         monkeypatch.delenv("DROPBOX_REFRESH_TOKEN", raising=False)
         monkeypatch.delenv("DROPBOX_APP_KEY", raising=False)
@@ -422,7 +422,7 @@ class TestDropboxTokenRefresh:
             _refresh_dropbox_token()
 
     def test_get_client_uses_refresh_token(self, monkeypatch):
-        from recipes.poller import _get_dropbox_client, reset_dropbox_client
+        from recipes.shared.poller import _get_dropbox_client, reset_dropbox_client
 
         reset_dropbox_client()
         monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "test_refresh")
@@ -437,8 +437,8 @@ class TestDropboxTokenRefresh:
         }
 
         with (
-            patch("recipes.poller.requests.post", return_value=mock_response),
-            patch("recipes.poller.dropbox.Dropbox") as mock_dropbox,
+            patch("recipes.shared.poller.requests.post", return_value=mock_response),
+            patch("recipes.shared.poller.dropbox.Dropbox") as mock_dropbox,
         ):
             mock_client = MagicMock()
             mock_dropbox.return_value = mock_client
@@ -449,7 +449,7 @@ class TestDropboxTokenRefresh:
         mock_dropbox.assert_called_once_with("refreshed_token")
 
     def test_get_client_caches_token(self, monkeypatch):
-        from recipes.poller import _get_dropbox_client, reset_dropbox_client
+        from recipes.shared.poller import _get_dropbox_client, reset_dropbox_client
 
         reset_dropbox_client()
         monkeypatch.setenv("DROPBOX_REFRESH_TOKEN", "test_refresh")
@@ -464,8 +464,8 @@ class TestDropboxTokenRefresh:
         }
 
         with (
-            patch("recipes.poller.requests.post", return_value=mock_response) as mock_post,
-            patch("recipes.poller.dropbox.Dropbox") as mock_dropbox,
+            patch("recipes.shared.poller.requests.post", return_value=mock_response) as mock_post,
+            patch("recipes.shared.poller.dropbox.Dropbox") as mock_dropbox,
         ):
             mock_client = MagicMock()
             mock_dropbox.return_value = mock_client
@@ -477,13 +477,13 @@ class TestDropboxTokenRefresh:
         assert mock_post.call_count == 1
 
     def test_get_client_falls_back_to_static_token(self, monkeypatch):
-        from recipes.poller import _get_dropbox_client, reset_dropbox_client
+        from recipes.shared.poller import _get_dropbox_client, reset_dropbox_client
 
         reset_dropbox_client()
         monkeypatch.delenv("DROPBOX_REFRESH_TOKEN", raising=False)
         monkeypatch.setenv("DROPBOX_TOKEN", "static_token")
 
-        with patch("recipes.poller.dropbox.Dropbox") as mock_dropbox:
+        with patch("recipes.shared.poller.dropbox.Dropbox") as mock_dropbox:
             mock_client = MagicMock()
             mock_dropbox.return_value = mock_client
 
@@ -493,7 +493,7 @@ class TestDropboxTokenRefresh:
         mock_dropbox.assert_called_once_with("static_token")
 
     def test_get_client_raises_without_credentials(self, monkeypatch):
-        from recipes.poller import _get_dropbox_client, reset_dropbox_client
+        from recipes.shared.poller import _get_dropbox_client, reset_dropbox_client
 
         reset_dropbox_client()
         monkeypatch.delenv("DROPBOX_REFRESH_TOKEN", raising=False)

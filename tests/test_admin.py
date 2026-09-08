@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipes.db import (
+from recipes.shared.db import (
     add_favorite,
     blacklist_and_delete_recipe,
     bulk_update_category,
@@ -55,9 +55,9 @@ def setup(temp_db):
 
 @pytest.fixture()
 def as_admin(client, monkeypatch):
-    monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+    monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
     monkeypatch.setattr(
-        "recipes.auth.get_user",
+        "recipes.shared.auth.get_user",
         lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
     )
     return client
@@ -65,9 +65,9 @@ def as_admin(client, monkeypatch):
 
 @pytest.fixture()
 def as_user(client, monkeypatch):
-    monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+    monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
     monkeypatch.setattr(
-        "recipes.auth.get_user",
+        "recipes.shared.auth.get_user",
         lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": []},
     )
     return client
@@ -133,7 +133,7 @@ class TestGetAllRecipesAdmin:
 
 class TestPollerBlacklistCheck:
     def test_skips_blacklisted_file(self):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         _insert_sample()
         blacklist_and_delete_recipe(1)
@@ -143,31 +143,31 @@ class TestPollerBlacklistCheck:
         mock_entry.name = "poulet.docx"
         mock_entry.path_lower = "/recipes/poulet.docx"
 
-        with patch("recipes.poller.download_file") as mock_dl:
+        with patch("recipes.shared.poller.download_file") as mock_dl:
             process_file(mock_dbx, mock_entry)
             mock_dl.assert_not_called()
 
 
 class TestAdminRoutes:
     def test_admin_requires_auth(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
-        monkeypatch.setattr("recipes.auth.get_user", lambda request: None)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.get_user", lambda request: None)
         resp = client.get("/admin", follow_redirects=False)
         assert resp.status_code == 302
 
     def test_admin_requires_admin_group(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": []},
         )
         resp = client.get("/admin")
         assert resp.status_code == 403
 
     def test_admin_accessible_to_admin(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         _insert_sample()
@@ -177,9 +177,9 @@ class TestAdminRoutes:
         assert 'id="recipes-table"' in resp.text
 
     def test_blacklist_endpoint(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         recipe_id = _insert_sample()
@@ -247,7 +247,7 @@ class TestPollerManualEditCheck:
         return entry
 
     def test_skips_manually_edited_recipe(self):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         recipe_id = _insert_sample()
         update_recipe_manual(recipe_id, {"title": "Manuel", "ingredients": []})
@@ -257,7 +257,7 @@ class TestPollerManualEditCheck:
         mock_response.content = b"changed content"
         mock_dbx.files_download.return_value = (None, mock_response)
 
-        with patch("recipes.poller.tag_recipe") as mock_tag:
+        with patch("recipes.shared.poller.tag_recipe") as mock_tag:
             process_file(mock_dbx, self._make_entry())
             mock_tag.assert_not_called()
 
@@ -266,7 +266,7 @@ class TestPollerManualEditCheck:
         assert get_recipe(recipe_id)["title"] == "Manuel"
 
     def test_non_manual_recipe_still_processed(self):
-        from recipes.poller import process_file
+        from recipes.shared.poller import process_file
 
         _insert_sample()
 
@@ -277,9 +277,9 @@ class TestPollerManualEditCheck:
         mock_dbx.sharing_list_shared_links.return_value = MagicMock(links=[])
 
         with (
-            patch("recipes.poller.extract_text", return_value="Recipe text"),
+            patch("recipes.shared.poller.extract_text", return_value="Recipe text"),
             patch(
-                "recipes.poller.tag_recipe",
+                "recipes.shared.poller.tag_recipe",
                 return_value={
                     "lang_fr": {
                         "title": "Poulet Rôti",
@@ -305,18 +305,18 @@ class TestPollerManualEditCheck:
 
 class TestAdminEditRoutes:
     def test_edit_form_requires_admin(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": []},
         )
         resp = client.get("/admin/edit/1")
         assert resp.status_code == 403
 
     def test_edit_form_shows_recipe(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         recipe_id = _insert_sample()
@@ -326,18 +326,18 @@ class TestAdminEditRoutes:
         assert "ing_food" in resp.text
 
     def test_edit_form_unknown_recipe(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         resp = client.get("/admin/edit/9999")
         assert resp.status_code == 404
 
     def test_edit_save_updates_and_marks_manual(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         recipe_id = _insert_sample()
@@ -374,9 +374,9 @@ class TestAdminEditRoutes:
         assert "francais" in origin_names
 
     def test_edit_save_requires_title(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         recipe_id = _insert_sample()
@@ -622,9 +622,9 @@ class TestBlacklistManagement:
         assert get_processed_hash("/recipes/poulet.docx") is None
 
     def test_unblacklist_endpoint(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         _insert_sample()
@@ -650,9 +650,9 @@ class TestFailedFiles:
         assert len(failed) == 0
 
     def test_retry_failed_endpoint(self, client, monkeypatch):
-        monkeypatch.setattr("recipes.auth.OIDC_ENABLED", True)
+        monkeypatch.setattr("recipes.shared.auth.OIDC_ENABLED", True)
         monkeypatch.setattr(
-            "recipes.auth.get_user",
+            "recipes.shared.auth.get_user",
             lambda request: {"id": 1, "sub": "test", "name": "Test", "groups": ["owner"]},
         )
         record_failed_file("/recipes/bad.xyz", "Error")

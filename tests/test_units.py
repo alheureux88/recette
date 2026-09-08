@@ -1,6 +1,6 @@
 """Tests for units.py — analyse des quantités, conversion et formatage des ingrédients."""
 
-from recipes.units import format_ingredient, parse_quantity
+from recipes.shared.units import format_ingredient, parse_quantity
 
 
 class TestParseQuantity:

@@ -11,22 +11,22 @@ def temp_db(tmp_path, monkeypatch):
     """Each test gets its own fresh SQLite database."""
     db_file = str(tmp_path / "test_recipes.db")
     monkeypatch.setenv("DB_PATH", db_file)
-    import recipes.db as db_module
+    import recipes.shared.db as db_module
 
     monkeypatch.setattr(db_module, "DB_PATH", __import__("pathlib").Path(db_file))
     monkeypatch.setenv("DROPBOX_TOKEN", "fake-token")
     monkeypatch.setenv("LLM_API_KEY", "fake-key")
-    monkeypatch.setenv("LLM_BASE_URL", "https://fake.llm/v1")
+    monkeypatch.setenv("LLM_BASEURL", "https://fake.llm/v1")
     monkeypatch.setenv("LLM_MODEL", "fake-model")
 
     images_dir = tmp_path / "images"
     monkeypatch.setenv("IMAGES_DIR", str(images_dir))
-    import recipes.poller as poller_module
+    import recipes.shared.poller as poller_module
 
     monkeypatch.setattr(poller_module, "IMAGES_DIR", images_dir)
     poller_module.reset_dropbox_client()
 
-    import recipes.tagger as tagger_module
+    import recipes.shared.tagger as tagger_module
 
     tagger_module.reset_client()
 

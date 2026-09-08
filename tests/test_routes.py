@@ -4,7 +4,7 @@ import html
 
 import pytest
 
-from recipes.db import (
+from recipes.shared.db import (
     get_all_categories,
     get_all_tags_grouped,
     init_db,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from recipes.db import (
+from recipes.shared.db import (
     get_all_categories,
     get_recipe,
     init_db,
@@ -72,7 +72,7 @@ def _insert(payload=None) -> int:
 
 
 def test_seed_provides_bilingual_tag_family_display_names():
-    from recipes.db import get_tag_families
+    from recipes.shared.db import get_tag_families
 
     fr = {f["name"]: f for f in get_tag_families(lang="fr")}
     en = {f["name"]: f for f in get_tag_families(lang="en")}
@@ -96,7 +96,7 @@ def test_seed_provides_bilingual_category_display_names():
 
 
 def test_seed_provides_bilingual_tag_display_names():
-    from recipes.db import get_all_tags_grouped, sync_recipe_tags
+    from recipes.shared.db import get_all_tags_grouped, sync_recipe_tags
 
     # `get_all_tags_grouped` only returns tags that are actually used by a
     # recipe, so we insert a recipe using a few seed tags first.
