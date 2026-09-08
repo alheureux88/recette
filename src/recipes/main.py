@@ -109,9 +109,6 @@ from recipes.models import (
     InlineTagsUpdate,
     PushSubscriptionRegister,
     RecipeIngredientsToShopping,
-    ShoppingListItemAdd,
-    ShoppingListItemUpdate,
-    ShoppingListRename,
     TimerCancelRequest,
     TimerScheduleRequest,
 )
@@ -1589,7 +1586,7 @@ async def shopping_list_delete(
 async def shopping_list_rename(
     request: Request,
     list_id: int = Path(gt=0),
-    data: ShoppingListRename | None = None,
+    name: str = Form(...),
 ) -> RedirectResponse | HTMLResponse:
     """Rename a shopping list."""
     shopping_list = get_shopping_list_by_id(list_id)
@@ -1598,7 +1595,7 @@ async def shopping_list_rename(
     if not _can_edit_shopping_list(request, shopping_list):
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    name = data.name if data else request.query_params.get("name", "").strip()
+    name = name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
     rename_shopping_list(list_id, name)
@@ -1621,7 +1618,9 @@ async def shopping_list_rename(
 async def shopping_list_add_item(
     request: Request,
     list_id: int = Path(gt=0),
-    data: ShoppingListItemAdd | None = None,
+    department_id: int = Form(...),
+    text: str = Form(...),
+    quantity: str | None = Form(None),
 ) -> HTMLResponse | RedirectResponse:
     """Add an item to a shopping list."""
     shopping_list = get_shopping_list_by_id(list_id)
@@ -1630,15 +1629,8 @@ async def shopping_list_add_item(
     if not _can_edit_shopping_list(request, shopping_list):
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    if data:
-        department_id = data.department_id
-        text = data.text
-        quantity = data.quantity
-    else:
-        form = await request.form()
-        department_id = int(str(form.get("department_id", 0)))
-        text = str(form.get("text", "")).strip()
-        quantity = str(form.get("quantity", "")).strip() or None
+    text = text.strip()
+    quantity = quantity.strip() if quantity else None
 
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
@@ -1752,18 +1744,14 @@ async def shopping_item_remove(
 async def shopping_item_update(
     request: Request,
     item_id: int = Path(gt=0),
-    data: ShoppingListItemUpdate | None = None,
+    text: str = Form(...),
+    quantity: str | None = Form(None),
+    department_id: int | None = Form(None),
 ) -> HTMLResponse | RedirectResponse:
     """Update an item's text, quantity, and/or department."""
-    if data:
-        updated = update_shopping_list_item(item_id, data.text, data.quantity, data.department_id)
-    else:
-        form = await request.form()
-        text = str(form.get("text", "")).strip()
-        quantity = str(form.get("quantity", "")).strip() or None
-        dept_raw = form.get("department_id")
-        department_id = int(str(dept_raw)) if dept_raw else None
-        updated = update_shopping_list_item(item_id, text, quantity, department_id)
+    text = text.strip()
+    quantity = quantity.strip() if quantity else None
+    updated = update_shopping_list_item(item_id, text, quantity, department_id)
 
     if not updated:
         raise HTTPException(status_code=404, detail="Item not found")
