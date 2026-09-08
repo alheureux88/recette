@@ -33,7 +33,6 @@
                 <span>Recettes <em>Merizzi</em></span>
             </a>
             <nav class="header-nav">
-                <a href="/shopping" class="nav-link">{{ _('shopping.nav_lists') }}</a>
                 <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ _('nav.toggle_theme') }}"></button>
                 {% for code in available_languages %}
                     {% if code != lang %}
@@ -44,6 +43,7 @@
                        aria-label="{{ _('lang.switch_to', code=code) }}">{{ code|upper }}</a>
                     {% endif %}
                 {% endfor %}
+                <a href="/shopping" class="nav-link">{{ _('shopping.nav_lists') }}</a>
                 {% if auth_enabled %}
                     {% if user %}
                         <a href="/favorites" class="nav-link">{{ _('nav.favorites') }}</a>
@@ -56,7 +56,7 @@
                                 {% if is_admin %}
                                 <a href="/admin" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_recipes') }}</a>
                                 <a href="/admin/config" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_system') }}</a>
-                                <a href="/admin/shopping" class="nav-dropdown-item" role="menuitem">{{ _('admin.nav_admin_shopping') }}</a>
+                                <a href="/admin/shopping" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_shopping') }}</a>
                                 {% endif %}
                                 <a href="{{ logout_url }}" class="nav-dropdown-item" role="menuitem">{{ _('nav.logout') }}</a>
                             </div>

@@ -1,13 +1,24 @@
 <li class="shopping-item{% if item.is_done %} shopping-item-done{% endif %}" data-item-id="{{ item.id }}">
-    <form method="post" action="/shopping/items/{{ item.id }}/toggle"
-          hx-post="/shopping/items/{{ item.id }}/toggle"
+    <form method="post" action="/shopping/items/{{ item.id }}/toggle?mode={{ mode }}"
+          hx-post="/shopping/items/{{ item.id }}/toggle?mode={{ mode }}"
           hx-target="closest li"
           hx-swap="outerHTML"
           class="shopping-item-toggle-form">
         <input type="checkbox" {% if item.is_done %}checked{% endif %} class="shopping-item-check" onchange="this.form.submit()">
     </form>
+    {% if can_edit and mode == 'edit' %}
+    <form hx-post="/shopping/items/{{ item.id }}/update?mode={{ mode }}"
+          hx-target="closest li"
+          hx-swap="outerHTML"
+          class="shopping-item-edit-form">
+        <input type="text" name="quantity" value="{{ item.quantity or '' }}" placeholder="{{ _('shopping.quantity_placeholder') }}" class="shopping-item-edit-qty">
+        <input type="text" name="text" value="{{ item.text }}" required class="shopping-item-edit-text">
+        <button type="submit" class="shopping-item-save-btn" title="{{ _('shopping.save') }}">✓</button>
+    </form>
+    {% else %}
     <span class="shopping-item-text">
         {% if item.quantity %}<span class="shopping-item-qty">{{ item.quantity }}</span>{% endif %}
         {{ item.text }}
     </span>
+    {% endif %}
 </li>

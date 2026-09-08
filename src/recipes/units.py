@@ -486,3 +486,47 @@ def format_ingredient(
     if aliment:
         return f"{texte_quantite} {texte_unite} {preposition}{aliment}"
     return f"{texte_quantite} {texte_unite}"
+
+
+def format_quantity_string(
+    ingredient: object,
+    multiplicateur: float = 1.0,
+    systeme: str = "original",
+    lang: str = DEFAULT_LANGUAGE,
+) -> str:
+    """Formate uniquement la partie quantité + unité (sans l'aliment)."""
+    if not isinstance(ingredient, dict):
+        return ""
+
+    unite_brute = ingredient.get("unit")
+    unite = unite_brute.strip() if isinstance(unite_brute, str) and unite_brute.strip() else None
+
+    qmin = parse_quantity(ingredient.get("quantity_min"))
+    qmax = parse_quantity(ingredient.get("quantity_max"))
+    if qmin is not None and qmax is not None and qmax < qmin:
+        qmin, qmax = qmax, qmin
+
+    if qmin is not None:
+        qmin *= multiplicateur
+    if qmax is not None:
+        qmax *= multiplicateur
+    if qmin is not None and qmax is not None and abs(qmax - qmin) < 0.01:
+        qmax = None
+
+    qmin, qmax, unite_affichee, fractions = _convertir(qmin, qmax, unite, systeme)
+
+    texte_quantite = ""
+    reference_pluriel: float | None = None
+    if qmin is not None and qmax is not None:
+        sep = "to" if lang == "en" else "à"
+        texte_quantite = f"{_format(qmin, fractions)} {sep} {_format(qmax, fractions)}"
+        reference_pluriel = qmax
+    elif qmin is not None:
+        texte_quantite = _format(qmin, fractions)
+        reference_pluriel = qmin
+
+    texte_unite = _avec_pluriel(unite_affichee, reference_pluriel, lang) if unite_affichee else ""
+
+    if texte_quantite and texte_unite:
+        return f"{texte_quantite} {texte_unite}"
+    return texte_quantite or texte_unite

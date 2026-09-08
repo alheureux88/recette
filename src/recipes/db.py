@@ -1927,12 +1927,16 @@ def get_shopping_lists_by_ids(list_ids: list[int]) -> list[dict[str, object]]:
 
 
 def get_all_shopping_lists(include_done: bool = True) -> list[dict[str, object]]:
-    """Return all shopping lists (for admin)."""
+    """Return all shopping lists (for admin), with user name/email."""
     with get_conn() as conn:
-        query = "SELECT * FROM shopping_lists"
+        query = """
+            SELECT sl.*, u.name AS user_name, u.email AS user_email
+            FROM shopping_lists sl
+            LEFT JOIN users u ON sl.user_id = u.id
+        """
         if not include_done:
-            query += " WHERE all_done_at IS NULL"
-        query += " ORDER BY updated_at DESC"
+            query += " WHERE sl.all_done_at IS NULL"
+        query += " ORDER BY sl.updated_at DESC"
         rows = conn.execute(query).fetchall()
         return [dict(r) for r in rows]
 

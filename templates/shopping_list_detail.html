@@ -7,9 +7,10 @@
         {% include "partials/shopping_list_header.html" %}
     </div>
 
-    <div class="shopping-mode-toggle">
-        <a href="?mode=edit" class="shopping-mode-btn{% if mode == 'edit' %} active{% endif %}">{{ _('shopping.edit_mode') }}</a>
-        <a href="/shopping/{{ shopping_list.id }}/cook" class="shopping-mode-btn{% if mode == 'shopping' %} active{% endif %}">{{ _('shopping.shopping_mode') }}</a>
+    <div class="shopping-actions-bar">
+        <a href="/shopping/{{ shopping_list.id }}/cook" class="shopping-cook-btn">
+            🛒 {{ _('shopping.shopping_mode') }}
+        </a>
     </div>
 
     {% if shopping_list.all_done_at %}

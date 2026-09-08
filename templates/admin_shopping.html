@@ -1,60 +1,56 @@
 {% extends "base.html" %}
 {% block title %}{{ _('admin.shopping_title') }} — Recettes Merizzi{% endblock %}
+{% block main_class %}admin-main{% endblock %}
 {% block content %}
 
-<div class="admin-page">
-    <div class="admin-header">
-        <h1>{{ _('admin.shopping_title') }}</h1>
-        <a href="/admin" class="admin-back-link">{{ _('admin.back_to_admin') }}</a>
-    </div>
+<h1 class="page-title">{{ _('admin.shopping_title') }}</h1>
 
-    {% if lists %}
-    <table class="admin-table shopping-admin-table">
-        <thead>
-            <tr>
-                <th>{{ _('admin.shopping_col_name') }}</th>
-                <th>{{ _('admin.shopping_col_owner') }}</th>
-                <th>{{ _('admin.shopping_col_items') }}</th>
-                <th>{{ _('admin.shopping_col_status') }}</th>
-                <th>{{ _('admin.shopping_col_created') }}</th>
-                <th>{{ _('admin.shopping_col_actions') }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for lst in lists %}
-            <tr>
-                <td>
-                    <a href="/admin/shopping/{{ lst.id }}">{{ lst.name }}</a>
-                </td>
-                <td>
-                    {% if lst.user_id %}
-                    <span class="admin-badge admin-badge-user">{{ _('admin.shopping_owner_user') }} #{{ lst.user_id }}</span>
-                    {% else %}
-                    <span class="admin-badge admin-badge-anon">{{ _('admin.shopping_owner_anon') }}</span>
-                    {% endif %}
-                </td>
-                <td>{{ lst.done_count }}/{{ lst.item_count }}</td>
-                <td>
-                    {% if lst.all_done_at %}
-                    <span class="admin-badge admin-badge-done">{{ _('admin.shopping_status_done') }}</span>
-                    {% else %}
-                    <span class="admin-badge admin-badge-active">{{ _('admin.shopping_status_active') }}</span>
-                    {% endif %}
-                </td>
-                <td>{{ lst.created_at[:10] if lst.created_at else '-' }}</td>
-                <td class="admin-actions">
-                    <a href="/shopping/shared/{{ lst.share_token }}" class="admin-btn admin-btn-view" target="_blank">{{ _('admin.shopping_action_view') }}</a>
-                    <form method="post" action="/admin/shopping/{{ lst.id }}/delete" class="admin-inline-form" onsubmit="return confirm('{{ _('admin.shopping_confirm_delete') }}')">
-                        <button type="submit" class="admin-btn admin-btn-delete">{{ _('admin.shopping_action_delete') }}</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p class="admin-empty">{{ _('admin.shopping_empty') }}</p>
-    {% endif %}
-</div>
+{% if lists %}
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>{{ _('admin.shopping_col_name') }}</th>
+            <th>{{ _('admin.shopping_col_owner') }}</th>
+            <th>{{ _('admin.shopping_col_items') }}</th>
+            <th>{{ _('admin.shopping_col_status') }}</th>
+            <th>{{ _('admin.shopping_col_created') }}</th>
+            <th>{{ _('admin.shopping_col_actions') }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for lst in lists %}
+        <tr>
+            <td>
+                <a href="/admin/shopping/{{ lst.id }}">{{ lst.name }}</a>
+            </td>
+            <td>
+                {% if lst.user_name or lst.user_email %}
+                <span class="admin-badge admin-badge-user">{% if lst.user_name %}{{ lst.user_name }}{% else %}{{ lst.user_email }}{% endif %}{% if lst.user_name and lst.user_email %} ({{ lst.user_email }}){% endif %}</span>
+                {% else %}
+                <span class="admin-badge admin-badge-anon">{{ _('admin.shopping_owner_anon') }}</span>
+                {% endif %}
+            </td>
+            <td>{{ lst.done_count }}/{{ lst.item_count }}</td>
+            <td>
+                {% if lst.all_done_at %}
+                <span class="admin-badge admin-badge-done">{{ _('admin.shopping_status_done') }}</span>
+                {% else %}
+                <span class="admin-badge admin-badge-active">{{ _('admin.shopping_status_active') }}</span>
+                {% endif %}
+            </td>
+            <td>{{ lst.created_at[:10] if lst.created_at else '-' }}</td>
+            <td class="admin-actions">
+                <a href="/shopping/shared/{{ lst.share_token }}" class="admin-btn admin-btn-view" target="_blank">{{ _('admin.shopping_action_view') }}</a>
+                <form method="post" action="/admin/shopping/{{ lst.id }}/delete" class="admin-inline-form" onsubmit="return confirm('{{ _('admin.shopping_confirm_delete') }}')">
+                    <button type="submit" class="admin-btn admin-btn-delete">{{ _('admin.shopping_action_delete') }}</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="admin-empty">{{ _('admin.shopping_empty') }}</p>
+{% endif %}
 
 {% endblock %}

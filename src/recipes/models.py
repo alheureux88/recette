@@ -83,3 +83,9 @@ class RecipeIngredientsToShopping(BaseModel):
     new_list_name: str | None = Field(
         default=None, description="Name for new list if list_id is None"
     )
+    multiplier: float | None = Field(
+        default=None, description="Multiplier for ingredient quantities"
+    )
+    units: str | None = Field(
+        default=None, description="Units system: original, metric, or imperial"
+    )

@@ -500,6 +500,7 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "shopping.rename": {"fr": "Renommer", "en": "Rename"},
     "shopping.save_name": {"fr": "Sauvegarder", "en": "Save"},
     "shopping.cancel": {"fr": "Annuler", "en": "Cancel"},
+    "shopping.save": {"fr": "Sauvegarder", "en": "Save"},
     "shopping.anonymous_notice": {
         "fr": "Les listes anonymes sont supprimées après 7 jours.",
         "en": "Anonymous lists are deleted after 7 days.",
@@ -548,7 +549,7 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "en": "Delete this list permanently?",
     },
     "admin.shopping_empty": {"fr": "Aucune liste d'épicerie", "en": "No shopping lists"},
-    "admin.nav_admin_shopping": {"fr": "Admin Épicerie", "en": "Shopping Admin"},
+    "nav.admin_shopping": {"fr": "Administration Épicerie", "en": "Shopping administration"},
 }
 
 

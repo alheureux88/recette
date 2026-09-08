@@ -893,6 +893,14 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
     margin-right: 0.25rem;
     margin-bottom: 0.15rem;
 }
+.admin-table td a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.admin-table td a:hover {
+    text-decoration: underline;
+}
 .btn-edit {
     padding: 0.35rem 0.75rem;
     background: #6b7f4e;
@@ -1082,6 +1090,68 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
 }
 .admin-actions button + button {
     margin-left: 0.35rem;
+}
+.admin-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.admin-badge-user {
+    background: #e3ecf5;
+    color: #2c5282;
+    border: 1px solid #a3bfdb;
+}
+.admin-badge-anon {
+    background: var(--tag-bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+.admin-badge-done {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #6b7f4e;
+}
+.admin-badge-active {
+    background: #fff8e1;
+    color: #8d6e00;
+    border: 1px solid #e0c36c;
+}
+.admin-empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+    padding: 2rem 1rem;
+}
+.admin-btn {
+    display: inline-block;
+    padding: 0.3rem 0.7rem;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.admin-btn-view {
+    background: #5bc0de;
+    color: white;
+}
+.admin-btn-view:hover {
+    background: #31b0d5;
+}
+.admin-btn-delete {
+    background: #d9534f;
+    color: white;
+}
+.admin-btn-delete:hover {
+    background: #c9302c;
+}
+.admin-inline-form {
+    display: inline;
 }
 .manual-badge {
     display: inline-block;
@@ -1666,6 +1736,7 @@ main.admin-main {
     /* Contrôles interactifs inutiles à l'impression */
     .ingredient-controls { display: none !important; }
     .instruction-timer-widget { display: none !important; }
+    .shopping-recipe-action { display: none !important; }
 
 
     /* Sauts de page */
@@ -2048,6 +2119,7 @@ body.cook-mode main {
     gap: 1rem;
 }
 .shopping-list-card {
+    position: relative;
     display: block;
     padding: 1.25rem;
     background: var(--surface);
@@ -2057,9 +2129,40 @@ body.cook-mode main {
     color: var(--text);
     transition: border-color 0.15s, box-shadow 0.15s;
 }
+.shopping-list-card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
 .shopping-list-card:hover {
     border-color: var(--accent);
     box-shadow: 0 2px 8px var(--accent-soft);
+}
+.shopping-list-card-delete {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
+.shopping-list-card-delete .shopping-delete-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    color: var(--muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.shopping-list-card:hover .shopping-delete-btn {
+    opacity: 1;
+}
+.shopping-list-card-delete .shopping-delete-btn:hover {
+    background: #fee;
+    color: #c0392b;
 }
 .shopping-list-card-header {
     display: flex;
@@ -2233,34 +2336,28 @@ body.cook-mode main {
 }
 
 /* Mode toggle */
-.shopping-mode-toggle {
-    display: flex;
-    gap: 0;
+.shopping-actions-bar {
     margin-bottom: 1.5rem;
-    border: 1px solid var(--border);
+}
+.shopping-cook-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: 2px solid var(--accent);
     border-radius: var(--radius);
-    overflow: hidden;
-    width: fit-content;
-}
-.shopping-mode-btn {
-    padding: 0.5rem 1.25rem;
-    text-decoration: none;
-    color: var(--muted);
-    font-size: 0.875rem;
-    font-weight: 500;
-    background: var(--surface);
-    transition: all 0.15s;
-}
-.shopping-mode-btn:first-child {
-    border-right: 1px solid var(--border);
-}
-.shopping-mode-btn.active {
     background: var(--accent);
     color: var(--on-accent);
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.15s;
 }
-.shopping-mode-btn:hover:not(.active) {
-    background: var(--surface-alt);
-    color: var(--text);
+.shopping-cook-btn:hover {
+    background: var(--accent-dk);
+    border-color: var(--accent-dk);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Departments */
@@ -2656,6 +2753,49 @@ span.shopping-item-check.checked {
     cursor: pointer;
 }
 .shopping-modal-submit:hover {
+    background: var(--accent-dk);
+}
+
+.shopping-item-edit-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+.shopping-item-edit-qty {
+    width: 80px;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-item-edit-text {
+    flex: 1;
+    min-width: 0;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-item-save-btn {
+    padding: 0.25rem 0.5rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.shopping-item-save-btn:hover {
     background: var(--accent-dk);
 }
 

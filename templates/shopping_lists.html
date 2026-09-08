@@ -19,23 +19,28 @@
     {% if lists %}
     <div class="shopping-lists-grid">
         {% for lst in lists %}
-        <a href="/shopping/{{ lst.id }}" class="shopping-list-card">
-            <div class="shopping-list-card-header">
-                <h2 class="shopping-list-card-name">{{ lst.name }}</h2>
-                <span class="shopping-list-card-count">{{ ngettext('shopping.items_count_one', 'shopping.items_count_other', lst.item_count, n=lst.item_count) }}</span>
-            </div>
-            <div class="shopping-list-card-progress">
-                {% if lst.item_count > 0 %}
-                <div class="shopping-progress-bar">
-                    <div class="shopping-progress-fill" style="width: {{ (lst.done_count / lst.item_count * 100)|int }}%"></div>
+        <div class="shopping-list-card">
+            <a href="/shopping/{{ lst.id }}" class="shopping-list-card-link">
+                <div class="shopping-list-card-header">
+                    <h2 class="shopping-list-card-name">{{ lst.name }}</h2>
+                    <span class="shopping-list-card-count">{{ ngettext('shopping.items_count_one', 'shopping.items_count_other', lst.item_count) }}</span>
                 </div>
-                <span class="shopping-progress-text">{{ lst.done_count }}/{{ lst.item_count }}</span>
+                <div class="shopping-list-card-progress">
+                    {% if lst.item_count > 0 %}
+                    <div class="shopping-progress-bar">
+                        <div class="shopping-progress-fill" style="width: {{ (lst.done_count / lst.item_count * 100)|int }}%"></div>
+                    </div>
+                    <span class="shopping-progress-text">{{ lst.done_count }}/{{ lst.item_count }}</span>
+                    {% endif %}
+                </div>
+                {% if lst.updated_at %}
+                <span class="shopping-list-card-date">{{ _('shopping.last_updated', date=lst.updated_at[:10]) }}</span>
                 {% endif %}
-            </div>
-            {% if lst.updated_at %}
-            <span class="shopping-list-card-date">{{ _('shopping.last_updated', date=lst.updated_at[:10]) }}</span>
-            {% endif %}
-        </a>
+            </a>
+            <form method="post" action="/shopping/lists/{{ lst.id }}/delete" class="shopping-list-card-delete" onsubmit="return confirm('{{ _('shopping.confirm_delete') }}')">
+                <button type="submit" class="shopping-delete-btn" title="{{ _('shopping.delete_list') }}">×</button>
+            </form>
+        </div>
         {% endfor %}
     </div>
     {% else %}

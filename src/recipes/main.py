@@ -128,7 +128,7 @@ from recipes.push import (
     schedule_timer_notification,
 )
 from recipes.tagger import classify_ingredients as classify_ingredients_llm
-from recipes.units import format_ingredient, parse_quantity
+from recipes.units import format_ingredient, format_quantity_string, parse_quantity
 
 log = logging.getLogger(__name__)
 
@@ -1723,12 +1723,15 @@ async def shopping_item_toggle(
 
     if request.headers.get("hx-request"):
         lang = _resolve_request_lang(request)
+        mode = request.query_params.get("mode", "edit")
         return templates.TemplateResponse(
             request=request,
             name="partials/shopping_item_row.html",
             context=_base_context(
                 request,
                 item=item,
+                mode=mode,
+                can_edit=True,
                 lang=lang,
             ),
         )
@@ -1811,27 +1814,25 @@ async def shopping_item_update(
             ).fetchone()
             if row:
                 list_id = int(str(row["list_id"]))
-                shopping_list = get_shopping_list_by_id(list_id)
                 lang = _resolve_request_lang(request)
                 items = get_shopping_list_items(list_id, lang=lang)
-                departments = get_shopping_departments(lang=lang)
-                grouped: dict[int, dict[str, Any]] = {}
-                for dept in departments:
-                    grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
+                updated_item = None
                 for item in items:
-                    dept_id_val = int(str(item["department_id"]))
-                    if dept_id_val in grouped:
-                        grouped[dept_id_val]["item_list"].append(item)
+                    if int(str(item["id"])) == item_id:
+                        updated_item = item
+                        break
+                if not updated_item:
+                    raise HTTPException(status_code=404, detail="Item not found")
                 mode = request.query_params.get("mode", "edit")
                 return templates.TemplateResponse(
                     request=request,
-                    name="partials/shopping_list_items.html",
+                    name="partials/shopping_item_row.html",
                     context=_base_context(
                         request,
-                        grouped_departments=list(grouped.values()),
+                        item=updated_item,
                         mode=mode,
                         can_edit=True,
-                        shopping_list=shopping_list,
+                        lang=lang,
                     ),
                 )
     return RedirectResponse(url="/shopping", status_code=303)
@@ -1885,13 +1886,18 @@ async def shopping_add_from_recipe(
         if not food:
             continue
 
-        quantity_parts = []
         qmin = ing.get("quantity_min")
-        if qmin is not None:
-            quantity_parts.append(format_ingredient(ing, lang=lang))
-        elif food:
-            quantity_parts.append(food)
-        quantity_str = quantity_parts[0] if quantity_parts else food
+        qmax = ing.get("quantity_max")
+        has_quantity = (qmin is not None and qmin != "") or (qmax is not None and qmax != "")
+
+        if has_quantity:
+            multiplier = data.multiplier if data.multiplier else 1.0
+            units = data.units if data.units else "original"
+            quantity_str = format_quantity_string(
+                ing, multiplicateur=multiplier, systeme=units, lang=lang
+            )
+        else:
+            quantity_str = ""
 
         dept_name = ing.get("department")
         if not dept_name or dept_name not in dept_map:
