@@ -206,8 +206,6 @@ _UNITES: dict[str, UniteDef] = {
     for alias in aliases
 }
 
-SYSTEMES = ("original", "metric", "imperial")
-
 
 def _lookup(unit: str) -> UniteDef | None:
     return _UNITES.get(unit.strip().lower().rstrip("."))
@@ -318,11 +316,6 @@ def _preposition(lang: str, aliment: str) -> str:
     if premiere in _VOYELLES or (premiere == "h" and not aliment.lower().startswith(_H_ASPIRE)):
         return "d'"
     return "de "
-
-
-def _de(aliment: str) -> str:
-    """Rétrocompatibilité : préposition française par défaut."""
-    return _preposition(DEFAULT_LANGUAGE, aliment)
 
 
 def _pluriel_inconnu_fr(unite: str, quantite: float | None) -> str:

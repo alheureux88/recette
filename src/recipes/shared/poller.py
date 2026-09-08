@@ -11,7 +11,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlencode
 
 import dropbox
@@ -243,27 +242,6 @@ def exchange_authorization_code(code: str, redirect_uri: str) -> str:
     if not refresh_token:
         raise ValueError("Dropbox did not return a refresh token")
     return str(refresh_token)
-
-
-def _with_retry(func: Any, *args: Any, **kwargs: Any) -> Any:
-    """Execute a Dropbox API call with automatic retry on auth errors."""
-    global _dbx_client, _dbx_token_expiry
-
-    try:
-        return func(*args, **kwargs)
-    except AuthError as e:
-        if "expired_access_token" in str(e):
-            log.warning("Dropbox token expired, refreshing...")
-            _dbx_client = None
-            _dbx_token_expiry = 0
-            dbx = _get_dropbox_client()
-            # Retry with new client - need to update the dbx reference in args
-            new_args = list(args)
-            for i, arg in enumerate(new_args):
-                if isinstance(arg, dropbox.Dropbox):
-                    new_args[i] = dbx
-            return func(*new_args, **kwargs)
-        raise
 
 
 def matches_filter(filename: str, pattern: str | None = None) -> bool:

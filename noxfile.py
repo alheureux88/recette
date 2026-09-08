@@ -78,6 +78,16 @@ def test(session: nox.Session) -> None:
 
 
 # ---------------------------------------------------------------------------
+# vulture — dead code detection
+# ---------------------------------------------------------------------------
+@nox.session(python="3.12")
+def vulture(session: nox.Session) -> None:
+    """Fail if vulture finds dead code (see vulture_whitelist.py)."""
+    _install(session)
+    session.run("vulture", "--config", "pyproject.toml")
+
+
+# ---------------------------------------------------------------------------
 # docker — build the image (only runs if lint/typecheck/test passed)
 # ---------------------------------------------------------------------------
 @nox.session(python=False)  # no venv needed, just shell out to docker

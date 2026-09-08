@@ -15,6 +15,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: vulture
+        name: vulture (dead code)
+        entry: uv run vulture --config pyproject.toml
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: nox-typecheck
         name: nox typecheck
         entry: nox -s typecheck

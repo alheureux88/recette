@@ -107,6 +107,10 @@ Les classes, utilitaires et fonctions partagés doivent être placés dans un do
 
 Tout fichier dépassant 500 lignes doit être examiné pour refactorisation. Identifier les responsabilités multiples et extraire en modules distincts.
 
+### Code mort
+
+Pas de code mort: toute fonction, classe ou constante sans appelant en production doit être supprimée. `vulture --config pyproject.toml` (hook pre-commit + `nox -s vulture`) doit passer. Les exceptions légitimes (helpers utilisés uniquement par les tests, handlers FastAPI) vont dans `vulture_whitelist.py` avec un commentaire justificatif.
+
 ### Organisation par feature
 
 Le code doit être organisé par feature/domaine plutôt que par type technique. Chaque feature a son propre dossier contenant ses controllers, services, etc.
