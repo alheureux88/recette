@@ -340,7 +340,9 @@ class TestConfigRoutes:
         def fake_verify(refresh_token):
             return "Famille — famille@example.com"
 
-        monkeypatch.setattr("recipes.main.verify_connection_credentials", fake_verify)
+        monkeypatch.setattr(
+            "recipes.features.admin.controllers.verify_connection_credentials", fake_verify
+        )
         resp = admin.post(f"/admin/config/dropbox/{conn_id}/test")
         assert resp.status_code == 200
         assert "validee : Famille — famille@example.com" in resp.text
@@ -351,7 +353,9 @@ class TestConfigRoutes:
         def fake_verify(refresh_token):
             raise ValueError("Dropbox token refresh failed")
 
-        monkeypatch.setattr("recipes.main.verify_connection_credentials", fake_verify)
+        monkeypatch.setattr(
+            "recipes.features.admin.controllers.verify_connection_credentials", fake_verify
+        )
         resp = admin.post(f"/admin/config/dropbox/{conn_id}/test")
         assert resp.status_code == 200
         assert "Echec de connexion" in resp.text
@@ -390,8 +394,12 @@ class TestOauthFlow:
         location = state_resp.headers["location"]
         state = [p for p in location.split("&") if p.startswith("state=")][0][6:]
 
-        monkeypatch.setattr("recipes.main.exchange_authorization_code", fake_exchange)
-        monkeypatch.setattr("recipes.main.verify_connection_credentials", fake_verify)
+        monkeypatch.setattr(
+            "recipes.features.admin.controllers.exchange_authorization_code", fake_exchange
+        )
+        monkeypatch.setattr(
+            "recipes.features.admin.controllers.verify_connection_credentials", fake_verify
+        )
 
         resp = admin.get(f"/admin/config/dropbox/callback?code=the-code&state={state}")
         assert resp.status_code == 200
@@ -407,8 +415,12 @@ class TestOauthFlow:
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
         set_setting("dropbox_oauth_state", "st-1")
 
-        monkeypatch.setattr("recipes.main.exchange_authorization_code", lambda c, r: "rt-x")
-        monkeypatch.setattr("recipes.main.verify_connection_credentials", lambda rt: "X")
+        monkeypatch.setattr(
+            "recipes.features.admin.controllers.exchange_authorization_code", lambda c, r: "rt-x"
+        )
+        monkeypatch.setattr(
+            "recipes.features.admin.controllers.verify_connection_credentials", lambda rt: "X"
+        )
 
         resp = admin.get(
             "/admin/config/dropbox/callback?code=c&state=st-1",
