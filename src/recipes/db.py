@@ -128,8 +128,7 @@ SEED_SHOPPING_DEPARTMENTS: list[tuple[str, str, str, int, str]] = [
     ("surgelés", "Surgelés", "Frozen goods", 7, "🧊"),
     ("epicerie", "Épicerie", "Grocery / Pantry", 8, "🥫"),
     ("pret-a-manger", "Prêt-à-manger", "Ready to eat", 9, "🥡"),
-    ("boissons", "Boissons", "Beverages", 10, "🥤"),
-    ("entretien", "Entretien / Ménage", "Household / Cleaning", 11, "🧹"),
+    ("entretien", "Entretien / Ménage", "Household / Cleaning", 10, "🧹"),
     ("autre", "Autre / Indéterminé", "Other / Unknown", 99, "❓"),
 ]
 
@@ -1966,49 +1965,54 @@ def touch_shopping_list(list_id: int) -> None:
         )
 
 
+def _check_shopping_list_completion(conn: sqlite3.Connection, list_id: int) -> None:
+    """Set all_done_at if all items are done, clear it otherwise. Internal version using existing connection."""
+    total = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM shopping_list_items WHERE list_id = ?",
+        (list_id,),
+    ).fetchone()
+    if not total or total["cnt"] == 0:
+        conn.execute(
+            """
+            UPDATE shopping_lists SET all_done_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (list_id,),
+        )
+        return
+
+    done = conn.execute(
+        """
+        SELECT COUNT(*) AS cnt FROM shopping_list_items
+        WHERE list_id = ? AND is_done = 1
+        """,
+        (list_id,),
+    ).fetchone()
+    if done and done["cnt"] == total["cnt"]:
+        conn.execute(
+            """
+            UPDATE shopping_lists SET all_done_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND all_done_at IS NULL
+            """,
+            (list_id,),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE shopping_lists SET all_done_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (list_id,),
+        )
+
+
 def check_shopping_list_completion(list_id: int) -> None:
     """Set all_done_at if all items are done, clear it otherwise."""
     with get_conn() as conn:
-        total = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM shopping_list_items WHERE list_id = ?",
-            (list_id,),
-        ).fetchone()
-        if not total or total["cnt"] == 0:
-            conn.execute(
-                """
-                UPDATE shopping_lists SET all_done_at = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (list_id,),
-            )
-            return
-
-        done = conn.execute(
-            """
-            SELECT COUNT(*) AS cnt FROM shopping_list_items
-            WHERE list_id = ? AND is_done = 1
-            """,
-            (list_id,),
-        ).fetchone()
-        if done and done["cnt"] == total["cnt"]:
-            conn.execute(
-                """
-                UPDATE shopping_lists SET all_done_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND all_done_at IS NULL
-                """,
-                (list_id,),
-            )
-        else:
-            conn.execute(
-                """
-                UPDATE shopping_lists SET all_done_at = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (list_id,),
-            )
+        _check_shopping_list_completion(conn, list_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2090,7 +2094,7 @@ def toggle_shopping_list_item(item_id: int) -> dict[str, object] | None:
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
-        check_shopping_list_completion(list_id)
+        _check_shopping_list_completion(conn, list_id)
         row = conn.execute("SELECT * FROM shopping_list_items WHERE id = ?", (item_id,)).fetchone()
         return dict(row) if row else None
 
@@ -2109,7 +2113,7 @@ def remove_shopping_list_item(item_id: int) -> bool:
             "UPDATE shopping_lists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (list_id,),
         )
-        check_shopping_list_completion(list_id)
+        _check_shopping_list_completion(conn, list_id)
         return True
 
 

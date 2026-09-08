@@ -151,7 +151,9 @@ def build_system_prompt() -> str:
             lines.append(
                 "Pour chaque ingrédient, indique le département d'épicerie où on peut le trouver."
             )
-            lines.append("Utilise la clé (name) d'un des départements suivants :")
+            lines.append(
+                "IMPORTANT: Utilise UNIQUEMENT la clé (name) d'un des départements suivants. Ne crée JAMAIS de nouveau département:"
+            )
             lines.append("")
             for dept in departments:
                 lines.append(f'  - "{dept["name"]}" ({dept["display_name"]})')

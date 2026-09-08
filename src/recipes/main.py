@@ -1645,11 +1645,11 @@ async def shopping_list_add_item(
         departments = get_shopping_departments(lang=lang)
         grouped: dict[int, dict[str, Any]] = {}
         for dept in departments:
-            grouped[int(str(dept["id"]))] = {"department": dept, "items": []}
+            grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
         for item in items:
             dept_id_val = int(str(item["department_id"]))
             if dept_id_val in grouped:
-                grouped[dept_id_val]["items"].append(item)
+                grouped[dept_id_val]["item_list"].append(item)
         mode = request.query_params.get("mode", "edit")
         return templates.TemplateResponse(
             request=request,
@@ -1717,11 +1717,11 @@ async def shopping_item_remove(
         departments = get_shopping_departments(lang=lang)
         grouped: dict[int, dict[str, Any]] = {}
         for dept in departments:
-            grouped[int(str(dept["id"]))] = {"department": dept, "items": []}
+            grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
         for item in items:
             dept_id_val = int(str(item["department_id"]))
             if dept_id_val in grouped:
-                grouped[dept_id_val]["items"].append(item)
+                grouped[dept_id_val]["item_list"].append(item)
         shopping_list = get_shopping_list_by_id(list_id_before)
         mode = request.query_params.get("mode", "edit")
         return templates.TemplateResponse(
@@ -1771,11 +1771,11 @@ async def shopping_item_update(
                 departments = get_shopping_departments(lang=lang)
                 grouped: dict[int, dict[str, Any]] = {}
                 for dept in departments:
-                    grouped[int(str(dept["id"]))] = {"department": dept, "items": []}
+                    grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
                 for item in items:
                     dept_id_val = int(str(item["department_id"]))
                     if dept_id_val in grouped:
-                        grouped[dept_id_val]["items"].append(item)
+                        grouped[dept_id_val]["item_list"].append(item)
                 mode = request.query_params.get("mode", "edit")
                 return templates.TemplateResponse(
                     request=request,
