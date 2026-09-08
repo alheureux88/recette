@@ -4,13 +4,39 @@ import sqlite3
 from contextlib import nullcontext
 
 from recipes.shared.db import (
+    DEFAULT_ACCOUNT_ID,
+    DEFAULT_ACCOUNT_NAME,
     get_conn,
+    get_setting,
+    is_default_account_visible,
 )
 
-# Constants
-DEFAULT_ACCOUNT_ID = -1
-DEFAULT_ACCOUNT_NAME = "Défaut"
-
+# Re-export for backwards compatibility
+__all__ = [
+    "DEFAULT_ACCOUNT_ID",
+    "DEFAULT_ACCOUNT_NAME",
+    "get_setting",
+    "is_default_account_visible",
+    "blacklist_and_delete_recipe",
+    "is_blacklisted",
+    "get_blacklisted_files",
+    "remove_from_blacklist",
+    "record_failed_file",
+    "get_failed_files",
+    "remove_failed_file",
+    "get_dropbox_connections",
+    "add_dropbox_connection",
+    "get_dropbox_connection_credentials",
+    "delete_dropbox_connection",
+    "set_dropbox_connection_active",
+    "set_dropbox_connection_visible",
+    "set_setting",
+    "delete_setting",
+    "is_default_account_active",
+    "set_default_account_active",
+    "set_default_account_visible",
+    "get_recipe_provenances",
+]
 
 # ---------------------------------------------------------------------------
 # Blacklist
@@ -191,12 +217,6 @@ def set_dropbox_connection_visible(
 # ---------------------------------------------------------------------------
 
 
-def get_setting(key: str, default: str = "", conn: sqlite3.Connection | None = None) -> str:
-    with get_conn() if conn is None else nullcontext(conn) as _conn:
-        row = _conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
-        return str(row["value"]) if row else default
-
-
 def set_setting(key: str, value: str, conn: sqlite3.Connection | None = None) -> None:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         _conn.execute(
@@ -219,10 +239,6 @@ def is_default_account_active(conn: sqlite3.Connection | None = None) -> bool:
 
 def set_default_account_active(active: bool, conn: sqlite3.Connection | None = None) -> None:
     set_setting("default_active", "1" if active else "0", conn=conn)
-
-
-def is_default_account_visible(conn: sqlite3.Connection | None = None) -> bool:
-    return get_setting("default_visible", "1", conn=conn) != "0"
 
 
 def set_default_account_visible(visible: bool, conn: sqlite3.Connection | None = None) -> None:
@@ -265,8 +281,9 @@ def get_recipe_provenances(conn: sqlite3.Connection | None = None) -> list[dict[
             SELECT {DEFAULT_ACCOUNT_ID} AS id, '{DEFAULT_ACCOUNT_NAME}' AS name,
                    COUNT(id) AS count
             FROM recipes
-            WHERE connection_id IS NULL AND
-                  EXISTS (SELECT 1 FROM app_settings WHERE key = 'default_visible' AND value != '0')
+            WHERE connection_id IS NULL
+              AND COALESCE((SELECT value FROM app_settings WHERE key = 'default_visible'), '1') != '0'
+            HAVING COUNT(id) > 0
 
             ORDER BY count DESC
             """,

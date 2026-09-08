@@ -4,24 +4,28 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipes.shared.db import (
-    add_favorite,
+from recipes.features.admin.services import (
     blacklist_and_delete_recipe,
-    bulk_update_category,
-    bulk_update_tags,
-    get_all_recipes_admin,
     get_blacklisted_files,
     get_failed_files,
-    get_or_create_user,
-    get_processed_hash,
-    get_recipe,
-    init_db,
     is_blacklisted,
-    is_manually_edited,
-    mark_processed,
     record_failed_file,
     remove_failed_file,
     remove_from_blacklist,
+)
+from recipes.features.auth.services import get_or_create_user
+from recipes.features.recipes.services import (
+    add_favorite,
+    bulk_update_category,
+    bulk_update_tags,
+    get_all_recipes_admin,
+)
+from recipes.shared.db import (
+    get_processed_hash,
+    get_recipe,
+    init_db,
+    is_manually_edited,
+    mark_processed,
     sync_recipe_tags,
     update_recipe_category,
     update_recipe_manual,

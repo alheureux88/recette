@@ -11,11 +11,11 @@ import threading
 import uuid
 from typing import Any
 
-from recipes.features.admin.services import get_setting
 from recipes.features.shopping.services import get_shopping_departments
 from recipes.shared.db import (
     get_all_categories,
     get_existing_tags_for_prompt,
+    get_setting,
 )
 from recipes.shared.units import parse_quantity
 

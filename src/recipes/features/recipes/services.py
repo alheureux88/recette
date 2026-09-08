@@ -3,6 +3,7 @@
 import sqlite3
 from contextlib import nullcontext
 
+from recipes.features.admin.services import DEFAULT_ACCOUNT_NAME
 from recipes.shared.db import (
     _load_translation,
     _localize_tag,
@@ -102,7 +103,6 @@ def get_favorite_recipes(
 def get_all_recipes_admin(
     filter: str = "", lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
 ) -> list[dict[str, object]]:
-    from recipes.features.admin.services import DEFAULT_ACCOUNT_NAME
 
     where = ""
     if filter == "no_tags":
@@ -191,9 +191,15 @@ def bulk_update_tags(
     remove_tags: dict[str, list[str]],
     conn: sqlite3.Connection | None = None,
 ) -> int:
+    if not recipe_ids:
+        return 0
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         add_ids = _resolve_tag_ids(_conn, add_tags, create=True)
         remove_ids = _resolve_tag_ids(_conn, remove_tags, create=False)
+
+        if not add_ids and not remove_ids:
+            return 0
+
         count = 0
         for rid in recipe_ids:
             for tag_id in remove_ids:

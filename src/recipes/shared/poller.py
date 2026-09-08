@@ -22,13 +22,13 @@ from dropbox.sharing import RequestedVisibility, SharedLinkSettings
 from recipes.features.admin.services import (
     get_dropbox_connection_credentials,
     get_dropbox_connections,
-    get_setting,
     is_blacklisted,
     record_failed_file,
     remove_failed_file,
 )
 from recipes.shared.db import (
     get_processed_hash,
+    get_setting,
     init_db,
     is_manually_edited,
     mark_processed,

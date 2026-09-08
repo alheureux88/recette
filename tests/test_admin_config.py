@@ -4,30 +4,32 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipes.shared.db import (
+from recipes.features.admin.services import (
     DEFAULT_ACCOUNT_ID,
     add_dropbox_connection,
     blacklist_and_delete_recipe,
     delete_dropbox_connection,
     delete_setting,
-    get_all_recipes_admin,
     get_blacklisted_files,
     get_dropbox_connection_credentials,
     get_dropbox_connections,
     get_failed_files,
-    get_processed_hash,
-    get_recipe,
     get_recipe_provenances,
     get_setting,
-    init_db,
     is_default_account_active,
     is_default_account_visible,
-    mark_processed,
     record_failed_file,
-    search_recipes,
     set_default_account_visible,
     set_dropbox_connection_visible,
     set_setting,
+)
+from recipes.features.recipes.services import get_all_recipes_admin
+from recipes.shared.db import (
+    get_processed_hash,
+    get_recipe,
+    init_db,
+    mark_processed,
+    search_recipes,
     upsert_recipe,
 )
 
