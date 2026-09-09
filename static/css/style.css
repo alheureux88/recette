@@ -2817,3 +2817,57 @@ span.shopping-item-check.checked {
     }
 }
 
+/* Page 404 */
+.notfound {
+    max-width: 560px;
+    margin: 4rem auto;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.notfound-emoji {
+    font-size: 3rem;
+    margin: 0 0 0.5rem;
+}
+.notfound-code {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    margin: 0 0 0.5rem;
+}
+.notfound h1 {
+    margin: 0 0 0.75rem;
+    font-size: 1.6rem;
+}
+.notfound-message {
+    color: var(--muted, inherit);
+    margin: 0 0 1rem;
+    line-height: 1.5;
+}
+.notfound-path {
+    margin: 0 0 1.5rem;
+}
+.notfound-path code {
+    font-size: 0.85rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
+    overflow-wrap: anywhere;
+}
+.notfound-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+    .notfound {
+        margin: 2rem 1rem;
+    }
+}
+

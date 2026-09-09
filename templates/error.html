@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<div class="notfound">
+    <p class="notfound-emoji" aria-hidden="true">{% if code == 403 %}🔒{% elif code == 422 %}⚠️{% else %}🔧{% endif %}</p>
+    <p class="notfound-code">{{ code }}</p>
+    <h1>{{ title }}</h1>
+    <p class="notfound-message">{{ message }}</p>
+    {% if code != 500 and request_path %}
+    <p class="notfound-path"><code>{{ request_path }}</code></p>
+    {% endif %}
+    <div class="notfound-actions">
+        <a href="/" class="btn-cook">{{ _('errorpage.back_home') }}</a>
+    </div>
+</div>
+
+{% endblock %}

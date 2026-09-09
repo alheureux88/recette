@@ -14,7 +14,9 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -198,6 +200,72 @@ async def unauthorized_handler(request: Request, exc: Exception) -> RedirectResp
     if not OIDC_ENABLED:
         return RedirectResponse(url="/", status_code=302)
     return RedirectResponse(url="/auth/login", status_code=302)
+
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception) -> Response:
+    """Page 404 contextuelle (recette / épicerie / générique).
+
+    Les navigateurs (Accept: text/html) reçoivent `404.html`, les clients
+    API et le TestClient (Accept: */* ou JSON) gardent `{"detail": ...}`.
+    """
+    from recipes.shared.errors import render_not_found
+
+    detail = getattr(exc, "detail", None)
+    return render_not_found(request, detail=str(detail) if detail is not None else None)
+
+
+def _http_detail(exc: Exception) -> str | None:
+    detail = getattr(exc, "detail", None)
+    return str(detail) if detail is not None else None
+
+
+@app.exception_handler(403)
+async def forbidden_handler(request: Request, exc: Exception) -> Response:
+    """403 : page « accès refusé » pour les navigateurs, JSON sinon."""
+    from recipes.shared.errors import render_error
+
+    return render_error(request, 403, detail=_http_detail(exc))
+
+
+@app.exception_handler(422)
+async def unprocessable_handler(request: Request, exc: Exception) -> Response:
+    """422 levée explicitement (HTTPException) : page d'erreur ou JSON."""
+    from recipes.shared.errors import render_error
+
+    return render_error(request, 422, detail=_http_detail(exc))
+
+
+@app.exception_handler(500)
+async def server_error_handler(request: Request, exc: Exception) -> Response:
+    """500 levée explicitement (HTTPException) : jamais de détail interne."""
+    from recipes.shared.errors import render_error
+
+    log.exception("Server error on %s", request.url.path)
+    return render_error(request, 500, detail=_http_detail(exc))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_handler(request: Request, exc: RequestValidationError) -> Response:
+    """Erreurs de validation FastAPI (ex. `/recipe/abc`) : page ou JSON natif."""
+    from recipes.shared.errors import render_error, wants_html
+
+    if not wants_html(request):
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+    return render_error(request, 422)
+
+
+@app.exception_handler(Exception)
+async def unhandled_handler(request: Request, exc: Exception) -> Response:
+    """Filet de sécurité : toute exception non gérée devient une 500 loggée."""
+    from recipes.shared.errors import render_error
+
+    if isinstance(exc, HTTPException):
+        # Ne devrait pas arriver (handlers par statut + défaut FastAPI),
+        # mais on reproduit le comportement natif plutôt que de masquer.
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    log.exception("Unhandled exception on %s", request.url.path)
+    return render_error(request, 500)
 
 
 # _parse_account_param, _shopping_list_user_id et _provenance_context

@@ -640,6 +640,49 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     # --- Comptes Dropbox ---
     "account.default": {"fr": "Défaut", "en": "Default"},
+    # --- Page 404 ---
+    "notfound.title": {"fr": "Page introuvable", "en": "Page not found"},
+    "notfound.heading_recipe": {"fr": "Recette introuvable", "en": "Recipe not found"},
+    "notfound.heading_shopping": {
+        "fr": "Liste introuvable",
+        "en": "List not found",
+    },
+    "notfound.heading_generic": {"fr": "Page introuvable", "en": "Page not found"},
+    "notfound.message_recipe": {
+        "fr": "Cette recette n'existe pas ou a été supprimée. Elle a peut-être été renommée lors d'une synchronisation.",
+        "en": "This recipe does not exist or was deleted. It may have been renamed during a sync.",
+    },
+    "notfound.message_shopping": {
+        "fr": "Cette liste n'existe pas, a expiré ou appartient à une autre session.",
+        "en": "This list does not exist, has expired, or belongs to another session.",
+    },
+    "notfound.message_generic": {
+        "fr": "La page demandée n'existe pas ou a été déplacée.",
+        "en": "The requested page does not exist or was moved.",
+    },
+    "notfound.back_home": {"fr": "Retour à l'accueil", "en": "Back to home"},
+    "notfound.browse_recipes": {
+        "fr": "Parcourir les recettes",
+        "en": "Browse recipes",
+    },
+    "notfound.go_shopping": {"fr": "Voir mes listes", "en": "View my lists"},
+    # --- Pages d'erreur génériques (403 / 422 / 500) ---
+    "errorpage.title_403": {"fr": "Accès refusé", "en": "Access denied"},
+    "errorpage.message_403": {
+        "fr": "Vous n'avez pas l'autorisation d'accéder à cette page.",
+        "en": "You are not authorized to access this page.",
+    },
+    "errorpage.title_422": {"fr": "Requête invalide", "en": "Invalid request"},
+    "errorpage.message_422": {
+        "fr": "La requête est invalide ou incomplète. Vérifiez les paramètres et réessayez.",
+        "en": "The request is invalid or incomplete. Check the parameters and try again.",
+    },
+    "errorpage.title_500": {"fr": "Erreur serveur", "en": "Server error"},
+    "errorpage.message_500": {
+        "fr": "Une erreur inattendue s'est produite. Réessayez dans un instant.",
+        "en": "Something unexpected went wrong. Please try again in a moment.",
+    },
+    "errorpage.back_home": {"fr": "Retour à l'accueil", "en": "Back to home"},
 }
 
 

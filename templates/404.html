@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ _('notfound.title') }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<div class="notfound">
+    <p class="notfound-emoji" aria-hidden="true">{% if variant == "recipe" %}🍳{% elif variant == "shopping" %}🛒{% else %}🧭{% endif %}</p>
+    <p class="notfound-code">404</p>
+    {% if variant == "recipe" %}
+    <h1>{{ _('notfound.heading_recipe') }}</h1>
+    <p class="notfound-message">{{ _('notfound.message_recipe') }}</p>
+    {% elif variant == "shopping" %}
+    <h1>{{ _('notfound.heading_shopping') }}</h1>
+    <p class="notfound-message">{{ _('notfound.message_shopping') }}</p>
+    {% else %}
+    <h1>{{ _('notfound.heading_generic') }}</h1>
+    <p class="notfound-message">{{ _('notfound.message_generic') }}</p>
+    {% endif %}
+    {% if request_path %}
+    <p class="notfound-path"><code>{{ request_path }}</code></p>
+    {% endif %}
+    <div class="notfound-actions">
+        {% if variant == "recipe" %}
+        <a href="/" class="btn-cook">{{ _('notfound.browse_recipes') }}</a>
+        <a href="/" class="back">{{ _('notfound.back_home') }}</a>
+        {% elif variant == "shopping" %}
+        <a href="/shopping" class="btn-cook">{{ _('notfound.go_shopping') }}</a>
+        <a href="/" class="back">{{ _('notfound.back_home') }}</a>
+        {% else %}
+        <a href="/" class="btn-cook">{{ _('notfound.back_home') }}</a>
+        <a href="/shopping" class="back">{{ _('notfound.go_shopping') }}</a>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

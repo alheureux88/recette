@@ -5,7 +5,7 @@ import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from recipes.features.admin.services import get_recipe_provenances
 from recipes.features.recipes.services import (
@@ -194,7 +194,8 @@ async def recipe_detail(
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
     multiplier: str | None = Query(default=None),
-) -> HTMLResponse:
+) -> Response:
+    from recipes.shared.errors import render_not_found
     from recipes.shared.web import (
         _base_context,
         _resolve_request_lang,
@@ -205,8 +206,7 @@ async def recipe_detail(
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
-        not_found_msg = gettext("recipe.not_found", lang)
-        return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
+        return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
     steps_raw = recipe.get("steps") or []
@@ -281,16 +281,16 @@ async def recipe_cook(
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
     multiplier: str | None = Query(default=None),
-) -> HTMLResponse:
+) -> Response:
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
+    from recipes.shared.errors import render_not_found
     from recipes.shared.push import VAPID_PUBLIC_KEY
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
-        not_found_msg = gettext("recipe.not_found", lang)
-        return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
+        return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     ingredient_ctx = _ingredient_context(
         recipe,
         _parse_servings_param(servings),
@@ -333,15 +333,15 @@ async def recipe_ingredients(
     servings: str | None = Query(default=None),
     units: str = Query(default="original"),
     multiplier: str | None = Query(default=None),
-) -> HTMLResponse:
+) -> Response:
     """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
+    from recipes.shared.errors import render_not_found
     from recipes.shared.web import _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
-        not_found_msg = gettext("recipe.not_found", lang)
-        return HTMLResponse(f"<h1>{not_found_msg}</h1>", status_code=404)
+        return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     return templates.TemplateResponse(
         request=request,
         name="partials/ingredients.html",
