@@ -1,37 +1,38 @@
 repos:
   - repo: local
     hooks:
+      # Rapide : ne portent que sur les fichiers Python stagés.
       - id: ruff-fix
         name: ruff auto-fix
-        entry: uv run ruff check --fix src tests noxfile.py
+        entry: uv run ruff check --fix
         language: system
-        pass_filenames: false
-        always_run: true
+        types: [python]
 
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format src tests noxfile.py
+        entry: uv run ruff format
         language: system
-        pass_filenames: false
-        always_run: true
+        types: [python]
 
+      # Projet entier, mais via `uv run` (pas de venv nox reconstruit à
+      # chaque commit). Ne tournent que si des fichiers Python sont stagés.
       - id: vulture
         name: vulture (dead code)
         entry: uv run vulture --config pyproject.toml
         language: system
+        types: [python]
         pass_filenames: false
-        always_run: true
 
-      - id: nox-typecheck
-        name: nox typecheck
-        entry: nox -s typecheck
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run mypy src/recipes
         language: system
+        types: [python]
         pass_filenames: false
-        always_run: true
 
-      - id: nox-test
-        name: nox test
-        entry: nox -s test
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
         language: system
+        types: [python]
         pass_filenames: false
-        always_run: true
