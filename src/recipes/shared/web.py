@@ -16,6 +16,7 @@ from recipes.shared.auth import (
     login_url,
     logout_url,
 )
+from recipes.shared.db import DEFAULT_ACCOUNT_ID
 from recipes.shared.i18n import (
     DEFAULT_LANGUAGE,
     LANGUAGE_COOKIE,
@@ -78,6 +79,18 @@ def _shopping_list_user_id(request: Request) -> int | None:
     """Return the user ID for shopping list ownership, or None for anonymous."""
     user = get_user(request)
     return user["id"] if user else None
+
+
+def _parse_account_param(raw: str | None) -> int | None:
+    """'default' → DEFAULT_ACCOUNT_ID, entier → id de connexion, sinon None."""
+    if raw is None or not raw.strip():
+        return None
+    if raw == "default":
+        return DEFAULT_ACCOUNT_ID
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _provenance_context(conn: object) -> dict[str, object]:

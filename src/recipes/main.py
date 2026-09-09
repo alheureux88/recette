@@ -26,10 +26,7 @@ from recipes.features.recipes.controllers import router as recipes_router
 from recipes.features.shopping.controllers import router as shopping_router
 from recipes.features.shopping.services import cleanup_expired_shopping_lists
 from recipes.shared.auth import OIDC_ENABLED
-from recipes.shared.db import (
-    DEFAULT_ACCOUNT_ID,
-    init_db,
-)
+from recipes.shared.db import init_db
 from recipes.shared.i18n import (
     COOKIE_MAX_AGE,
     LANGUAGE_COOKIE,
@@ -41,6 +38,7 @@ from recipes.shared.poller import (
 from recipes.shared.poller import run as poll_dropbox
 from recipes.shared.web import (
     _base_context,
+    _parse_account_param,
     _provenance_context,
     _resolve_request_lang,
     _shopping_list_user_id,
@@ -130,6 +128,7 @@ async def pwa_headers(request: Request, call_next: Any) -> Response:
 
 __all__ = [
     "_base_context",
+    "_parse_account_param",
     "_provenance_context",
     "_resolve_request_lang",
     "_shopping_list_user_id",
@@ -178,17 +177,6 @@ async def unauthorized_handler(request: Request, exc: Exception) -> RedirectResp
     return RedirectResponse(url="/auth/login", status_code=302)
 
 
-def _parse_account_param(raw: str | None) -> int | None:
-    """'default' → DEFAULT_ACCOUNT_ID, entier → id de connexion, sinon None."""
-    if raw is None or not raw.strip():
-        return None
-    if raw == "default":
-        return DEFAULT_ACCOUNT_ID
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
-
-# _shopping_list_user_id et _provenance_context vivent dans shared.web ;
-# ils restent importés ci-dessus pour compatibilité ascendante.
+# _parse_account_param, _shopping_list_user_id et _provenance_context
+# vivent dans shared.web ; ils restent importés ci-dessus
+# pour compatibilité ascendante.

@@ -26,14 +26,9 @@ from recipes.shared.db import get_db, get_recipe
 from recipes.shared.models import RecipeIngredientsToShopping
 from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.shared.units import format_quantity_string
+from recipes.shared.web import _shopping_list_user_id
 
 router = APIRouter(tags=["shopping"])
-
-
-def _shopping_list_user_id(request: Request) -> int | None:
-    """Return the user ID for shopping list ownership, or None for anonymous."""
-    user = get_user(request)
-    return user["id"] if user else None
 
 
 def _get_anon_list_ids(request: Request) -> list[int]:

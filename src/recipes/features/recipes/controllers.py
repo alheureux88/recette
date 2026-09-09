@@ -26,6 +26,7 @@ from recipes.shared.db import (
 )
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
 from recipes.shared.units import format_ingredient
+from recipes.shared.web import _parse_account_param
 
 router = APIRouter(tags=["recipes"])
 
@@ -98,20 +99,6 @@ def _ingredient_context(
         "display_ingredients": display_ingredients,
         "ingredients_structures": any(isinstance(item, dict) for item in items),
     }
-
-
-def _parse_account_param(raw: str | None) -> int | None:
-    """'default' → DEFAULT_ACCOUNT_ID, entier → id de connexion, sinon None."""
-    from recipes.shared.db import DEFAULT_ACCOUNT_ID
-
-    if raw is None or not raw.strip():
-        return None
-    if raw == "default":
-        return DEFAULT_ACCOUNT_ID
-    try:
-        return int(raw)
-    except ValueError:
-        return None
 
 
 @router.get("/", response_class=HTMLResponse)
