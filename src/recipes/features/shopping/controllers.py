@@ -69,7 +69,7 @@ async def shopping_lists_page(
     request: Request, conn: sqlite3.Connection = Depends(get_db)
 ) -> HTMLResponse:
     """Show all shopping lists for the current user (or anonymous)."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     user_id = _shopping_list_user_id(request)
@@ -106,7 +106,7 @@ async def shopping_list_detail(
     mode: str = Query(default="edit"),
 ) -> HTMLResponse | RedirectResponse:
     """Show a shopping list detail page."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
@@ -152,7 +152,7 @@ async def shopping_list_cook(
     list_id: int = Path(gt=0),
 ) -> HTMLResponse:
     """Shopping mode - cook-like view for checking off items while shopping."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
@@ -202,7 +202,7 @@ async def shopping_list_shared(
     mode: str = Query(default="shopping"),
 ) -> HTMLResponse:
     """View a shared shopping list. Anyone with the link can edit."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_token(token, conn=conn)
@@ -280,7 +280,7 @@ async def shopping_list_rename(
     name: str = Form(...),
 ) -> RedirectResponse | HTMLResponse:
     """Rename a shopping list."""
-    from recipes.main import _base_context, templates
+    from recipes.shared.web import _base_context, templates
 
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
@@ -317,7 +317,7 @@ async def shopping_list_add_item(
     quantity: str | None = Form(None),
 ) -> HTMLResponse | RedirectResponse:
     """Add an item to a shopping list."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
@@ -368,7 +368,7 @@ async def shopping_item_toggle(
     item_id: int = Path(gt=0),
 ) -> HTMLResponse | RedirectResponse:
     """Toggle an item's done status."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     item = toggle_shopping_list_item(item_id, conn=conn)
     if not item:
@@ -399,7 +399,7 @@ async def shopping_item_remove(
     item_id: int = Path(gt=0),
 ) -> HTMLResponse | RedirectResponse:
     """Remove an item from a shopping list."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     list_id_before = None
     if request.headers.get("hx-request"):
@@ -452,7 +452,7 @@ async def shopping_item_update(
     department_id: int | None = Form(None),
 ) -> HTMLResponse | RedirectResponse:
     """Update an item's text, quantity, and/or department."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     text = text.strip()
     quantity = quantity.strip() if quantity else None
@@ -498,7 +498,7 @@ async def shopping_add_from_recipe(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, object]:
     """Add selected ingredients from a recipe to a shopping list."""
-    from recipes.main import _resolve_request_lang
+    from recipes.shared.web import _resolve_request_lang
 
     lang = _resolve_request_lang(request)
     user_id = _shopping_list_user_id(request)
@@ -571,7 +571,7 @@ async def shopping_classify_ingredients(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, object]:
     """Classify ingredient names into departments using the LLM."""
-    from recipes.main import _resolve_request_lang
+    from recipes.shared.web import _resolve_request_lang
 
     body = await request.json()
     ingredients = body.get("ingredients", [])

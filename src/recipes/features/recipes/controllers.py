@@ -120,7 +120,12 @@ async def index(
     conn: sqlite3.Connection = Depends(get_db),
     tags: list[int] = Query(default=[]),
 ) -> HTMLResponse:
-    from recipes.main import _base_context, _provenance_context, _resolve_request_lang, templates
+    from recipes.shared.web import (
+        _base_context,
+        _provenance_context,
+        _resolve_request_lang,
+        templates,
+    )
 
     lang = _resolve_request_lang(request)
     all_tags = get_all_tags_grouped(lang=lang, conn=conn)
@@ -156,8 +161,8 @@ async def search(
     category: str | None = Query(default=None),
     account: str | None = Query(default=None),
 ) -> HTMLResponse:
-    from recipes.main import _provenance_context, _resolve_request_lang, templates
     from recipes.shared.auth import OIDC_ENABLED
+    from recipes.shared.web import _provenance_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     category_id: int | None = None
@@ -202,7 +207,12 @@ async def recipe_detail(
     units: str = Query(default="original"),
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
-    from recipes.main import _base_context, _resolve_request_lang, _shopping_list_user_id, templates
+    from recipes.shared.web import (
+        _base_context,
+        _resolve_request_lang,
+        _shopping_list_user_id,
+        templates,
+    )
 
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
@@ -278,8 +288,8 @@ async def recipe_cook(
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
     from recipes.shared.push import VAPID_PUBLIC_KEY
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
@@ -330,7 +340,7 @@ async def recipe_ingredients(
     multiplier: str | None = Query(default=None),
 ) -> HTMLResponse:
     """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
-    from recipes.main import _resolve_request_lang, templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
@@ -360,7 +370,7 @@ async def toggle_favorite(
     recipe_id: int = Path(gt=0),
     user: dict[str, Any] = Depends(require_user),
 ) -> HTMLResponse:
-    from recipes.main import _resolve_request_lang, templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
     currently_fav = is_favorite(user["id"], recipe_id, conn=conn)
     if currently_fav:
@@ -387,8 +397,8 @@ async def favorites_list(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse | RedirectResponse:
-    from recipes.main import _base_context, _resolve_request_lang, templates
     from recipes.shared.auth import OIDC_ENABLED
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     if not OIDC_ENABLED:
         return RedirectResponse(url="/", status_code=302)

@@ -79,7 +79,7 @@ TAG_FAMILIES = ("origin", "diet", "protein", "cooking_method")
 
 def _admin_table_context(request: Request, conn: sqlite3.Connection) -> dict[str, object]:
     """Context for the admin table page."""
-    from recipes.main import _base_context, _resolve_request_lang
+    from recipes.shared.web import _base_context, _resolve_request_lang
 
     lang = _resolve_request_lang(request)
     return _base_context(
@@ -136,7 +136,7 @@ def _admin_config_context(
     request: Request, conn: sqlite3.Connection, message: tuple[str, str] | None = None
 ) -> dict[str, object]:
     """Context for the admin config page. `message` = (kind, text)."""
-    from recipes.main import _base_context
+    from recipes.shared.web import _base_context
 
     return _base_context(
         request,
@@ -183,7 +183,7 @@ def _toggle_response(
     active: bool,
     visible: bool | None = None,
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     if visible is None:
         etat = "demarree" if active else "arretee"
@@ -239,7 +239,7 @@ async def admin_page(
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     return templates.TemplateResponse(
         request=request,
@@ -254,7 +254,7 @@ async def admin_config_page(
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     return templates.TemplateResponse(
         request=request,
@@ -270,7 +270,7 @@ async def admin_recipes_data(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
     """Data for the admin table: recipes, categories, and tags."""
-    from recipes.main import _resolve_request_lang
+    from recipes.shared.web import _resolve_request_lang
 
     lang = _resolve_request_lang(request)
     return {
@@ -364,7 +364,7 @@ async def admin_config_add_dropbox(
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     form = await request.form()
     name = str(form.get("name") or "").strip()
@@ -419,7 +419,7 @@ async def admin_config_connect_dropbox(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> Response:
     """Redirect to Dropbox authorization page (offline OAuth2 flow)."""
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     state = secrets.token_urlsafe(24)
     set_setting("dropbox_oauth_state", state, conn=conn)
@@ -442,7 +442,7 @@ async def admin_config_dropbox_callback(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse | RedirectResponse:
     """Receive Dropbox authorization code and exchange for refresh token."""
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     template_name = _config_template_name(request)
     received_state = request.query_params.get("state")
@@ -513,7 +513,7 @@ async def admin_config_set_model(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     """Override global LLM model for recipe analysis."""
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     form = await request.form()
     model = str(form.get("llm_model") or "").strip()
@@ -560,7 +560,7 @@ async def admin_config_delete_default(
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     return templates.TemplateResponse(
         request=request,
@@ -580,7 +580,7 @@ async def admin_config_toggle_active(
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
     if not dbx_conn:
@@ -603,7 +603,7 @@ async def admin_config_toggle_visible(
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
     if not dbx_conn:
@@ -626,7 +626,7 @@ async def admin_config_delete_dropbox(
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     if delete_dropbox_connection(connection_id, conn=conn):
         forget_connection_client(connection_id)
@@ -650,7 +650,7 @@ async def admin_config_test_dropbox(
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
     if not dbx_conn:
@@ -694,7 +694,7 @@ async def admin_edit_form(
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
@@ -719,7 +719,7 @@ async def admin_edit_save(
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     recipe = get_recipe(recipe_id, conn=conn)
     if not recipe:
@@ -777,7 +777,7 @@ async def admin_blacklist(
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     blacklist_and_delete_recipe(recipe_id, conn=conn)
     return templates.TemplateResponse(
@@ -794,7 +794,7 @@ async def admin_unblacklist(
     path: str = Query(...),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     remove_from_blacklist(path, conn=conn)
     return templates.TemplateResponse(
@@ -811,7 +811,7 @@ async def admin_retry_failed(
     path: str = Query(...),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.main import templates
+    from recipes.shared.web import templates
 
     remove_failed_file(path, conn=conn)
     return templates.TemplateResponse(
@@ -833,7 +833,7 @@ async def admin_shopping_lists(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     """Admin page to view and manage all shopping lists."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     lists = get_all_shopping_lists(conn=conn)
@@ -865,7 +865,7 @@ async def admin_shopping_list_view(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
     """Admin view of a shopping list (read-only, doesn't affect counters)."""
-    from recipes.main import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)

@@ -7,7 +7,6 @@ Run:  uvicorn recipes.main:app --host 0.0.0.0 --port 8000
 
 import logging
 import os
-import sqlite3
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,42 +16,37 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from recipes.features.admin.controllers import router as admin_router
-from recipes.features.admin.services import get_recipe_provenances
 from recipes.features.auth.controllers import router as auth_router
 from recipes.features.push.controllers import router as push_router
 from recipes.features.push.controllers import set_scheduler as set_push_scheduler
 from recipes.features.recipes.controllers import router as recipes_router
 from recipes.features.shopping.controllers import router as shopping_router
 from recipes.features.shopping.services import cleanup_expired_shopping_lists
-from recipes.shared.auth import (
-    OIDC_ENABLED,
-    get_user,
-    is_admin,
-    login_url,
-    logout_url,
-)
+from recipes.shared.auth import OIDC_ENABLED
 from recipes.shared.db import (
     DEFAULT_ACCOUNT_ID,
     init_db,
 )
 from recipes.shared.i18n import (
     COOKIE_MAX_AGE,
-    DEFAULT_LANGUAGE,
     LANGUAGE_COOKIE,
     SUPPORTED_LANGUAGES,
-    available_languages,
-    gettext,
-    ngettext,
-    resolve_language,
 )
 from recipes.shared.poller import (
     IMAGES_DIR,
 )
 from recipes.shared.poller import run as poll_dropbox
+from recipes.shared.web import (
+    _base_context,
+    _provenance_context,
+    _resolve_request_lang,
+    _shopping_list_user_id,
+    _translate,
+    templates,
+)
 
 log = logging.getLogger(__name__)
 
@@ -133,33 +127,14 @@ async def pwa_headers(request: Request, call_next: Any) -> Response:
     return response
 
 
-def _resolve_request_lang(request: Request) -> str:
-    return resolve_language(
-        request.cookies.get(LANGUAGE_COOKIE),
-        request.headers.get("accept-language"),
-    )
-
-
-def _translate(key: str, **values: object) -> str:
-    """Helper exposé dans les templates comme `{{ _('key', **values) }}`.
-
-    La langue courante est résolue depuis le contexte de la requête grâce à
-    l'attribut `_lang_state` posé par le middleware `LocaleMiddleware`.
-    """
-    lang = getattr(_translate, "_lang_state", DEFAULT_LANGUAGE)
-    return gettext(key, lang, **values)
-
-
-def _ntranslate(singular: str, plural: str, n: int, **values: object) -> str:
-    lang = getattr(_translate, "_lang_state", DEFAULT_LANGUAGE)
-    return ngettext(singular, plural, n, lang, **values)
-
-
-templates = Jinja2Templates(directory="templates")
-templates.env.globals["_"] = _translate
-templates.env.globals["ngettext"] = _ntranslate
-templates.env.globals["supported_languages"] = SUPPORTED_LANGUAGES
-templates.env.globals["default_language"] = DEFAULT_LANGUAGE
+__all__ = [
+    "_base_context",
+    "_provenance_context",
+    "_resolve_request_lang",
+    "_shopping_list_user_id",
+    "_translate",
+    "templates",
+]
 
 
 @app.middleware("http")
@@ -198,26 +173,6 @@ async def unauthorized_handler(request: Request, exc: Exception) -> RedirectResp
     return RedirectResponse(url="/auth/login", status_code=302)
 
 
-def _base_context(request: Request, **extra: object) -> dict[str, object]:
-    ctx: dict[str, object] = {
-        "user": get_user(request),
-        "auth_enabled": OIDC_ENABLED,
-        "login_url": login_url(request),
-        "logout_url": logout_url(request),
-        "is_admin": is_admin(request),
-        "lang": _resolve_request_lang(request),
-        "available_languages": available_languages(),
-    }
-    ctx.update(extra)
-    return ctx
-
-
-def _provenance_context(conn: sqlite3.Connection) -> dict[str, object]:
-    """Filtre de provenance : affiché seulement si plusieurs comptes ont des recettes."""
-    provenances = get_recipe_provenances(conn=conn)
-    return {"provenances": provenances, "show_provenance": len(provenances) > 1}
-
-
 def _parse_account_param(raw: str | None) -> int | None:
     """'default' → DEFAULT_ACCOUNT_ID, entier → id de connexion, sinon None."""
     if raw is None or not raw.strip():
@@ -230,12 +185,5 @@ def _parse_account_param(raw: str | None) -> int | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Shopping helpers (shared with shopping feature)
-# ---------------------------------------------------------------------------
-
-
-def _shopping_list_user_id(request: Request) -> int | None:
-    """Return the user ID for shopping list ownership, or None for anonymous."""
-    user = get_user(request)
-    return user["id"] if user else None
+# _shopping_list_user_id et _provenance_context vivent dans shared.web ;
+# ils restent importés ci-dessus pour compatibilité ascendante.
