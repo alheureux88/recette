@@ -96,16 +96,16 @@ def send_push_notification(
             vapid_private_key=VAPID_PRIVATE_KEY,
             vapid_claims=get_vapid_claims(),
         )
-        log.info(f"Push notification sent: {title}")
+        log.info("Push notification sent: %s", title)
         return True
     except WebPushException as e:
-        log.error(f"Push notification failed: {e}")
+        log.exception("Push notification failed")
         if e.response and e.response.status_code in (404, 410):
             log.info("Subscription expired or invalid")
             return False
         return False
-    except Exception as e:
-        log.error(f"Unexpected push error: {e}")
+    except Exception:
+        log.exception("Unexpected push error")
         return False
 
 
@@ -150,7 +150,7 @@ def schedule_timer_notification(
         )
 
         if not success:
-            log.warning(f"Timer notification failed for recipe {recipe_id} step {step_index}")
+            log.warning("Timer notification failed for recipe %s step %s", recipe_id, step_index)
 
     scheduler.add_job(
         send_notification,
@@ -161,7 +161,7 @@ def schedule_timer_notification(
         misfire_grace_time=60,
     )
 
-    log.info(f"Scheduled timer notification: {job_id} at {end_time}")
+    log.info("Scheduled timer notification: %s at %s", job_id, end_time)
     return job_id
 
 

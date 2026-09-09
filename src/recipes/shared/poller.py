@@ -79,8 +79,8 @@ def _refresh_token_for(refresh_token: str, app_key: str, app_secret: str) -> tup
 
     if not response.ok:
         error_body = response.text
-        log.error(f"Dropbox token refresh failed: {response.status_code}")
-        log.error(f"Response: {error_body}")
+        log.error("Dropbox token refresh failed: %s", response.status_code)
+        log.error("Response: %s", error_body)
         raise ValueError(f"Dropbox token refresh failed: {error_body}")
 
     token_data = response.json()
@@ -233,8 +233,8 @@ def exchange_authorization_code(code: str, redirect_uri: str) -> str:
 
     if not response.ok:
         error_body = response.text
-        log.error(f"Dropbox code exchange failed: {response.status_code}")
-        log.error(f"Response: {error_body}")
+        log.error("Dropbox code exchange failed: %s", response.status_code)
+        log.error("Response: %s", error_body)
         raise ValueError(f"Dropbox code exchange failed: {error_body}")
 
     token_data = response.json()
@@ -284,7 +284,7 @@ def list_recipe_files(
     ]
 
     if file_filter:
-        log.info(f"File filter active: '{file_filter}'")
+        log.info("File filter active: '%s'", file_filter)
 
     return files
 
@@ -329,7 +329,7 @@ def get_or_create_shared_link(dbx: dropbox.Dropbox, path: str) -> str | None:
         result = dbx.sharing_create_shared_link_with_settings(path, settings)
         return str(result.url)
     except ApiError as e:
-        log.warning(f"  Could not create shared link for {path}: {e}")
+        log.warning("  Could not create shared link for %s: %s", path, e)
         return None
 
 
@@ -349,7 +349,7 @@ def _save_images(recipe_id: int, filename: str, content: bytes) -> None:
     try:
         images = extract_images(filename, content)
     except Exception as e:
-        log.warning(f"  Image extraction failed for {filename}: {e}")
+        log.warning("  Image extraction failed for %s: %s", filename, e)
         return
 
     if not images:
@@ -363,10 +363,10 @@ def _save_images(recipe_id: int, filename: str, content: bytes) -> None:
         dest = recipe_dir / img_name
         dest.write_bytes(img_bytes)
         saved_filenames.append(img_name)
-        log.info(f"  Saved image: {img_name} ({len(img_bytes)} bytes)")
+        log.info("  Saved image: %s (%s bytes)", img_name, len(img_bytes))
 
     save_recipe_images(recipe_id, saved_filenames)
-    log.info(f"  Saved {len(saved_filenames)} image(s) for recipe #{recipe_id}")
+    log.info("  Saved %s image(s) for recipe #%s", len(saved_filenames), recipe_id)
 
 
 def process_file(
@@ -385,45 +385,45 @@ def process_file(
     path = f"{path_prefix}{entry.path_lower}"
 
     if is_blacklisted(path):
-        log.info(f"  Skipping (blacklisted): {path}")
+        log.info("  Skipping (blacklisted): %s", path)
         return
 
-    log.info(f"Downloading: {path}")
+    log.info("Downloading: %s", path)
     content = download_file(dbx, entry.path_lower)
     content_hash = file_hash(content)
 
     existing_hash = get_processed_hash(path)
     if existing_hash == content_hash:
-        log.info(f"  Skipping (unchanged): {path}")
+        log.info("  Skipping (unchanged): %s", path)
         return
 
     if is_manually_edited(path):
-        log.warning(f"  Skipping (manually edited recipe): {path}")
+        log.warning("  Skipping (manually edited recipe): %s", path)
         with _DB_LOCK:
             record_failed_file(path, "Recette modifiee manuellement — mise a jour Dropbox ignoree")
         return
 
-    log.info(f"  Parsing: {entry.name}")
+    log.info("  Parsing: %s", entry.name)
     try:
         raw_text = extract_text(entry.name, content)
     except Exception as e:
-        log.error(f"  Parse failed for {entry.name}: {e}")
+        log.exception("  Parse failed for %s", entry.name)
         with _DB_LOCK:
             record_failed_file(path, f"Parse error: {e}")
         return
 
     if not raw_text.strip():
-        log.warning(f"  Empty text extracted from {entry.name}, skipping.")
+        log.warning("  Empty text extracted from %s, skipping.", entry.name)
         with _DB_LOCK:
             record_failed_file(path, "Empty text extracted")
         return
 
     default_title = extract_title_from_filename(entry.name)
-    log.info(f"  Tagging with LLM... (default title: '{default_title}')")
+    log.info("  Tagging with LLM... (default title: '%s')", default_title)
     try:
         structured = tag_recipe(raw_text, default_title=default_title)
     except Exception as e:
-        log.error(f"  Tagging failed for {entry.name}: {e}")
+        log.exception("  Tagging failed for %s", entry.name)
         with _DB_LOCK:
             record_failed_file(path, f"Tagging error: {e}")
         return
@@ -468,16 +468,16 @@ def _poll_account(
     path_prefix: str = "",
     connection_id: int | None = None,
 ) -> None:
-    log.info(f"[{label}] Checking Dropbox folder: '{folder or '/'}'")
+    log.info("[%s] Checking Dropbox folder: '%s'", label, folder or "/")
     try:
         files = list_recipe_files(dbx, folder, file_filter)
         unsupported = list_unsupported_files(dbx, folder)
-    except AuthError as e:
-        log.error(f"[{label}] Dropbox authentication error: {e}")
+    except AuthError:
+        log.exception("[%s] Dropbox authentication error", label)
         log.info("Token may have expired. Please refresh your Dropbox credentials.")
         return
-    except ApiError as e:
-        log.error(f"[{label}] Dropbox API error: {e}")
+    except ApiError:
+        log.exception("[%s] Dropbox API error", label)
         return
 
     for entry in unsupported:
@@ -487,7 +487,7 @@ def _poll_account(
                 f"{path_prefix}{entry.path_lower}", f"Unsupported file extension: {ext}"
             )
 
-    log.info(f"[{label}] Found {len(files)} recipe file(s).")
+    log.info("[%s] Found %s recipe file(s).", label, len(files))
     max_workers = int(os.environ.get("POLL_WORKERS", "5"))
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -499,15 +499,17 @@ def _poll_account(
             entry = futures[future]
             try:
                 future.result()
-            except AuthError as e:
-                log.error(
-                    f"[{label}] Dropbox authentication error while processing {entry.name}: {e}"
+            except AuthError:
+                log.exception(
+                    "[%s] Dropbox authentication error while processing %s",
+                    label,
+                    entry.name,
                 )
                 log.info("Token may have expired. Please refresh your Dropbox credentials.")
                 executor.shutdown(wait=False, cancel_futures=True)
                 return
-            except Exception as e:
-                log.error(f"Unexpected error processing {entry.name}: {e}")
+            except Exception:
+                log.exception("Unexpected error processing %s", entry.name)
 
 
 def run() -> None:
@@ -519,8 +521,8 @@ def run() -> None:
         if get_setting("default_active", "1") != "0":
             try:
                 accounts.append(("", _get_dropbox_client(), DROPBOX_FOLDER, "", "", None))
-            except Exception as e:
-                log.error(f"Default (.env) Dropbox account unavailable: {e}")
+            except Exception:
+                log.exception("Default (.env) Dropbox account unavailable")
         else:
             log.info("Default (.env) Dropbox account is paused — skipping.")
     else:
@@ -530,14 +532,14 @@ def run() -> None:
         conn_id = int(str(conn["id"]))
         label = str(conn["name"])
         if not conn["active"]:
-            log.info(f"[{label}] Synchronization paused — skipping.")
+            log.info("[%s] Synchronization paused — skipping.", label)
             continue
         try:
             # La liste publique ne contient pas les identifiants ; on les
             # recupere separement pour construire le client.
             client = get_connection_client(get_dropbox_connection_credentials(conn_id) or conn)
-        except Exception as e:
-            log.error(f"[{label}] Could not create Dropbox client: {e}")
+        except Exception:
+            log.exception("[%s] Could not create Dropbox client", label)
             continue
         accounts.append(
             (

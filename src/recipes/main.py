@@ -65,8 +65,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     def _initial_poll() -> None:
         try:
             poll_dropbox()
-        except Exception as e:
-            log.error(f"Initial poll failed: {e}")
+        except Exception:
+            log.exception("Initial poll failed")
 
     threading.Thread(target=_initial_poll, daemon=True).start()
 
@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         misfire_grace_time=300,
     )
     scheduler.start()
-    log.info(f"Scheduler started — polling every {POLL_INTERVAL_MINUTES} min.")
+    log.info("Scheduler started — polling every %s min.", POLL_INTERVAL_MINUTES)
 
     global _scheduler
     _scheduler = scheduler

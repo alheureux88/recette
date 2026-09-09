@@ -470,8 +470,9 @@ async def admin_config_dropbox_callback(
 
     if detail:
         log.warning(
-            f"Dropbox OAuth callback rejected: {detail} "
-            f"(received state present: {bool(received_state)})"
+            "Dropbox OAuth callback rejected: %s (received state present: %s)",
+            detail,
+            bool(received_state),
         )
         return templates.TemplateResponse(
             request=request,
@@ -487,10 +488,10 @@ async def admin_config_dropbox_callback(
         try:
             account_label = verify_connection_credentials(refresh_token)
         except Exception as e:
-            log.warning(f"Could not fetch account label after OAuth: {e}")
+            log.warning("Could not fetch account label after OAuth: %s", e)
             account_label = ""
     except Exception as e:
-        log.error(f"Dropbox OAuth code exchange failed: {e}")
+        log.exception("Dropbox OAuth code exchange failed")
         return templates.TemplateResponse(
             request=request,
             name=template_name,
@@ -664,7 +665,7 @@ async def admin_config_test_dropbox(
     try:
         account_label = verify_connection_credentials(str(dbx_conn["refresh_token"]))
     except Exception as e:
-        log.error(f"Dropbox connection test failed for '{dbx_conn['name']}': {e}")
+        log.exception("Dropbox connection test failed for '%s'", dbx_conn["name"])
         return templates.TemplateResponse(
             request=request,
             name=_config_template_name(request),
