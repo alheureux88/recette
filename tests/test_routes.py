@@ -392,3 +392,31 @@ def test_recipe_detail_en_with_cup_unit(client):
     page = _page(resp)
     assert "1 cup of flour" in page
     assert "2 cups of milk" in page
+
+
+def test_json_dict_alias():
+    from recipes.shared.models import JsonDict
+
+    assert JsonDict == dict[str, object]
+
+
+def test_resolve_session_secret_dev_default(monkeypatch):
+    from recipes.main import _resolve_session_secret
+
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    assert _resolve_session_secret(oidc_enabled=False) == "change-me-in-production"
+
+
+def test_resolve_session_secret_custom(monkeypatch):
+    from recipes.main import _resolve_session_secret
+
+    monkeypatch.setenv("SESSION_SECRET", "s3cret")
+    assert _resolve_session_secret(oidc_enabled=True) == "s3cret"
+
+
+def test_resolve_session_secret_requires_secret_with_oidc(monkeypatch):
+    from recipes.main import _resolve_session_secret
+
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    with pytest.raises(RuntimeError, match="SESSION_SECRET"):
+        _resolve_session_secret(oidc_enabled=True)

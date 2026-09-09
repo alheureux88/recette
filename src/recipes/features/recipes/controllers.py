@@ -25,6 +25,7 @@ from recipes.shared.db import (
     search_recipes,
 )
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
+from recipes.shared.models import JsonDict
 from recipes.shared.units import format_ingredient
 from recipes.shared.web import _parse_account_param
 
@@ -54,12 +55,12 @@ def _parse_multiplier_param(raw: str | None) -> float | None:
 
 
 def _ingredient_context(
-    recipe: dict[str, object],
+    recipe: JsonDict,
     servings: int | None,
     units: str,
     multiplier: float | None = None,
     lang: str = DEFAULT_LANGUAGE,
-) -> dict[str, object]:
+) -> JsonDict:
     """Construit le contexte d'affichage des ingrédients."""
     brut = recipe.get("servings")
     base_servings: float | None = None
@@ -209,7 +210,7 @@ async def recipe_detail(
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
     steps_raw = recipe.get("steps") or []
-    steps_list: list[dict[str, object]] = []
+    steps_list: list[JsonDict] = []
     if isinstance(steps_raw, list):
         for step in steps_raw:
             if isinstance(step, dict):
@@ -291,7 +292,7 @@ async def recipe_cook(
         lang=lang,
     )
     steps_raw = recipe.get("steps") or []
-    steps: list[dict[str, object]] = []
+    steps: list[JsonDict] = []
     if isinstance(steps_raw, list):
         for step in steps_raw:
             if isinstance(step, dict):

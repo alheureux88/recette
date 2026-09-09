@@ -15,6 +15,7 @@ from recipes.shared.auth import get_user
 from recipes.shared.db import get_db
 from recipes.shared.i18n import gettext
 from recipes.shared.models import (
+    JsonDict,
     PushSubscriptionRegister,
     TimerCancelRequest,
     TimerScheduleRequest,
@@ -56,7 +57,7 @@ async def vapid_public_key() -> dict[str, str]:
 @router.post("/subscribe")
 async def subscribe(
     data: PushSubscriptionRegister, conn: sqlite3.Connection = Depends(get_db)
-) -> dict[str, object]:
+) -> JsonDict:
     """Register a push subscription from the browser."""
     user = _get_user_from_request_safe(None)
     user_id = user["id"] if user else None
@@ -67,7 +68,7 @@ async def subscribe(
 @router.post("/unsubscribe")
 async def unsubscribe(
     endpoint: str = Query(...), conn: sqlite3.Connection = Depends(get_db)
-) -> dict[str, object]:
+) -> JsonDict:
     """Unregister a push subscription."""
     deleted = delete_push_subscription(endpoint, conn=conn)
     return {"ok": True, "deleted": deleted}
@@ -78,7 +79,7 @@ async def schedule_timer(
     request: Request,
     data: TimerScheduleRequest,
     conn: sqlite3.Connection = Depends(get_db),
-) -> dict[str, object]:
+) -> JsonDict:
     """Schedule a push notification for when a timer completes."""
     lang = _resolve_request_lang(request)
     if not _scheduler:
@@ -103,7 +104,7 @@ async def schedule_timer(
 
 
 @router.post("/cancel-timer")
-async def cancel_timer(request: Request, data: TimerCancelRequest) -> dict[str, object]:
+async def cancel_timer(request: Request, data: TimerCancelRequest) -> JsonDict:
     """Cancel scheduled timer notifications for a recipe step."""
     if not _scheduler:
         lang = _resolve_request_lang(request)

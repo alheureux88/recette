@@ -11,6 +11,7 @@ from recipes.shared.db import (
     get_recipe_images,
 )
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
+from recipes.shared.models import JsonDict
 
 
 def is_favorite(user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None) -> bool:
@@ -48,7 +49,7 @@ def get_user_favorite_ids(user_id: int, conn: sqlite3.Connection | None = None) 
 
 def get_favorite_recipes(
     user_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             """
@@ -68,7 +69,7 @@ def get_favorite_recipes(
         cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
             translation = _load_translation(_conn, int(row["id"]), lang)
-            d: dict[str, object] = dict(row)
+            d: JsonDict = dict(row)
             d.update(translation)
             d["title"] = translation["title"]
             if d.get("category_name"):
@@ -101,7 +102,7 @@ def get_favorite_recipes(
 
 def get_all_recipes_admin(
     filter: str = "", lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
 
     where = ""
     if filter == "no_tags":
@@ -131,7 +132,7 @@ def get_all_recipes_admin(
         cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
             translation = _load_translation(_conn, int(row["id"]), lang)
-            d: dict[str, object] = dict(row)
+            d: JsonDict = dict(row)
             d.update(translation)
             d["title"] = translation["title"]
             if d.get("category_name"):

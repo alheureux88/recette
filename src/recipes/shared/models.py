@@ -1,8 +1,11 @@
 """Pydantic models for request validation."""
 
-from typing import Any
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, Field
+
+JsonDict: TypeAlias = dict[str, object]
+"""Dictionnaire JSON générique (lignes DB, payloads, contextes templates)."""
 
 
 class InlineCategoryUpdate(BaseModel):

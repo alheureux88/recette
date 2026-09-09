@@ -60,6 +60,7 @@ from recipes.shared.models import (
     BulkTagsUpdate,
     InlineCategoryUpdate,
     InlineTagsUpdate,
+    JsonDict,
 )
 from recipes.shared.poller import (
     DROPBOX_FOLDER,
@@ -78,7 +79,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 TAG_FAMILIES = ("origin", "diet", "protein", "cooking_method")
 
 
-def _admin_table_context(request: Request, conn: sqlite3.Connection) -> dict[str, object]:
+def _admin_table_context(request: Request, conn: sqlite3.Connection) -> JsonDict:
     """Context for the admin table page."""
     from recipes.shared.web import _base_context, _resolve_request_lang
 
@@ -94,7 +95,7 @@ def _admin_table_context(request: Request, conn: sqlite3.Connection) -> dict[str
     )
 
 
-def _recipe_row(recipe: dict[str, object]) -> dict[str, object]:
+def _recipe_row(recipe: JsonDict) -> JsonDict:
     """Flatten a recipe for the admin table (Tabulator)."""
     raw_category = recipe.get("category")
     category = raw_category if isinstance(raw_category, dict) else None
@@ -135,7 +136,7 @@ def _parse_tag_keys(keys: list[str]) -> dict[str, list[str]]:
 
 def _admin_config_context(
     request: Request, conn: sqlite3.Connection, message: tuple[str, str] | None = None
-) -> dict[str, object]:
+) -> JsonDict:
     """Context for the admin config page. `message` = (kind, text)."""
     from recipes.shared.web import _base_context
 
@@ -163,7 +164,7 @@ def _config_template_name(request: Request) -> str:
 
 def _admin_config_oauth_context(
     request: Request, conn: sqlite3.Connection, refresh_token: str, account_label: str
-) -> dict[str, object]:
+) -> JsonDict:
     ctx = _admin_config_context(
         request,
         conn,
@@ -197,14 +198,14 @@ def _toggle_response(
     )
 
 
-def _ingredients_from_form(form: Any) -> list[dict[str, object]]:
+def _ingredients_from_form(form: Any) -> list[JsonDict]:
     """Build ingredients list from form rows (ing_min/ing_max/ing_unit/ing_food)."""
     foods = form.getlist("ing_food")
     mins = form.getlist("ing_min")
     maxs = form.getlist("ing_max")
     units = form.getlist("ing_unit")
 
-    ingredients: list[dict[str, object]] = []
+    ingredients: list[JsonDict] = []
     for i, food in enumerate(foods):
         qmin = parse_quantity(mins[i]) if i < len(mins) else None
         qmax = parse_quantity(maxs[i]) if i < len(maxs) else None
@@ -269,7 +270,7 @@ async def admin_recipes_data(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, object]:
+) -> JsonDict:
     """Data for the admin table: recipes, categories, and tags."""
     from recipes.shared.web import _resolve_request_lang
 
@@ -286,7 +287,7 @@ async def admin_files_data(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, object]:
+) -> JsonDict:
     """Data for blacklisted and failed files tables."""
     from recipes.shared.web import _resolve_request_lang
 
@@ -319,7 +320,7 @@ async def admin_inline_category(
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, object]:
+) -> JsonDict:
     from recipes.shared.web import _resolve_request_lang
 
     lang = _resolve_request_lang(request)
@@ -335,7 +336,7 @@ async def admin_inline_tags(
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, object]:
+) -> JsonDict:
     from recipes.shared.web import _resolve_request_lang
 
     lang = _resolve_request_lang(request)
@@ -349,7 +350,7 @@ async def admin_bulk_category(
     data: BulkCategoryUpdate,
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, object]:
+) -> JsonDict:
     updated = bulk_update_category(data.ids, data.category, conn=conn)
     return {"ok": True, "updated": updated}
 
@@ -359,7 +360,7 @@ async def admin_bulk_tags(
     data: BulkTagsUpdate,
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
-) -> dict[str, object]:
+) -> JsonDict:
     updated = bulk_update_tags(
         data.ids, _parse_tag_keys(data.add), _parse_tag_keys(data.remove), conn=conn
     )
@@ -761,7 +762,7 @@ async def admin_edit_save(
         "steps": steps,
         "ingredients": ingredients,
     }
-    data: dict[str, object] = {
+    data: JsonDict = {
         "lang_fr": dict(base_payload),
         "lang_en": dict(base_payload),
         "servings": parse_quantity(form.get("servings")),

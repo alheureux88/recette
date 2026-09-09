@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
+from recipes.shared.models import JsonDict
 
 # Constants used by multiple modules
 DEFAULT_ACCOUNT_ID = -1
@@ -479,7 +480,7 @@ def _seed(conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _localize_tag(row: sqlite3.Row, lang: str) -> dict[str, object]:
+def _localize_tag(row: sqlite3.Row, lang: str) -> JsonDict:
     col = "display_name_en" if lang == "en" else "display_name_fr"
     return {
         "id": row["id"],
@@ -488,7 +489,7 @@ def _localize_tag(row: sqlite3.Row, lang: str) -> dict[str, object]:
     }
 
 
-def _localize_family(row: sqlite3.Row, lang: str) -> dict[str, object]:
+def _localize_family(row: sqlite3.Row, lang: str) -> JsonDict:
     col = "display_name_en" if lang == "en" else "display_name_fr"
     return {
         "name": row["name"],
@@ -496,7 +497,7 @@ def _localize_family(row: sqlite3.Row, lang: str) -> dict[str, object]:
     }
 
 
-def _localize_category(row: sqlite3.Row, lang: str) -> dict[str, object]:
+def _localize_category(row: sqlite3.Row, lang: str) -> JsonDict:
     col = "display_name_en" if lang == "en" else "display_name_fr"
     return {
         "id": row["id"],
@@ -505,7 +506,7 @@ def _localize_category(row: sqlite3.Row, lang: str) -> dict[str, object]:
     }
 
 
-def _localize_recipe_translation(row: sqlite3.Row | None) -> dict[str, object]:
+def _localize_recipe_translation(row: sqlite3.Row | None) -> JsonDict:
     if row is None:
         return {"title": "", "description": "", "steps": [], "ingredients": []}
     ingredients_raw = row["ingredients"] or "[]"
@@ -523,7 +524,7 @@ def _localize_recipe_translation(row: sqlite3.Row | None) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
-def upsert_recipe(data: dict[str, object], conn: sqlite3.Connection | None = None) -> int:
+def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int:
     """Insert or update a recipe with bilingual translations.
 
     `data` must contain both `lang_fr` and `lang_en` payloads (or, for tests
@@ -596,8 +597,8 @@ def upsert_recipe(data: dict[str, object], conn: sqlite3.Connection | None = Non
 
 
 def _extract_translation_payload(
-    data: dict[str, object],
-) -> tuple[dict[str, object], dict[str, object]]:
+    data: JsonDict,
+) -> tuple[JsonDict, JsonDict]:
     """Return (payload_fr, payload_en) from the upsert payload.
 
     Accepts either pre-split `lang_fr`/`lang_en` dicts, a single-language
@@ -631,7 +632,7 @@ def _extract_translation_payload(
 
 
 def _upsert_translation(
-    conn: sqlite3.Connection, recipe_id: int, lang: str, payload: dict[str, object]
+    conn: sqlite3.Connection, recipe_id: int, lang: str, payload: JsonDict
 ) -> None:
     title = str(payload.get("title") or "").strip()
     if not title:
@@ -757,7 +758,7 @@ def is_manually_edited(source_file: str, conn: sqlite3.Connection | None = None)
 
 
 def update_recipe_manual(
-    recipe_id: int, data: dict[str, object], conn: sqlite3.Connection | None = None
+    recipe_id: int, data: JsonDict, conn: sqlite3.Connection | None = None
 ) -> bool:
     """Met à jour une recette modifiée via l'écran d'administration.
 
@@ -868,13 +869,13 @@ def _resolve_tag_ids(
 
 def get_recipe(
     recipe_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+) -> JsonDict | None:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
         if row is None:
             return None
 
-        result: dict[str, object] = dict(row)
+        result: JsonDict = dict(row)
 
         translation = _load_translation(_conn, recipe_id, lang)
         result.update(translation)
@@ -929,7 +930,7 @@ def get_recipe(
         return result
 
 
-def _load_translation(conn: sqlite3.Connection, recipe_id: int, lang: str) -> dict[str, object]:
+def _load_translation(conn: sqlite3.Connection, recipe_id: int, lang: str) -> JsonDict:
     """Return the translation for `lang`, falling back to the other language."""
     row = conn.execute(
         "SELECT title, description, steps, ingredients "
@@ -1029,7 +1030,7 @@ def search_recipes(
     connection_id: int | None = None,
     lang: str = DEFAULT_LANGUAGE,
     conn: sqlite3.Connection | None = None,
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     """Recherche de recettes.
 
     `connection_id` filtre par compte Dropbox d'origine ; la valeur sentinelle
@@ -1108,7 +1109,7 @@ def search_recipes(
         cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
         for row in rows:
             translation = _load_translation(_conn, int(row["id"]), lang)
-            d: dict[str, object] = dict(row)
+            d: JsonDict = dict(row)
             d.update(translation)
             d["title"] = translation["title"]
             if d.get("category_name"):
@@ -1180,7 +1181,7 @@ def get_all_tags_grouped(
 
 def get_all_categories(
     only_used: bool = True, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         if only_used:
             rows = _conn.execute(
@@ -1203,7 +1204,7 @@ def get_all_categories(
 def get_existing_tags_for_prompt(
     lang: str = DEFAULT_LANGUAGE,
     conn: sqlite3.Connection | None = None,
-) -> dict[str, list[dict[str, object]]]:
+) -> dict[str, list[JsonDict]]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             """
@@ -1218,7 +1219,7 @@ def get_existing_tags_for_prompt(
             """
         ).fetchall()
 
-    result: dict[str, list[dict[str, object]]] = {}
+    result: dict[str, list[JsonDict]] = {}
     tag_col = "display_name_en" if lang == "en" else "display_name_fr"
     for row in rows:
         fam = row["family"]
@@ -1236,7 +1237,7 @@ def get_existing_tags_for_prompt(
 
 def get_tag_families(
     lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             "SELECT name, display_name_fr, display_name_en FROM tag_families ORDER BY sort_order"
@@ -1275,9 +1276,7 @@ def save_recipe_images(
             )
 
 
-def get_recipe_images(
-    recipe_id: int, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+def get_recipe_images(recipe_id: int, conn: sqlite3.Connection | None = None) -> list[JsonDict]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             "SELECT id, filename, sort_order FROM recipe_images WHERE recipe_id = ? ORDER BY sort_order",

@@ -35,6 +35,7 @@ from recipes.shared.db import (
     sync_recipe_tags,
     upsert_recipe,
 )
+from recipes.shared.models import JsonDict
 from recipes.shared.parsers import extract_images, extract_text
 from recipes.shared.tagger import tag_recipe
 
@@ -163,7 +164,7 @@ def _env_app_credentials() -> tuple[str, str]:
     return app_key, app_secret
 
 
-def get_connection_client(connection: dict[str, object]) -> dropbox.Dropbox:
+def get_connection_client(connection: JsonDict) -> dropbox.Dropbox:
     """Get or create a cached Dropbox client for an extra configured connection."""
     conn_id = int(str(connection["id"]))
 

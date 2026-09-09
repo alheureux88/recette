@@ -11,6 +11,7 @@ from recipes.shared.db import (
     is_default_account_visible,
 )
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
+from recipes.shared.models import JsonDict
 
 # Re-export for backwards compatibility
 __all__ = [
@@ -73,7 +74,7 @@ def is_blacklisted(path: str, conn: sqlite3.Connection | None = None) -> bool:
 
 def get_blacklisted_files(
     conn: sqlite3.Connection | None = None, lang: str = DEFAULT_LANGUAGE
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
 
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
@@ -110,7 +111,7 @@ def record_failed_file(path: str, error: str, conn: sqlite3.Connection | None = 
 
 def get_failed_files(
     conn: sqlite3.Connection | None = None, lang: str = DEFAULT_LANGUAGE
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             "SELECT path, error, failed_at FROM failed_files ORDER BY failed_at DESC"
@@ -132,7 +133,7 @@ def remove_failed_file(path: str, conn: sqlite3.Connection | None = None) -> Non
 # ---------------------------------------------------------------------------
 
 
-def get_dropbox_connections(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+def get_dropbox_connections(conn: sqlite3.Connection | None = None) -> list[JsonDict]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             "SELECT id, name, folder, file_filter, active, visible, created_at "
@@ -169,7 +170,7 @@ def add_dropbox_connection(
 
 def get_dropbox_connection_credentials(
     connection_id: int, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+) -> JsonDict | None:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute(
             "SELECT id, name, refresh_token, folder, file_filter "
@@ -272,7 +273,7 @@ def _connection_names(conn: sqlite3.Connection | None = None) -> dict[int, str]:
     return {int(str(c["id"])): str(c["name"]) for c in get_dropbox_connections(conn=conn)}
 
 
-def get_recipe_provenances(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+def get_recipe_provenances(conn: sqlite3.Connection | None = None) -> list[JsonDict]:
     """List of Dropbox accounts that have at least one visible recipe."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(

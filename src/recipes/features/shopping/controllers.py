@@ -24,7 +24,7 @@ from recipes.features.shopping.services import (
 from recipes.shared.auth import get_user
 from recipes.shared.db import get_db, get_recipe
 from recipes.shared.i18n import gettext
-from recipes.shared.models import RecipeIngredientsToShopping
+from recipes.shared.models import JsonDict, RecipeIngredientsToShopping
 from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.shared.units import format_quantity_string
 from recipes.shared.web import _resolve_request_lang, _shopping_list_user_id
@@ -46,7 +46,7 @@ def _add_anon_list_id(request: Request, list_id: int) -> None:
         request.session["shopping_list_ids"] = ids
 
 
-def _can_edit_shopping_list(request: Request, shopping_list: dict[str, object]) -> bool:
+def _can_edit_shopping_list(request: Request, shopping_list: JsonDict) -> bool:
     """Check if the current user can edit this shopping list.
 
     Anyone with the direct link (share token) can edit.
@@ -495,7 +495,7 @@ async def shopping_add_from_recipe(
     request: Request,
     data: RecipeIngredientsToShopping,
     conn: sqlite3.Connection = Depends(get_db),
-) -> dict[str, object]:
+) -> JsonDict:
     """Add selected ingredients from a recipe to a shopping list."""
     from recipes.shared.web import _resolve_request_lang
 
@@ -570,7 +570,7 @@ async def shopping_add_from_recipe(
 async def shopping_classify_ingredients(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-) -> dict[str, object]:
+) -> JsonDict:
     """Classify ingredient names into departments using the LLM."""
     from recipes.shared.web import _resolve_request_lang
 

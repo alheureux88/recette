@@ -5,6 +5,7 @@ import sqlite3
 from contextlib import nullcontext
 
 from recipes.shared.db import get_conn
+from recipes.shared.models import JsonDict
 
 # ---------------------------------------------------------------------------
 # Shopping departments
@@ -13,7 +14,7 @@ from recipes.shared.db import get_conn
 
 def get_shopping_departments(
     lang: str = "fr", conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     """Return all shopping departments ordered by sort_order."""
     col = "display_name_en" if lang == "en" else "display_name_fr"
     with get_conn() if conn is None else nullcontext(conn) as _conn:
@@ -27,9 +28,7 @@ def get_shopping_departments(
         return [dict(r) for r in rows]
 
 
-def get_department_by_name(
-    name: str, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+def get_department_by_name(name: str, conn: sqlite3.Connection | None = None) -> JsonDict | None:
     """Return a department by its technical name."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute(
@@ -40,9 +39,7 @@ def get_department_by_name(
         return dict(row) if row else None
 
 
-def get_department_by_id(
-    dept_id: int, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+def get_department_by_id(dept_id: int, conn: sqlite3.Connection | None = None) -> JsonDict | None:
     """Return a department by its ID."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute(
@@ -63,7 +60,7 @@ def create_shopping_list(
     user_id: int | None = None,
     share_token: str | None = None,
     conn: sqlite3.Connection | None = None,
-) -> dict[str, object]:
+) -> JsonDict:
     """Create a new shopping list. Returns the created list."""
     token = share_token or secrets.token_urlsafe(16)
     with get_conn() if conn is None else nullcontext(conn) as _conn:
@@ -82,7 +79,7 @@ def create_shopping_list(
 
 def get_shopping_list_by_id(
     list_id: int, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+) -> JsonDict | None:
     """Return a shopping list by ID."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute("SELECT * FROM shopping_lists WHERE id = ?", (list_id,)).fetchone()
@@ -91,7 +88,7 @@ def get_shopping_list_by_id(
 
 def get_shopping_list_by_token(
     share_token: str, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+) -> JsonDict | None:
     """Return a shopping list by its share token."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute(
@@ -102,7 +99,7 @@ def get_shopping_list_by_token(
 
 def get_user_shopping_lists(
     user_id: int | None, include_done: bool = True, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     """Return shopping lists for a user (or all if user_id is None for anon).
 
     For logged-in users, returns their lists.
@@ -126,7 +123,7 @@ def get_user_shopping_lists(
 
 def get_shopping_lists_by_ids(
     list_ids: list[int], conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     """Return shopping lists for the given IDs."""
     if not list_ids:
         return []
@@ -141,7 +138,7 @@ def get_shopping_lists_by_ids(
 
 def get_all_shopping_lists(
     include_done: bool = True, conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     """Return all shopping lists (for admin), with user name/email."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         query = """
@@ -245,7 +242,7 @@ def add_shopping_list_item(
     text: str,
     quantity: str | None = None,
     conn: sqlite3.Connection | None = None,
-) -> dict[str, object]:
+) -> JsonDict:
     """Add an item to a shopping list."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         max_order = _conn.execute(
@@ -278,7 +275,7 @@ def add_shopping_list_item(
 
 def get_shopping_list_items(
     list_id: int, lang: str = "fr", conn: sqlite3.Connection | None = None
-) -> list[dict[str, object]]:
+) -> list[JsonDict]:
     """Return all items for a shopping list, grouped by department."""
     dept_col = "display_name_en" if lang == "en" else "display_name_fr"
     with get_conn() if conn is None else nullcontext(conn) as _conn:
@@ -302,7 +299,7 @@ def get_shopping_list_items(
 
 def toggle_shopping_list_item(
     item_id: int, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+) -> JsonDict | None:
     """Toggle the is_done flag on an item. Returns updated item."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         item = _conn.execute(

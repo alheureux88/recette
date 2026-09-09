@@ -17,6 +17,7 @@ from recipes.shared.db import (
     get_existing_tags_for_prompt,
     get_setting,
 )
+from recipes.shared.models import JsonDict
 from recipes.shared.units import parse_quantity
 
 log = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ def build_system_prompt() -> str:
     return "\n".join(lines)
 
 
-def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, object]:
+def tag_recipe(raw_text: str, default_title: str | None = None) -> JsonDict:
     """Send the raw recipe text to the LLM and return a normalized payload.
 
     Returns a dict with the following shape:
@@ -399,8 +400,8 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> dict[str, obj
 
 
 def _extract_bilingual_payload(
-    data: dict[str, object], default_title: str | None
-) -> tuple[dict[str, object], dict[str, object]]:
+    data: JsonDict, default_title: str | None
+) -> tuple[JsonDict, JsonDict]:
     """Build the (fr, en) translation payloads from the LLM response.
 
     Accepts the new bilingual shape (`title_fr` / `title_en` / ...) and
@@ -441,7 +442,7 @@ def _clean_unit(value: object) -> str | None:
     return None
 
 
-def _normalize_ingredients(raw: object, lang: str) -> list[dict[str, object]]:
+def _normalize_ingredients(raw: object, lang: str) -> list[JsonDict]:
     """Normalise la liste d'ingrédients retournée par le LLM.
 
     Chaque entrée conserve `food_fr` et `food_en` quand le LLM les fournit,
@@ -452,7 +453,7 @@ def _normalize_ingredients(raw: object, lang: str) -> list[dict[str, object]]:
     if not isinstance(raw, list):
         return []
 
-    normalized: list[dict[str, object]] = []
+    normalized: list[JsonDict] = []
     food_key = f"food_{lang}"
     for item in raw:
         if isinstance(item, dict):
@@ -472,7 +473,7 @@ def _normalize_ingredients(raw: object, lang: str) -> list[dict[str, object]]:
             if qmin is None and "quantity_min" not in item:
                 qmin = parse_quantity(item.get("quantity"))
 
-            entry: dict[str, object] = {
+            entry: JsonDict = {
                 "food": food.strip() if isinstance(food, str) else "",
                 "quantity_min": qmin,
                 "quantity_max": parse_quantity(item.get("quantity_max")),
@@ -503,14 +504,14 @@ def _parse_servings(value: object) -> int | float | None:
     return parsed
 
 
-def _normalize_steps(raw: object, lang: str) -> list[dict[str, object]]:
+def _normalize_steps(raw: object, lang: str) -> list[JsonDict]:
     """Normalize the steps array from the LLM response.
 
     Each step is an object with 'text' (string) and 'timer_seconds' (int or null).
     """
     if not isinstance(raw, list):
         return []
-    result: list[dict[str, object]] = []
+    result: list[JsonDict] = []
     for item in raw:
         if isinstance(item, dict):
             text = item.get("text")

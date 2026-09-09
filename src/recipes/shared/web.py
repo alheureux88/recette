@@ -26,6 +26,7 @@ from recipes.shared.i18n import (
     ngettext,
     resolve_language,
 )
+from recipes.shared.models import JsonDict
 
 current_lang: ContextVar[str] = ContextVar("request_lang", default=DEFAULT_LANGUAGE)
 
@@ -60,9 +61,9 @@ templates.env.globals["supported_languages"] = SUPPORTED_LANGUAGES
 templates.env.globals["default_language"] = DEFAULT_LANGUAGE
 
 
-def _base_context(request: Request, **extra: object) -> dict[str, object]:
+def _base_context(request: Request, **extra: object) -> JsonDict:
     """Contexte de base commun à toutes les pages HTML."""
-    ctx: dict[str, object] = {
+    ctx: JsonDict = {
         "user": get_user(request),
         "auth_enabled": OIDC_ENABLED,
         "login_url": login_url(request),
@@ -93,7 +94,7 @@ def _parse_account_param(raw: str | None) -> int | None:
         return None
 
 
-def _provenance_context(request: Request, conn: object) -> dict[str, object]:
+def _provenance_context(request: Request, conn: object) -> JsonDict:
     """Filtre de provenance : affiché seulement si plusieurs comptes ont des recettes.
 
     Import local pour éviter une dépendance shared → features au niveau module.

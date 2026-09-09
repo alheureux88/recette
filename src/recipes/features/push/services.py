@@ -6,6 +6,7 @@ from contextlib import nullcontext
 from typing import Any
 
 from recipes.shared.db import get_conn
+from recipes.shared.models import JsonDict
 
 
 def save_push_subscription(
@@ -51,9 +52,7 @@ def save_push_subscription(
             return int(cur.lastrowid)
 
 
-def get_push_subscription(
-    endpoint: str, conn: sqlite3.Connection | None = None
-) -> dict[str, object] | None:
+def get_push_subscription(endpoint: str, conn: sqlite3.Connection | None = None) -> JsonDict | None:
     """Get a push subscription by endpoint."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute(
@@ -77,7 +76,7 @@ def delete_push_subscription(endpoint: str, conn: sqlite3.Connection | None = No
         return cur.rowcount > 0
 
 
-def get_all_push_subscriptions(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+def get_all_push_subscriptions(conn: sqlite3.Connection | None = None) -> list[JsonDict]:
     """Get all push subscriptions (for cleanup/testing)."""
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(

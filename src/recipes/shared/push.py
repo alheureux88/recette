@@ -12,6 +12,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from pywebpush import WebPushException, webpush
 
 log = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ def send_push_notification(
 
 
 def schedule_timer_notification(
-    scheduler: Any,
+    scheduler: BackgroundScheduler,
     recipe_id: int,
     step_index: int,
     duration_seconds: int,
@@ -165,7 +166,9 @@ def schedule_timer_notification(
     return job_id
 
 
-def cancel_timer_notification(scheduler: Any, recipe_id: int, step_index: int) -> int:
+def cancel_timer_notification(
+    scheduler: BackgroundScheduler, recipe_id: int, step_index: int
+) -> int:
     """Cancel all pending timer notifications for a recipe step.
 
     Returns:

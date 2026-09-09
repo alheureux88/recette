@@ -51,7 +51,24 @@ from recipes.shared.web import (
 log = logging.getLogger(__name__)
 
 POLL_INTERVAL_MINUTES = int(os.environ.get("POLL_INTERVAL_MINUTES", "15"))
-SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
+
+_INSECURE_SESSION_SECRET = "change-me-in-production"
+
+
+def _resolve_session_secret(oidc_enabled: bool = OIDC_ENABLED) -> str:
+    """Secret des sessions : échoue au démarrage si OIDC est actif sans secret.
+
+    Sans OIDC (dev local), le défaut est conservé avec un avertissement.
+    """
+    secret = os.environ.get("SESSION_SECRET", _INSECURE_SESSION_SECRET)
+    if secret == _INSECURE_SESSION_SECRET:
+        if oidc_enabled:
+            raise RuntimeError("SESSION_SECRET must be set when OIDC is enabled")
+        log.warning("SESSION_SECRET is not set — using an insecure default (dev only)")
+    return secret
+
+
+SESSION_SECRET = _resolve_session_secret()
 
 _scheduler: BackgroundScheduler | None = None
 

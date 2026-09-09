@@ -71,7 +71,10 @@ select = [
     "C4",   # flake8-comprehensions
     "SIM",  # flake8-simplify
 ]
-ignore = ["E501"]  # line length handled by formatter
+ignore = [
+    "E501", # line length handled by formatter
+    "UP040", # TypeAlias annotation kept over PEP 695 `type` (see AGENTS.md)
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["recipes"]

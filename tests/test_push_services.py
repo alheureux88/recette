@@ -65,3 +65,21 @@ class TestPushSubscriptions:
         save_push_subscription(user_id=None, endpoint=sub2["endpoint"], subscription=sub2)
         all_subs = get_all_push_subscriptions()
         assert len(all_subs) >= 2
+
+
+def test_timer_notification_scheduler_typed():
+    """Le scheduler push est typé BackgroundScheduler (pas Any)."""
+    import typing
+
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    from recipes.shared import push as push_module
+
+    assert (
+        typing.get_type_hints(push_module.schedule_timer_notification)["scheduler"]
+        is BackgroundScheduler
+    )
+    assert (
+        typing.get_type_hints(push_module.cancel_timer_notification)["scheduler"]
+        is BackgroundScheduler
+    )
