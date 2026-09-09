@@ -31,6 +31,7 @@ from recipes.shared.i18n import (
     COOKIE_MAX_AGE,
     LANGUAGE_COOKIE,
     SUPPORTED_LANGUAGES,
+    gettext,
 )
 from recipes.shared.poller import (
     IMAGES_DIR,
@@ -156,7 +157,8 @@ async def set_language(code: str, request: Request) -> RedirectResponse:
     """Set the language cookie and redirect back to the referring page."""
     candidate = code.strip().lower()
     if candidate not in SUPPORTED_LANGUAGES:
-        raise HTTPException(status_code=404, detail="Unsupported language")
+        lang = _resolve_request_lang(request)
+        raise HTTPException(status_code=404, detail=gettext("error.unsupported_language", lang))
     referer = request.headers.get("referer")
     target = referer if referer else "/"
     response = RedirectResponse(url=target, status_code=302)

@@ -550,6 +550,96 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "admin.shopping_empty": {"fr": "Aucune liste d'épicerie", "en": "No shopping lists"},
     "nav.admin_shopping": {"fr": "Administration Épicerie", "en": "Shopping administration"},
+    # --- Erreurs API (detail= des HTTPException) ---
+    "error.shopping_list_not_found": {
+        "fr": "Liste de courses introuvable",
+        "en": "Shopping list not found",
+    },
+    "error.not_authorized": {"fr": "Action non autorisée", "en": "Not authorized"},
+    "error.name_required": {"fr": "Le nom est requis", "en": "Name is required"},
+    "error.title_required": {"fr": "Le titre est requis", "en": "title is required"},
+    "error.text_required": {"fr": "Le texte est requis", "en": "Text is required"},
+    "error.department_required": {"fr": "Le rayon est requis", "en": "Department is required"},
+    "error.item_not_found": {"fr": "Élément introuvable", "en": "Item not found"},
+    "error.list_id_or_name_required": {
+        "fr": "ID de liste ou nom requis",
+        "en": "List ID or name required",
+    },
+    "error.recipe_id_required": {
+        "fr": "ID de recette requis",
+        "en": "recipe_id required",
+    },
+    "error.category_integer": {
+        "fr": "La catégorie doit être un entier valide",
+        "en": "category must be a valid integer",
+    },
+    "error.unsupported_language": {
+        "fr": "Langue non prise en charge",
+        "en": "Unsupported language",
+    },
+    "error.no_subject_in_token": {
+        "fr": "Sujet manquant dans le jeton",
+        "en": "No subject in token",
+    },
+    "error.not_authenticated": {"fr": "Authentification requise", "en": "Not authenticated"},
+    "error.admin_required": {
+        "fr": "Accès administrateur requis",
+        "en": "Admin access required",
+    },
+    "error.oidc_not_configured": {"fr": "OIDC non configuré", "en": "OIDC not configured"},
+    "error.auth_failed": {
+        "fr": "Échec de l'authentification",
+        "en": "Authentication failed",
+    },
+    "error.scheduler_unavailable": {
+        "fr": "Planificateur indisponible",
+        "en": "Scheduler not available",
+    },
+    "error.subscription_not_found": {
+        "fr": "Abonnement introuvable",
+        "en": "Subscription not found",
+    },
+    "error.invalid_subscription": {
+        "fr": "Données d'abonnement invalides",
+        "en": "Invalid subscription data",
+    },
+    # --- Parsers (erreurs de lecture de fichiers) ---
+    "error.doc_textract_missing": {
+        "fr": "Le support des fichiers .doc nécessite la bibliothèque 'textract'. "
+        "Installez-la avec: pip install textract",
+        "en": "Support for .doc files requires the 'textract' library. "
+        "Install it with: pip install textract",
+    },
+    "error.doc_antiword_missing": {
+        "fr": "Le support des fichiers .doc nécessite l'outil système 'antiword'. "
+        "Installez-le avec: apt-get install antiword (Linux) ou "
+        "brew install antiword (macOS). "
+        "Voir: https://textract.readthedocs.io/en/latest/installation.html",
+        "en": "Support for .doc files requires the 'antiword' system tool. "
+        "Install it with: apt-get install antiword (Linux) or "
+        "brew install antiword (macOS). "
+        "See: https://textract.readthedocs.io/en/latest/installation.html",
+    },
+    "error.doc_read": {
+        "fr": "Erreur lors de la lecture du fichier .doc : {error}",
+        "en": "Error reading .doc file: {error}",
+    },
+    "error.odt_odfpy_missing": {
+        "fr": "Le support des fichiers .odt nécessite la bibliothèque 'odfpy'. "
+        "Installez-la avec: pip install odfpy",
+        "en": "Support for .odt files requires the 'odfpy' library. "
+        "Install it with: pip install odfpy",
+    },
+    "error.odt_read": {
+        "fr": "Erreur lors de la lecture du fichier .odt : {error}",
+        "en": "Error reading .odt file: {error}",
+    },
+    "error.unsupported_file_type": {
+        "fr": "Type de fichier non pris en charge : {suffix}",
+        "en": "Unsupported file type: {suffix}",
+    },
+    # --- Comptes Dropbox ---
+    "account.default": {"fr": "Défaut", "en": "Default"},
 }
 
 

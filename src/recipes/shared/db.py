@@ -26,7 +26,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-from recipes.shared.i18n import DEFAULT_LANGUAGE
+from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
 
 # Constants used by multiple modules
 DEFAULT_ACCOUNT_ID = -1
@@ -893,7 +893,7 @@ def get_recipe(
         result["provenance"] = (
             {"id": pc_row["id"], "name": pc_row["name"]}
             if pc_row
-            else {"id": None, "name": DEFAULT_ACCOUNT_NAME}
+            else {"id": None, "name": gettext("account.default", lang)}
         )
 
         tag_rows = _conn.execute(
@@ -1122,7 +1122,7 @@ def search_recipes(
             if d.get("provenance_id") is not None:
                 d["provenance"] = {"id": d["provenance_id"], "name": d["provenance_name"]}
             else:
-                d["provenance"] = {"id": None, "name": DEFAULT_ACCOUNT_NAME}
+                d["provenance"] = {"id": None, "name": gettext("account.default", lang)}
 
             tag_rows = _conn.execute(
                 """

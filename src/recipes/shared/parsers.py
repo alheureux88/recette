@@ -7,6 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
+
 
 def parse_txt(content: bytes) -> str:
     return content.decode("utf-8", errors="replace")
@@ -47,7 +49,7 @@ def _decode_with_fallback(raw_bytes: bytes) -> str:
         return result_utf8
 
 
-def parse_doc(content: bytes) -> str:
+def parse_doc(content: bytes, lang: str = DEFAULT_LANGUAGE) -> str:
     """Extract text from .doc files using textract (requires antiword)."""
     import os
     import tempfile
@@ -97,23 +99,15 @@ def parse_doc(content: bytes) -> str:
                 else:
                     os.environ.pop(key, None)
     except ImportError:
-        raise ValueError(
-            "Le support des fichiers .doc nécessite la bibliothèque 'textract'. "
-            "Installez-la avec: pip install textract"
-        ) from None
+        raise ValueError(gettext("error.doc_textract_missing", lang)) from None
     except Exception as e:
         error_msg = str(e)
         if "antiword" in error_msg.lower():
-            raise ValueError(
-                "Le support des fichiers .doc nécessite l'outil système 'antiword'. "
-                "Installez-le avec: apt-get install antiword (Linux) ou "
-                "brew install antiword (macOS). "
-                "Voir: https://textract.readthedocs.io/en/latest/installation.html"
-            ) from e
-        raise ValueError(f"Erreur lors de la lecture du fichier .doc: {e}") from e
+            raise ValueError(gettext("error.doc_antiword_missing", lang)) from e
+        raise ValueError(gettext("error.doc_read", lang, error=e)) from e
 
 
-def parse_odt(content: bytes) -> str:
+def parse_odt(content: bytes, lang: str = DEFAULT_LANGUAGE) -> str:
     """Extract text from ODT files, including headings, paragraphs, and list items."""
     try:
         from odf.opendocument import load
@@ -153,12 +147,9 @@ def parse_odt(content: bytes) -> str:
         return "\n".join(text_parts)
 
     except ImportError:
-        raise ValueError(
-            "Le support des fichiers .odt nécessite la bibliothèque 'odfpy'. "
-            "Installez-la avec: pip install odfpy"
-        ) from None
+        raise ValueError(gettext("error.odt_odfpy_missing", lang)) from None
     except Exception as e:
-        raise ValueError(f"Erreur lors de la lecture du fichier .odt: {e}") from e
+        raise ValueError(gettext("error.odt_read", lang, error=e)) from e
 
 
 def parse_pdf(content: bytes) -> str:
@@ -173,7 +164,7 @@ def parse_pdf(content: bytes) -> str:
     return "\n".join(text_parts)
 
 
-def extract_text(filename: str, content: bytes) -> str:
+def extract_text(filename: str, content: bytes, lang: str = DEFAULT_LANGUAGE) -> str:
     """Dispatch to the right parser based on file extension."""
     suffix = Path(filename).suffix.lower()
     if suffix == ".txt":
@@ -181,13 +172,13 @@ def extract_text(filename: str, content: bytes) -> str:
     elif suffix == ".docx":
         return parse_docx(content)
     elif suffix == ".doc":
-        return parse_doc(content)
+        return parse_doc(content, lang)
     elif suffix == ".odt":
-        return parse_odt(content)
+        return parse_odt(content, lang)
     elif suffix == ".pdf":
         return parse_pdf(content)
     else:
-        raise ValueError(f"Type de fichier non pris en charge : {suffix}")
+        raise ValueError(gettext("error.unsupported_file_type", lang, suffix=suffix))
 
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".emf", ".wmf"}

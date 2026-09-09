@@ -54,6 +54,7 @@ from recipes.shared.db import (
     update_recipe_manual,
     update_recipe_tags,
 )
+from recipes.shared.i18n import gettext
 from recipes.shared.models import (
     BulkCategoryUpdate,
     BulkTagsUpdate,
@@ -85,8 +86,8 @@ def _admin_table_context(request: Request, conn: sqlite3.Connection) -> dict[str
     return _base_context(
         request,
         recipes=get_all_recipes_admin(lang=lang, conn=conn),
-        blacklisted=get_blacklisted_files(conn=conn),
-        failed=get_failed_files(conn=conn),
+        blacklisted=get_blacklisted_files(conn=conn, lang=lang),
+        failed=get_failed_files(conn=conn, lang=lang),
         all_categories=get_all_categories(only_used=False, lang=lang, conn=conn),
         all_tags=get_existing_tags_for_prompt(lang=lang, conn=conn),
         all_tag_families=get_tag_families(lang=lang, conn=conn),
@@ -282,10 +283,14 @@ async def admin_recipes_data(
 
 @router.get("/files.json")
 async def admin_files_data(
+    request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
     """Data for blacklisted and failed files tables."""
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
     return {
         "blacklisted": [
             {
@@ -293,7 +298,7 @@ async def admin_files_data(
                 "provenance": str(item.get("provenance") or ""),
                 "date": str(item.get("blacklisted_at") or ""),
             }
-            for item in get_blacklisted_files(conn=conn)
+            for item in get_blacklisted_files(conn=conn, lang=lang)
         ],
         "failed": [
             {
@@ -302,32 +307,40 @@ async def admin_files_data(
                 "error": str(item.get("error") or ""),
                 "date": str(item.get("failed_at") or ""),
             }
-            for item in get_failed_files(conn=conn)
+            for item in get_failed_files(conn=conn, lang=lang)
         ],
     }
 
 
 @router.post("/inline/{recipe_id}/category")
 async def admin_inline_category(
+    request: Request,
     data: InlineCategoryUpdate,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
     if not update_recipe_category(recipe_id, data.category, conn=conn):
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
     return {"ok": True}
 
 
 @router.post("/inline/{recipe_id}/tags")
 async def admin_inline_tags(
+    request: Request,
     data: InlineTagsUpdate,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, object]:
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
     if not update_recipe_tags(recipe_id, _parse_tag_keys(data.tags), conn=conn):
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
     return {"ok": True}
 
 
@@ -700,7 +713,7 @@ async def admin_edit_form(
     lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_edit.html",
@@ -720,16 +733,17 @@ async def admin_edit_save(
     recipe_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.shared.web import templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     recipe = get_recipe(recipe_id, conn=conn)
     if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
 
     form = await request.form()
     title = str(form.get("title") or "").strip()
     if not title:
-        raise HTTPException(status_code=422, detail="title is required")
+        raise HTTPException(status_code=422, detail=gettext("error.title_required", lang))
 
     description = str(form.get("description") or "").strip()
     steps_json = str(form.get("steps") or "[]").strip()
@@ -756,7 +770,7 @@ async def admin_edit_save(
     }
 
     if not update_recipe_manual(recipe_id, data, conn=conn):
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
     sync_recipe_tags(recipe_id, _tags_from_form(form), conn=conn)
 
     return templates.TemplateResponse(
@@ -871,7 +885,7 @@ async def admin_shopping_list_view(
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
     items = get_shopping_list_items(list_id, lang=lang, conn=conn)
     departments = get_shopping_departments(lang=lang, conn=conn)

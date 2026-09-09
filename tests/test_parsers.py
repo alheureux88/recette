@@ -40,6 +40,16 @@ def test_extract_text_unsupported_extension():
         extract_text("recipe.xyz", b"some content")
 
 
+def test_extract_text_unsupported_extension_en():
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        extract_text("recipe.xyz", b"some content", lang="en")
+
+
+def test_extract_text_unsupported_extension_defaults_to_fr():
+    with pytest.raises(ValueError, match="Type de fichier non pris en charge"):
+        extract_text("recipe.xyz", b"some content", lang="xx")
+
+
 def test_extract_text_case_insensitive_extension():
     content = b"Title: Cake\nIngredients: flour"
     # Should not raise even with uppercase extension

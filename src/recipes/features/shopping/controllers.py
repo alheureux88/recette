@@ -23,10 +23,11 @@ from recipes.features.shopping.services import (
 )
 from recipes.shared.auth import get_user
 from recipes.shared.db import get_db, get_recipe
+from recipes.shared.i18n import gettext
 from recipes.shared.models import RecipeIngredientsToShopping
 from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.shared.units import format_quantity_string
-from recipes.shared.web import _shopping_list_user_id
+from recipes.shared.web import _resolve_request_lang, _shopping_list_user_id
 
 router = APIRouter(tags=["shopping"])
 
@@ -106,7 +107,7 @@ async def shopping_list_detail(
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
     user_id = _shopping_list_user_id(request)
     if user_id is None:
@@ -152,7 +153,7 @@ async def shopping_list_cook(
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
     user_id = _shopping_list_user_id(request)
     if user_id is None:
@@ -202,7 +203,7 @@ async def shopping_list_shared(
     lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_token(token, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
     user_id = _shopping_list_user_id(request)
     if user_id is None:
@@ -258,11 +259,12 @@ async def shopping_list_delete(
     list_id: int = Path(gt=0),
 ) -> RedirectResponse:
     """Delete a shopping list."""
+    lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
     if not _can_edit_shopping_list(request, shopping_list):
-        raise HTTPException(status_code=403, detail="Not authorized")
+        raise HTTPException(status_code=403, detail=gettext("error.not_authorized", lang))
     delete_shopping_list(list_id, conn=conn)
     return RedirectResponse(url="/shopping", status_code=303)
 
@@ -277,15 +279,16 @@ async def shopping_list_rename(
     """Rename a shopping list."""
     from recipes.shared.web import _base_context, templates
 
+    lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
     if not _can_edit_shopping_list(request, shopping_list):
-        raise HTTPException(status_code=403, detail="Not authorized")
+        raise HTTPException(status_code=403, detail=gettext("error.not_authorized", lang))
 
     name = name.strip()
     if not name:
-        raise HTTPException(status_code=400, detail="Name is required")
+        raise HTTPException(status_code=400, detail=gettext("error.name_required", lang))
     rename_shopping_list(list_id, name, conn=conn)
 
     if request.headers.get("hx-request"):
@@ -314,22 +317,22 @@ async def shopping_list_add_item(
     """Add an item to a shopping list."""
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     shopping_list = get_shopping_list_by_id(list_id, conn=conn)
     if not shopping_list:
-        raise HTTPException(status_code=404, detail="Shopping list not found")
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
     if not _can_edit_shopping_list(request, shopping_list):
-        raise HTTPException(status_code=403, detail="Not authorized")
+        raise HTTPException(status_code=403, detail=gettext("error.not_authorized", lang))
 
     text = text.strip()
     quantity = quantity.strip() if quantity else None
 
     if not text:
-        raise HTTPException(status_code=400, detail="Text is required")
+        raise HTTPException(status_code=400, detail=gettext("error.text_required", lang))
     if not department_id:
-        raise HTTPException(status_code=400, detail="Department is required")
+        raise HTTPException(status_code=400, detail=gettext("error.department_required", lang))
 
     add_shopping_list_item(list_id, department_id, text, quantity, conn=conn)
-    lang = _resolve_request_lang(request)
 
     if request.headers.get("hx-request"):
         items = get_shopping_list_items(list_id, lang=lang, conn=conn)
@@ -365,12 +368,12 @@ async def shopping_item_toggle(
     """Toggle an item's done status."""
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     item = toggle_shopping_list_item(item_id, conn=conn)
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
 
     if request.headers.get("hx-request"):
-        lang = _resolve_request_lang(request)
         mode = request.query_params.get("mode", "edit")
         return templates.TemplateResponse(
             request=request,
@@ -396,6 +399,7 @@ async def shopping_item_remove(
     """Remove an item from a shopping list."""
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     list_id_before = None
     if request.headers.get("hx-request"):
         row = conn.execute(
@@ -406,10 +410,9 @@ async def shopping_item_remove(
 
     removed = remove_shopping_list_item(item_id, conn=conn)
     if not removed:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
 
     if request.headers.get("hx-request") and list_id_before:
-        lang = _resolve_request_lang(request)
         items = get_shopping_list_items(list_id_before, lang=lang, conn=conn)
         departments = get_shopping_departments(lang=lang, conn=conn)
         grouped: dict[int, dict[str, Any]] = {}
@@ -449,12 +452,13 @@ async def shopping_item_update(
     """Update an item's text, quantity, and/or department."""
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     text = text.strip()
     quantity = quantity.strip() if quantity else None
     updated = update_shopping_list_item(item_id, text, quantity, department_id, conn=conn)
 
     if not updated:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
 
     if request.headers.get("hx-request"):
         row = conn.execute(
@@ -470,7 +474,7 @@ async def shopping_item_update(
                     updated_item = item
                     break
             if not updated_item:
-                raise HTTPException(status_code=404, detail="Item not found")
+                raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
             mode = request.query_params.get("mode", "edit")
             return templates.TemplateResponse(
                 request=request,
@@ -501,23 +505,25 @@ async def shopping_add_from_recipe(
     if data.list_id:
         shopping_list = get_shopping_list_by_id(data.list_id, conn=conn)
         if not shopping_list:
-            raise HTTPException(status_code=404, detail="Shopping list not found")
+            raise HTTPException(
+                status_code=404, detail=gettext("error.shopping_list_not_found", lang)
+            )
         if not _can_edit_shopping_list(request, shopping_list):
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise HTTPException(status_code=403, detail=gettext("error.not_authorized", lang))
         list_id = data.list_id
     elif data.new_list_name:
         lst = create_shopping_list(data.new_list_name, user_id=user_id, conn=conn)
         list_id = int(str(lst["id"]))
     else:
-        raise HTTPException(status_code=400, detail="List ID or name required")
+        raise HTTPException(status_code=400, detail=gettext("error.list_id_or_name_required", lang))
 
     recipe_id_param = request.query_params.get("recipe_id")
     if not recipe_id_param:
-        raise HTTPException(status_code=400, detail="recipe_id required")
+        raise HTTPException(status_code=400, detail=gettext("error.recipe_id_required", lang))
     recipe_id = int(recipe_id_param)
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
 
     ingredients = recipe.get("ingredients", [])
     if not isinstance(ingredients, list):

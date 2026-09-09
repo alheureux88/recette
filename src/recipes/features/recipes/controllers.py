@@ -134,7 +134,7 @@ async def index(
             active_tag_ids=tags,
             active_category_id=None,
             favorite_ids=favorite_ids,
-            **_provenance_context(conn),
+            **_provenance_context(request, conn),
         ),
     )
 
@@ -158,7 +158,7 @@ async def search(
             category_id = int(category)
         except ValueError:
             raise HTTPException(
-                status_code=422, detail="category must be a valid integer"
+                status_code=422, detail=gettext("error.category_integer", lang)
             ) from None
     recipes = search_recipes(
         query=q,
@@ -180,7 +180,7 @@ async def search(
             "favorite_ids": favorite_ids,
             "user": user,
             "auth_enabled": OIDC_ENABLED,
-            **_provenance_context(conn),
+            **_provenance_context(request, conn),
         },
     )
 
@@ -359,15 +359,16 @@ async def toggle_favorite(
 ) -> HTMLResponse:
     from recipes.shared.web import _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     currently_fav = is_favorite(user["id"], recipe_id, conn=conn)
     if currently_fav:
         remove_favorite(user["id"], recipe_id, conn=conn)
     else:
         add_favorite(user["id"], recipe_id, conn=conn)
 
-    recipe = get_recipe(recipe_id, lang=_resolve_request_lang(request), conn=conn)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found")
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
 
     return templates.TemplateResponse(
         request=request,

@@ -3,7 +3,6 @@
 import sqlite3
 from contextlib import nullcontext
 
-from recipes.features.admin.services import DEFAULT_ACCOUNT_NAME
 from recipes.shared.db import (
     _load_translation,
     _localize_tag,
@@ -11,7 +10,7 @@ from recipes.shared.db import (
     get_conn,
     get_recipe_images,
 )
-from recipes.shared.i18n import DEFAULT_LANGUAGE
+from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
 
 
 def is_favorite(user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None) -> bool:
@@ -146,7 +145,7 @@ def get_all_recipes_admin(
             if d.get("provenance_id") is not None:
                 d["provenance"] = d["provenance_name"]
             else:
-                d["provenance"] = DEFAULT_ACCOUNT_NAME
+                d["provenance"] = gettext("account.default", lang)
 
             tag_rows = _conn.execute(
                 """

@@ -8,6 +8,8 @@ from fastapi.responses import RedirectResponse
 from recipes.features.auth.services import get_or_create_user
 from recipes.shared.auth import OIDC_ENABLED, authorize_redirect, fetch_token
 from recipes.shared.db import get_db
+from recipes.shared.i18n import gettext
+from recipes.shared.web import _resolve_request_lang
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,7 +31,8 @@ async def callback(
     userinfo = token.get("userinfo", {})
     subject = userinfo.get("sub", "")
     if not subject:
-        raise HTTPException(status_code=401, detail="No subject in token")
+        lang = _resolve_request_lang(request)
+        raise HTTPException(status_code=401, detail=gettext("error.no_subject_in_token", lang))
     user_id = get_or_create_user(
         subject=subject,
         email=userinfo.get("email"),

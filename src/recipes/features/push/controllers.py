@@ -13,6 +13,7 @@ from recipes.features.push.services import (
 )
 from recipes.shared.auth import get_user
 from recipes.shared.db import get_db
+from recipes.shared.i18n import gettext
 from recipes.shared.models import (
     PushSubscriptionRegister,
     TimerCancelRequest,
@@ -23,6 +24,7 @@ from recipes.shared.push import (
     cancel_timer_notification,
     schedule_timer_notification,
 )
+from recipes.shared.web import _resolve_request_lang
 
 router = APIRouter(prefix="/api/push", tags=["push"])
 
@@ -73,19 +75,22 @@ async def unsubscribe(
 
 @router.post("/schedule-timer")
 async def schedule_timer(
-    data: TimerScheduleRequest, conn: sqlite3.Connection = Depends(get_db)
+    request: Request,
+    data: TimerScheduleRequest,
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, object]:
     """Schedule a push notification for when a timer completes."""
+    lang = _resolve_request_lang(request)
     if not _scheduler:
-        raise HTTPException(status_code=503, detail="Scheduler not available")
+        raise HTTPException(status_code=503, detail=gettext("error.scheduler_unavailable", lang))
 
     sub = get_push_subscription(data.endpoint, conn=conn)
     if not sub:
-        raise HTTPException(status_code=404, detail="Subscription not found")
+        raise HTTPException(status_code=404, detail=gettext("error.subscription_not_found", lang))
 
     subscription_obj = sub["subscription"]
     if not isinstance(subscription_obj, dict):
-        raise HTTPException(status_code=500, detail="Invalid subscription data")
+        raise HTTPException(status_code=500, detail=gettext("error.invalid_subscription", lang))
 
     job_id = schedule_timer_notification(
         _scheduler,
@@ -98,10 +103,11 @@ async def schedule_timer(
 
 
 @router.post("/cancel-timer")
-async def cancel_timer(data: TimerCancelRequest) -> dict[str, object]:
+async def cancel_timer(request: Request, data: TimerCancelRequest) -> dict[str, object]:
     """Cancel scheduled timer notifications for a recipe step."""
     if not _scheduler:
-        raise HTTPException(status_code=503, detail="Scheduler not available")
+        lang = _resolve_request_lang(request)
+        raise HTTPException(status_code=503, detail=gettext("error.scheduler_unavailable", lang))
 
     removed = cancel_timer_notification(_scheduler, data.recipe_id, data.step_index)
     return {"ok": True, "removed": removed}

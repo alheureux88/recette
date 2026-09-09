@@ -93,12 +93,16 @@ def _parse_account_param(raw: str | None) -> int | None:
         return None
 
 
-def _provenance_context(conn: object) -> dict[str, object]:
+def _provenance_context(request: Request, conn: object) -> dict[str, object]:
     """Filtre de provenance : affiché seulement si plusieurs comptes ont des recettes.
 
     Import local pour éviter une dépendance shared → features au niveau module.
     """
     from recipes.features.admin.services import get_recipe_provenances
 
+    lang = _resolve_request_lang(request)
     provenances = get_recipe_provenances(conn=conn)  # type: ignore[arg-type]
+    for provenance in provenances:
+        if provenance.get("id") == DEFAULT_ACCOUNT_ID:
+            provenance["name"] = gettext("account.default", lang)
     return {"provenances": provenances, "show_provenance": len(provenances) > 1}

@@ -9,6 +9,8 @@ from authlib.integrations.starlette_client import OAuth, OAuthError
 from fastapi import HTTPException, Request
 from starlette.responses import RedirectResponse
 
+from recipes.shared.i18n import LANGUAGE_COOKIE, gettext, resolve_language
+
 OIDC_ISSUER = os.environ.get("OIDC_ISSUER", "")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", "")
@@ -33,10 +35,21 @@ def get_user(request: Request) -> dict[str, Any] | None:
     return request.session.get("user")
 
 
+def _request_lang(request: Request) -> str:
+    """Langue de la requête (résolue sans dépendre de shared.web)."""
+    return resolve_language(
+        request.cookies.get(LANGUAGE_COOKIE),
+        request.headers.get("accept-language"),
+    )
+
+
 def require_user(request: Request) -> dict[str, Any]:
     user = get_user(request)
     if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(
+            status_code=401,
+            detail=gettext("error.not_authenticated", _request_lang(request)),
+        )
     return user
 
 
@@ -51,7 +64,10 @@ def is_admin(request: Request) -> bool:
 def require_admin(request: Request) -> dict[str, Any]:
     user = require_user(request)
     if not is_admin(request):
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(
+            status_code=403,
+            detail=gettext("error.admin_required", _request_lang(request)),
+        )
     return user
 
 
@@ -65,16 +81,25 @@ def logout_url(request: Request) -> str:
 
 async def authorize_redirect(request: Request) -> RedirectResponse:
     if not oauth.authelia:
-        raise HTTPException(status_code=503, detail="OIDC not configured")
+        raise HTTPException(
+            status_code=503,
+            detail=gettext("error.oidc_not_configured", _request_lang(request)),
+        )
     result: RedirectResponse = await oauth.authelia.authorize_redirect(request, OIDC_REDIRECT_URI)
     return result
 
 
 async def fetch_token(request: Request) -> dict[str, Any]:
     if not oauth.authelia:
-        raise HTTPException(status_code=503, detail="OIDC not configured")
+        raise HTTPException(
+            status_code=503,
+            detail=gettext("error.oidc_not_configured", _request_lang(request)),
+        )
     try:
         token: dict[str, Any] = await oauth.authelia.authorize_access_token(request)
     except OAuthError as exc:
-        raise HTTPException(status_code=401, detail="Authentication failed") from exc
+        raise HTTPException(
+            status_code=401,
+            detail=gettext("error.auth_failed", _request_lang(request)),
+        ) from exc
     return token

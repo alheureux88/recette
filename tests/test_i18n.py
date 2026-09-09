@@ -225,3 +225,37 @@ def test_lang_switcher_shows_only_other_language_in_en(client):
     resp = client.get("/", cookies={"lang": "en"})
     assert 'href="/lang/fr"' in resp.text
     assert 'href="/lang/en"' not in resp.text
+
+
+def test_error_keys_translated_fr_en():
+    from recipes.shared.i18n import TRANSLATIONS, gettext
+
+    keys = [k for k in TRANSLATIONS if k.startswith("error.") or k == "account.default"]
+    assert len(keys) >= 20
+    for key in keys:
+        assert gettext(key, "fr") not in ("", key)
+        assert gettext(key, "en") not in ("", key)
+
+
+def test_shopping_detail_not_found_translated(client):
+    resp = client.get("/shopping/9999")
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Liste de courses introuvable"}
+
+
+def test_shopping_detail_not_found_en(client):
+    resp = client.get("/shopping/9999", cookies={"lang": "en"})
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Shopping list not found"}
+
+
+def test_lang_unknown_code_detail_translated(client):
+    resp = client.get("/lang/zz")
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Langue non prise en charge"}
+
+
+def test_lang_unknown_code_detail_en(client):
+    resp = client.get("/lang/zz", cookies={"lang": "en"})
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Unsupported language"}

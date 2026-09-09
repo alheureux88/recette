@@ -10,6 +10,7 @@ from recipes.shared.db import (
     get_setting,
     is_default_account_visible,
 )
+from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
 
 # Re-export for backwards compatibility
 __all__ = [
@@ -70,7 +71,9 @@ def is_blacklisted(path: str, conn: sqlite3.Connection | None = None) -> bool:
         return row is not None
 
 
-def get_blacklisted_files(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+def get_blacklisted_files(
+    conn: sqlite3.Connection | None = None, lang: str = DEFAULT_LANGUAGE
+) -> list[dict[str, object]]:
 
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
@@ -79,7 +82,7 @@ def get_blacklisted_files(conn: sqlite3.Connection | None = None) -> list[dict[s
     conns = _connection_names(conn=_conn)
     result = [dict(r) for r in rows]
     for r in result:
-        r["provenance"] = _provenance_from_path(str(r["path"]), conns)
+        r["provenance"] = _provenance_from_path(str(r["path"]), conns, lang)
     return result
 
 
@@ -105,7 +108,9 @@ def record_failed_file(path: str, error: str, conn: sqlite3.Connection | None = 
         )
 
 
-def get_failed_files(conn: sqlite3.Connection | None = None) -> list[dict[str, object]]:
+def get_failed_files(
+    conn: sqlite3.Connection | None = None, lang: str = DEFAULT_LANGUAGE
+) -> list[dict[str, object]]:
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
             "SELECT path, error, failed_at FROM failed_files ORDER BY failed_at DESC"
@@ -113,7 +118,7 @@ def get_failed_files(conn: sqlite3.Connection | None = None) -> list[dict[str, o
     conns = _connection_names(conn=_conn)
     result = [dict(r) for r in rows]
     for r in result:
-        r["provenance"] = _provenance_from_path(str(r["path"]), conns)
+        r["provenance"] = _provenance_from_path(str(r["path"]), conns, lang)
     return result
 
 
@@ -250,7 +255,9 @@ def set_default_account_visible(visible: bool, conn: sqlite3.Connection | None =
 # ---------------------------------------------------------------------------
 
 
-def _provenance_from_path(path: str, conn_names: dict[int, str]) -> str:
+def _provenance_from_path(
+    path: str, conn_names: dict[int, str], lang: str = DEFAULT_LANGUAGE
+) -> str:
     """Get the origin account name from a source path (prefix 'account:<id>:')."""
     if path.startswith("account:"):
         try:
@@ -258,7 +265,7 @@ def _provenance_from_path(path: str, conn_names: dict[int, str]) -> str:
         except (IndexError, ValueError):
             return "?"
         return conn_names.get(conn_id, "?")
-    return DEFAULT_ACCOUNT_NAME
+    return gettext("account.default", lang)
 
 
 def _connection_names(conn: sqlite3.Connection | None = None) -> dict[int, str]:
