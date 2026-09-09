@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from recipes.features.preferences.controllers import ordered_departments_for_user
 from recipes.features.shopping.services import (
     add_shopping_list_item,
     create_shopping_list,
@@ -134,7 +135,7 @@ async def shopping_list_detail(
     _require_shopping_access(request, shopping_list, lang)
 
     items = get_shopping_list_items(list_id, lang=lang, conn=conn)
-    departments = get_shopping_departments(lang=lang, conn=conn)
+    departments = ordered_departments_for_user(request, lang, conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -178,7 +179,7 @@ async def shopping_list_cook(
     _require_shopping_access(request, shopping_list, lang)
 
     items = get_shopping_list_items(list_id, lang=lang, conn=conn)
-    departments = get_shopping_departments(lang=lang, conn=conn)
+    departments = ordered_departments_for_user(request, lang, conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -228,7 +229,7 @@ async def shopping_list_shared(
         _add_anon_list_id(request, int(str(shopping_list["id"])))
 
     items = get_shopping_list_items(int(str(shopping_list["id"])), lang=lang, conn=conn)
-    departments = get_shopping_departments(lang=lang, conn=conn)
+    departments = ordered_departments_for_user(request, lang, conn)
 
     grouped: dict[int, dict[str, Any]] = {}
     for dept in departments:
@@ -354,7 +355,7 @@ async def shopping_list_add_item(
 
     if request.headers.get("hx-request"):
         items = get_shopping_list_items(list_id, lang=lang, conn=conn)
-        departments = get_shopping_departments(lang=lang, conn=conn)
+        departments = ordered_departments_for_user(request, lang, conn)
         grouped: dict[int, dict[str, Any]] = {}
         for dept in departments:
             grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}
@@ -445,7 +446,7 @@ async def shopping_item_remove(
 
     if request.headers.get("hx-request") and list_id_before:
         items = get_shopping_list_items(list_id_before, lang=lang, conn=conn)
-        departments = get_shopping_departments(lang=lang, conn=conn)
+        departments = ordered_departments_for_user(request, lang, conn)
         grouped: dict[int, dict[str, Any]] = {}
         for dept in departments:
             grouped[int(str(dept["id"]))] = {"department": dept, "item_list": []}

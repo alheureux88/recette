@@ -44,6 +44,26 @@ class TimerCancelRequest(BaseModel):
     step_index: int = Field(description="Step index (0-based)")
 
 
+class PreferencesUpdate(BaseModel):
+    language: str | None = Field(default=None, description="UI language: fr or en")
+    units: str | None = Field(
+        default=None, description="Units system: original, metric, or imperial"
+    )
+    theme: str | None = Field(default=None, description="Theme: light, dark, or system")
+    print_images: bool | None = Field(default=None, description="Print images by default")
+    print_tags: bool | None = Field(default=None, description="Print tags by default")
+    print_description: bool | None = Field(default=None, description="Print description by default")
+    print_links: bool | None = Field(default=None, description="Print external links by default")
+
+
+class DepartmentOrderUpdate(BaseModel):
+    order: list[str] = Field(description="Department technical names in display order")
+
+
+class ThemeUpdate(BaseModel):
+    theme: str = Field(description="Theme: light, dark, or system")
+
+
 class RecipeIngredientsToShopping(BaseModel):
     ingredient_indices: list[int] = Field(description="Indices of ingredients to add")
     list_id: int | None = Field(default=None, description="Existing list ID, or None to create new")

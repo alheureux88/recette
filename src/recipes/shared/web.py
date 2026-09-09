@@ -63,6 +63,8 @@ templates.env.globals["default_language"] = DEFAULT_LANGUAGE
 
 def _base_context(request: Request, **extra: object) -> JsonDict:
     """Contexte de base commun à toutes les pages HTML."""
+    from recipes.features.preferences.controllers import theme_for_request
+
     ctx: JsonDict = {
         "user": get_user(request),
         "auth_enabled": OIDC_ENABLED,
@@ -71,6 +73,7 @@ def _base_context(request: Request, **extra: object) -> JsonDict:
         "is_admin": is_admin(request),
         "lang": _resolve_request_lang(request),
         "available_languages": available_languages(),
+        "theme_pref": theme_for_request(request),
     }
     ctx.update(extra)
     return ctx

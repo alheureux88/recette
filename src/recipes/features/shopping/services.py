@@ -50,6 +50,20 @@ def get_department_by_id(dept_id: int, conn: sqlite3.Connection | None = None) -
         return dict(row) if row else None
 
 
+def apply_department_order(departments: list[JsonDict], order: list[str] | None) -> list[JsonDict]:
+    """Reorder departments following a user's saved order (by technical name).
+
+    Departments absent from `order` keep their relative position at the end.
+    Unknown names in `order` are ignored. An empty/None order is a no-op.
+    """
+    if not order:
+        return list(departments)
+    rank = {name: idx for idx, name in enumerate(order)}
+    indexed = list(enumerate(departments))
+    indexed.sort(key=lambda pair: (rank.get(str(pair[1].get("name")), len(rank)), pair[0]))
+    return [dept for _, dept in indexed]
+
+
 # ---------------------------------------------------------------------------
 # Shopping lists
 # ---------------------------------------------------------------------------

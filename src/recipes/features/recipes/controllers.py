@@ -8,6 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from recipes.features.admin.services import get_recipe_provenances
+from recipes.features.preferences.controllers import (
+    print_prefs_for_user,
+    units_for_user,
+)
 from recipes.features.recipes.services import (
     add_favorite,
     get_favorite_recipes,
@@ -192,7 +196,7 @@ async def recipe_detail(
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
-    units: str = Query(default="original"),
+    units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
 ) -> Response:
     from recipes.shared.errors import render_not_found
@@ -251,6 +255,7 @@ async def recipe_detail(
                     }
                 )
 
+    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
     return templates.TemplateResponse(
         request=request,
         name="recipe.html",
@@ -262,10 +267,11 @@ async def recipe_detail(
             steps_list=steps_list,
             shopping_lists=shopping_lists_data,
             ingredients_json=json.dumps(ingredients_for_json, ensure_ascii=False),
+            print_prefs=print_prefs_for_user(request, conn),
             **_ingredient_context(
                 recipe,
                 _parse_servings_param(servings),
-                units,
+                resolved_units,
                 _parse_multiplier_param(multiplier),
                 lang=lang,
             ),
@@ -279,7 +285,7 @@ async def recipe_cook(
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
-    units: str = Query(default="original"),
+    units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
 ) -> Response:
     """Mode cuisine : vue épurée (ingrédients + étapes) avec cases à cocher."""
@@ -291,10 +297,11 @@ async def recipe_cook(
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
     ingredient_ctx = _ingredient_context(
         recipe,
         _parse_servings_param(servings),
-        units,
+        resolved_units,
         _parse_multiplier_param(multiplier),
         lang=lang,
     )
@@ -331,7 +338,7 @@ async def recipe_ingredients(
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     servings: str | None = Query(default=None),
-    units: str = Query(default="original"),
+    units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
 ) -> Response:
     """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
@@ -342,6 +349,7 @@ async def recipe_ingredients(
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
     return templates.TemplateResponse(
         request=request,
         name="partials/ingredients.html",
@@ -350,7 +358,7 @@ async def recipe_ingredients(
             **_ingredient_context(
                 recipe,
                 _parse_servings_param(servings),
-                units,
+                resolved_units,
                 _parse_multiplier_param(multiplier),
                 lang=lang,
             ),

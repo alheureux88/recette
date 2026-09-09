@@ -10,10 +10,10 @@
             <details class="print-options" id="print-options">
                 <summary>{{ _('recipe.print_options') }}</summary>
                 <div class="print-options-grid">
-                    <label><input type="checkbox" id="print-images"> {{ _('recipe.print_images') }}</label>
-                    <label><input type="checkbox" id="print-tags"> {{ _('recipe.print_tags') }}</label>
-                    <label><input type="checkbox" id="print-description"> {{ _('recipe.print_description') }}</label>
-                    <label><input type="checkbox" id="print-links"> {{ _('recipe.print_links') }}</label>
+                    <label><input type="checkbox" id="print-images"{% if print_prefs and print_prefs.print_images %} checked{% endif %}> {{ _('recipe.print_images') }}</label>
+                    <label><input type="checkbox" id="print-tags"{% if print_prefs and print_prefs.print_tags %} checked{% endif %}> {{ _('recipe.print_tags') }}</label>
+                    <label><input type="checkbox" id="print-description"{% if print_prefs and print_prefs.print_description %} checked{% endif %}> {{ _('recipe.print_description') }}</label>
+                    <label><input type="checkbox" id="print-links"{% if print_prefs and print_prefs.print_links %} checked{% endif %}> {{ _('recipe.print_links') }}</label>
                 </div>
             </details>
             <button type="button" class="btn-print" onclick="recettePrint()">{{ _('recipe.print') }}</button>
@@ -151,11 +151,15 @@
             description: 'print-no-description',
             links: 'print-no-links',
         };
-        Object.keys(checks).forEach(function (key) {
-            checks[key].addEventListener('change', function () {
+        function applyPrintClasses() {
+            Object.keys(checks).forEach(function (key) {
                 body.classList.toggle(classes[key], !checks[key].checked);
             });
+        }
+        Object.keys(checks).forEach(function (key) {
+            checks[key].addEventListener('change', applyPrintClasses);
         });
+        applyPrintClasses();
         window.recettePrint = function () {
             Object.keys(checks).forEach(function (key) {
                 body.classList.toggle(classes[key], !checks[key].checked);

@@ -46,7 +46,26 @@ async def callback(
         "name": userinfo.get("name"),
         "groups": groups,
     }
-    return RedirectResponse(url="/", status_code=302)
+    response = RedirectResponse(url="/", status_code=302)
+    # Restaure les préférences d'affichage de l'usager (cookies) dès la
+    # connexion : langue + thème. Les autres réglages (unités, impression,
+    # ordre des départements) sont lus en base à chaque requête.
+    from recipes.features.preferences.controllers import apply_theme_cookie
+    from recipes.features.preferences.services import get_preferences
+    from recipes.shared.i18n import COOKIE_MAX_AGE, LANGUAGE_COOKIE, SUPPORTED_LANGUAGES
+
+    prefs = get_preferences(user_id, conn=conn)
+    saved_lang = str(prefs.get("language", ""))
+    if saved_lang in SUPPORTED_LANGUAGES:
+        response.set_cookie(
+            key=LANGUAGE_COOKIE,
+            value=saved_lang,
+            max_age=COOKIE_MAX_AGE,
+            samesite="lax",
+            httponly=True,
+        )
+    apply_theme_cookie(response, str(prefs.get("theme", "system")))
+    return response
 
 
 @router.get("/logout", name="auth_logout")

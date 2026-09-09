@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ _('prefs.title') }} — Recettes Merizzi{% endblock %}
+{% block main_class %}admin-main{% endblock %}
+{% block content %}
+
+<h1 class="page-title">{{ _('prefs.title') }}</h1>
+
+{% if saved %}
+<p class="prefs-saved" role="status">{{ _('prefs.saved') }}</p>
+{% endif %}
+
+<form method="post" action="/preferences" id="prefs-form" class="prefs-form">
+    <h2 class="admin-section-title">{{ _('prefs.section_language') }}</h2>
+    <label class="field">
+        <span>{{ _('prefs.language') }}</span>
+        <select name="language">
+            <option value="fr"{% if prefs.language == "fr" %} selected{% endif %}>{{ _('lang.fr') }}</option>
+            <option value="en"{% if prefs.language == "en" %} selected{% endif %}>{{ _('lang.en') }}</option>
+        </select>
+    </label>
+
+    <h2 class="admin-section-title">{{ _('prefs.section_units') }}</h2>
+    <label class="field">
+        <span>{{ _('prefs.units') }}</span>
+        <select name="units">
+            <option value="original"{% if prefs.units == "original" %} selected{% endif %}>{{ _('recipe.units_original') }}</option>
+            <option value="metric"{% if prefs.units == "metric" %} selected{% endif %}>{{ _('recipe.units_metric') }}</option>
+            <option value="imperial"{% if prefs.units == "imperial" %} selected{% endif %}>{{ _('recipe.units_imperial') }}</option>
+        </select>
+    </label>
+
+    <h2 class="admin-section-title">{{ _('prefs.section_theme') }}</h2>
+    <label class="field">
+        <span>{{ _('prefs.theme') }}</span>
+        <select name="theme">
+            <option value="light"{% if prefs.theme == "light" %} selected{% endif %}>{{ _('prefs.theme_light') }}</option>
+            <option value="dark"{% if prefs.theme == "dark" %} selected{% endif %}>{{ _('prefs.theme_dark') }}</option>
+            <option value="system"{% if prefs.theme == "system" %} selected{% endif %}>{{ _('prefs.theme_system') }}</option>
+        </select>
+    </label>
+
+    <h2 class="admin-section-title">{{ _('prefs.section_print') }}</h2>
+    <p class="prefs-hint">{{ _('prefs.print_hint') }}</p>
+    <div class="prefs-checks">
+        <label><input type="checkbox" name="print_images" value="on"{% if prefs.print_images %} checked{% endif %}> {{ _('recipe.print_images') }}</label>
+        <label><input type="checkbox" name="print_tags" value="on"{% if prefs.print_tags %} checked{% endif %}> {{ _('recipe.print_tags') }}</label>
+        <label><input type="checkbox" name="print_description" value="on"{% if prefs.print_description %} checked{% endif %}> {{ _('recipe.print_description') }}</label>
+        <label><input type="checkbox" name="print_links" value="on"{% if prefs.print_links %} checked{% endif %}> {{ _('recipe.print_links') }}</label>
+    </div>
+
+    <h2 class="admin-section-title">{{ _('prefs.section_departments') }}</h2>
+    <p class="prefs-hint">{{ _('prefs.departments_hint') }}</p>
+    <input type="hidden" name="department_order" id="prefs-dept-order"
+           value="{{ prefs.department_order|join(',') }}">
+    <ul class="prefs-dept-list" id="prefs-dept-list">
+        {% for dept in departments %}
+        <li class="prefs-dept-item" draggable="true" data-name="{{ dept.name }}">
+            <span class="prefs-dept-handle" aria-hidden="true">⋮⋮</span>
+            <span class="prefs-dept-label">{{ dept.emoji }} {{ dept.display_name }}</span>
+            <span class="prefs-dept-actions">
+                <button type="button" class="prefs-dept-btn" data-move="-1" aria-label="{{ _('prefs.move_up') }}">▲</button>
+                <button type="button" class="prefs-dept-btn" data-move="1" aria-label="{{ _('prefs.move_down') }}">▼</button>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <button type="submit" class="btn-print">{{ _('prefs.save') }}</button>
+</form>
+
+<script>
+    (function () {
+        var list = document.getElementById('prefs-dept-list');
+        var orderInput = document.getElementById('prefs-dept-order');
+        if (!list || !orderInput) return;
+
+        function syncOrder() {
+            var names = [];
+            list.querySelectorAll('.prefs-dept-item').forEach(function (el) {
+                names.push(el.dataset.name);
+            });
+            orderInput.value = names.join(',');
+        }
+
+        list.querySelectorAll('[data-move]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var item = btn.closest('.prefs-dept-item');
+                var delta = parseInt(btn.dataset.move, 10);
+                if (delta < 0 && item.previousElementSibling) {
+                    list.insertBefore(item, item.previousElementSibling);
+                } else if (delta > 0 && item.nextElementSibling) {
+                    list.insertBefore(item.nextElementSibling, item);
+                }
+                syncOrder();
+            });
+        });
+
+        var dragged = null;
+        list.querySelectorAll('.prefs-dept-item').forEach(function (item) {
+            item.addEventListener('dragstart', function () {
+                dragged = item;
+                item.classList.add('prefs-dragging');
+            });
+            item.addEventListener('dragend', function () {
+                item.classList.remove('prefs-dragging');
+                dragged = null;
+                syncOrder();
+            });
+            item.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                if (!dragged || dragged === item) return;
+                var rect = item.getBoundingClientRect();
+                var after = (e.clientY - rect.top) > rect.height / 2;
+                if (after) {
+                    list.insertBefore(dragged, item.nextSibling);
+                } else {
+                    list.insertBefore(dragged, item);
+                }
+            });
+            item.addEventListener('drop', function (e) {
+                e.preventDefault();
+                syncOrder();
+            });
+        });
+    })();
+</script>
+
+{% endblock %}

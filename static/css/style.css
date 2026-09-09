@@ -2871,3 +2871,109 @@ span.shopping-item-check.checked {
     }
 }
 
+/* Preferences page */
+.prefs-form {
+    max-width: 640px;
+}
+.prefs-form .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 1rem;
+    max-width: 320px;
+}
+.prefs-form .field > span {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.prefs-form select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+}
+.prefs-form select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+}
+.prefs-saved {
+    background: var(--tag-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1rem;
+    max-width: 640px;
+}
+.prefs-hint {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 0.75rem;
+}
+.prefs-checks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem 1.25rem;
+    margin-bottom: 1rem;
+    max-width: 480px;
+}
+.prefs-checks label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.88rem;
+    color: var(--text);
+    cursor: pointer;
+}
+.prefs-checks input {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.prefs-dept-list {
+    list-style: none;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    max-width: 480px;
+}
+.prefs-dept-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 0.4rem;
+    background: var(--bg);
+    cursor: grab;
+}
+.prefs-dept-item.prefs-dragging {
+    opacity: 0.5;
+}
+.prefs-dept-handle {
+    color: var(--muted);
+    cursor: grab;
+    user-select: none;
+}
+.prefs-dept-label {
+    flex: 1;
+}
+.prefs-dept-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+.prefs-dept-btn {
+    border: 1px solid var(--border);
+    background: var(--tag-bg);
+    border-radius: 6px;
+    padding: 0.15rem 0.45rem;
+    cursor: pointer;
+}
+

@@ -19,6 +19,7 @@ from typing import Final
 SUPPORTED_LANGUAGES: Final[tuple[str, ...]] = ("fr", "en")
 DEFAULT_LANGUAGE: Final[str] = "fr"
 LANGUAGE_COOKIE: Final[str] = "lang"
+THEME_COOKIE: Final[str] = "theme"
 COOKIE_MAX_AGE: Final[int] = 60 * 60 * 24 * 365  # 1 an
 
 # Pluriels par langue (forme simple, deux formes). Format : (singular, plural).
@@ -683,6 +684,37 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "en": "Something unexpected went wrong. Please try again in a moment.",
     },
     "errorpage.back_home": {"fr": "Retour à l'accueil", "en": "Back to home"},
+    # --- Préférences usager ---
+    "nav.preferences": {"fr": "Préférences", "en": "Preferences"},
+    "prefs.title": {"fr": "Mes préférences", "en": "My preferences"},
+    "prefs.section_language": {"fr": "Langue", "en": "Language"},
+    "prefs.language": {"fr": "Langue d'affichage", "en": "Display language"},
+    "prefs.section_units": {"fr": "Unités", "en": "Units"},
+    "prefs.units": {"fr": "Système d'unités par défaut", "en": "Default units system"},
+    "prefs.section_theme": {"fr": "Thème", "en": "Theme"},
+    "prefs.theme": {"fr": "Apparence", "en": "Appearance"},
+    "prefs.theme_light": {"fr": "Clair", "en": "Light"},
+    "prefs.theme_dark": {"fr": "Sombre", "en": "Dark"},
+    "prefs.theme_system": {"fr": "Système (OS)", "en": "System (OS)"},
+    "prefs.section_print": {"fr": "Impression", "en": "Printing"},
+    "prefs.print_hint": {
+        "fr": "Options cochées par défaut sur la page d'une recette.",
+        "en": "Options checked by default on a recipe page.",
+    },
+    "prefs.section_departments": {"fr": "Départements d'épicerie", "en": "Grocery departments"},
+    "prefs.departments_hint": {
+        "fr": "Glissez-déposez les départements dans l'ordre de votre épicerie. Cet ordre s'applique à vos listes seulement.",
+        "en": "Drag and drop departments in your store's order. This order applies to your lists only.",
+    },
+    "prefs.move_up": {"fr": "Monter", "en": "Move up"},
+    "prefs.move_down": {"fr": "Descendre", "en": "Move down"},
+    "prefs.save": {"fr": "Sauvegarder", "en": "Save"},
+    "prefs.saved": {
+        "fr": "Préférences sauvegardées.",
+        "en": "Preferences saved.",
+    },
+    "error.invalid_order": {"fr": "Ordre invalide", "en": "Invalid order"},
+    "error.invalid_theme": {"fr": "Thème invalide", "en": "Invalid theme"},
 }
 
 

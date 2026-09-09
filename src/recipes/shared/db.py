@@ -298,6 +298,15 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Préférences usager : blob JSON extensible (une ligne par usager).
+        -- Les nouveaux réglages sont de nouvelles clés JSON avec défauts
+        -- côté code : aucune migration de schéma n'est requise.
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            prefs      TEXT NOT NULL DEFAULT '{}',
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS shopping_departments (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             name            TEXT NOT NULL UNIQUE,

@@ -13,8 +13,20 @@
     <meta name="theme-color" content="#8a3324">
     <script>
         (function () {
-            var saved = localStorage.getItem('theme');
-            var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            // Préférence serveur (usager connecté) : light/dark explicite,
+            // 'system' = suit l'OS, '' = anonyme (comportement historique).
+            var serverTheme = "{{ theme_pref }}";
+            var useDarkOS = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            var theme;
+            if (serverTheme === 'light' || serverTheme === 'dark') {
+                theme = serverTheme;
+            } else if (serverTheme === 'system') {
+                theme = useDarkOS ? 'dark' : 'light';
+            } else {
+                var saved = null;
+                try { saved = localStorage.getItem('theme'); } catch (e) {}
+                theme = saved || (useDarkOS ? 'dark' : 'light');
+            }
             document.documentElement.dataset.theme = theme;
         })();
     </script>
@@ -53,6 +65,7 @@
                                 <span class="nav-user-caret" aria-hidden="true">▾</span>
                             </button>
                             <div class="nav-user-dropdown" role="menu">
+                                <a href="/preferences" class="nav-dropdown-item" role="menuitem">{{ _('nav.preferences') }}</a>
                                 {% if is_admin %}
                                 <a href="/admin" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_recipes') }}</a>
                                 <a href="/admin/config" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_system') }}</a>
@@ -82,6 +95,11 @@
         (function () {
             var toggle = document.getElementById('theme-toggle');
             if (!toggle) return;
+            {% if user %}
+            var prefsThemeApi = "/api/preferences/theme";
+            {% else %}
+            var prefsThemeApi = null;
+            {% endif %}
             function refreshIcon() {
                 toggle.textContent = document.documentElement.dataset.theme === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
             }
@@ -91,6 +109,13 @@
                 document.documentElement.dataset.theme = next;
                 try { localStorage.setItem('theme', next); } catch (e) {}
                 refreshIcon();
+                if (prefsThemeApi) {
+                    fetch(prefsThemeApi, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ theme: next })
+                    }).catch(function () {});
+                }
             });
         })();
         (function () {
