@@ -45,6 +45,7 @@ from recipes.shared.web import (
     _resolve_request_lang,
     _shopping_list_user_id,
     _translate,
+    current_lang,
     templates,
 )
 
@@ -133,6 +134,7 @@ __all__ = [
     "_resolve_request_lang",
     "_shopping_list_user_id",
     "_translate",
+    "current_lang",
     "templates",
 ]
 
@@ -141,9 +143,12 @@ __all__ = [
 async def locale_middleware(request: Request, call_next: Any) -> Response:
     """Résout la langue et la rend disponible aux helpers de traduction Jinja."""
     lang = _resolve_request_lang(request)
-    _translate._lang_state = lang  # type: ignore[attr-defined]
-    response: Response = await call_next(request)
-    return response
+    token = current_lang.set(lang)
+    try:
+        response: Response = await call_next(request)
+        return response
+    finally:
+        current_lang.reset(token)
 
 
 @app.post("/lang/{code}")

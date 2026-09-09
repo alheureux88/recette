@@ -4,6 +4,8 @@ Extrait de `recipes.main` pour inverser la dépendance feature → main :
 les features importent désormais `recipes.shared.web`, jamais `recipes.main`.
 """
 
+from contextvars import ContextVar
+
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
@@ -24,6 +26,8 @@ from recipes.shared.i18n import (
     resolve_language,
 )
 
+current_lang: ContextVar[str] = ContextVar("request_lang", default=DEFAULT_LANGUAGE)
+
 
 def _resolve_request_lang(request: Request) -> str:
     """Résout la langue depuis le cookie ou l'en-tête Accept-Language."""
@@ -36,18 +40,16 @@ def _resolve_request_lang(request: Request) -> str:
 def _translate(key: str, **values: object) -> str:
     """Helper exposé dans les templates comme `{{ _('key', **values) }}`.
 
-    La langue courante est résolue depuis le contexte de la requête grâce à
-    l'attribut `_lang_state` posé par le middleware `LocaleMiddleware`
-    (voir P0.2 : migrer vers ContextVar).
+    La langue courante vient de `current_lang` (ContextVar posée par
+    le middleware `locale_middleware`) : sûr en async / concurrence,
+    contrairement à un attribut global mutable.
     """
-    lang = getattr(_translate, "_lang_state", DEFAULT_LANGUAGE)
-    return gettext(key, lang, **values)
+    return gettext(key, current_lang.get(), **values)
 
 
 def _ntranslate(singular: str, plural: str, n: int, **values: object) -> str:
     """Helper pluriel exposé dans les templates comme `ngettext`."""
-    lang = getattr(_translate, "_lang_state", DEFAULT_LANGUAGE)
-    return ngettext(singular, plural, n, lang, **values)
+    return ngettext(singular, plural, n, current_lang.get(), **values)
 
 
 templates = Jinja2Templates(directory="templates")
