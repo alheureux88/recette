@@ -82,6 +82,28 @@ def _shopping_list_user_id(request: Request) -> int | None:
     return user["id"] if user else None
 
 
+def get_anon_shopping_list_ids(request: Request) -> list[int]:
+    """Return the shopping list IDs owned by the anonymous session."""
+    raw = request.session.get("shopping_list_ids", [])
+    if not isinstance(raw, list):
+        return []
+    ids: list[int] = []
+    for value in raw:
+        try:
+            ids.append(int(str(value)))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def add_anon_shopping_list_id(request: Request, list_id: int) -> None:
+    """Remember a shopping list ID in the anonymous session."""
+    ids = get_anon_shopping_list_ids(request)
+    if int(list_id) not in ids:
+        ids.append(int(list_id))
+        request.session["shopping_list_ids"] = ids
+
+
 def _parse_account_param(raw: str | None) -> int | None:
     """'default' → DEFAULT_ACCOUNT_ID, entier → id de connexion, sinon None."""
     if raw is None or not raw.strip():

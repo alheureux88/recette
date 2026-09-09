@@ -44,7 +44,9 @@ from recipes.shared.web import (
     _resolve_request_lang,
     _shopping_list_user_id,
     _translate,
+    add_anon_shopping_list_id,
     current_lang,
+    get_anon_shopping_list_ids,
     templates,
 )
 
@@ -151,7 +153,9 @@ __all__ = [
     "_resolve_request_lang",
     "_shopping_list_user_id",
     "_translate",
+    "add_anon_shopping_list_id",
     "current_lang",
+    "get_anon_shopping_list_ids",
     "templates",
 ]
 

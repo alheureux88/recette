@@ -27,37 +27,59 @@ from recipes.shared.i18n import gettext
 from recipes.shared.models import JsonDict, RecipeIngredientsToShopping
 from recipes.shared.tagger import classify_ingredients as classify_ingredients_llm
 from recipes.shared.units import format_quantity_string
-from recipes.shared.web import _resolve_request_lang, _shopping_list_user_id
+from recipes.shared.web import (
+    _resolve_request_lang,
+    _shopping_list_user_id,
+    add_anon_shopping_list_id,
+    get_anon_shopping_list_ids,
+)
 
 router = APIRouter(tags=["shopping"])
 
 
 def _get_anon_list_ids(request: Request) -> list[int]:
     """Get the list IDs stored in the session for anonymous users."""
-    ids = request.session.get("shopping_list_ids", [])
-    return [int(i) for i in ids]
+    return get_anon_shopping_list_ids(request)
 
 
 def _add_anon_list_id(request: Request, list_id: int) -> None:
     """Add a list ID to the session for anonymous users."""
-    ids = _get_anon_list_ids(request)
-    if list_id not in ids:
-        ids.append(list_id)
-        request.session["shopping_list_ids"] = ids
+    add_anon_shopping_list_id(request, list_id)
 
 
 def _can_edit_shopping_list(request: Request, shopping_list: JsonDict) -> bool:
-    """Check if the current user can edit this shopping list.
+    """Check if the current user can view/edit this shopping list.
 
-    Anyone with the direct link (share token) can edit.
+    - Owned lists (user_id set): only the owner.
+    - Anonymous lists (user_id None): only an anonymous session that owns
+      the ID (created it or opened it via its share token).
     """
     user = get_user(request)
-    list_user_id = shopping_list.get("user_id")
-    if list_user_id is None:
-        return True
-    if user is None:
+    owner_id = shopping_list.get("user_id")
+    if owner_id is not None:
+        if user is None:
+            return False
+        try:
+            return int(str(user.get("id"))) == int(str(owner_id))
+        except (TypeError, ValueError):
+            return False
+    if user is not None:
         return False
-    return bool(user["id"]) == int(str(list_user_id))
+    try:
+        list_id = int(str(shopping_list.get("id")))
+    except (TypeError, ValueError):
+        return False
+    return list_id in get_anon_shopping_list_ids(request)
+
+
+def _require_shopping_access(request: Request, shopping_list: JsonDict, lang: str) -> None:
+    """Raise 404 unless the current user may access the shopping list.
+
+    404 (instead of 403) avoids confirming the existence of other users'
+    lists by ID enumeration.
+    """
+    if not _can_edit_shopping_list(request, shopping_list):
+        raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
 
 @router.get("/shopping", response_class=HTMLResponse)
@@ -109,9 +131,7 @@ async def shopping_list_detail(
     if not shopping_list:
         raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
-    user_id = _shopping_list_user_id(request)
-    if user_id is None:
-        _add_anon_list_id(request, list_id)
+    _require_shopping_access(request, shopping_list, lang)
 
     items = get_shopping_list_items(list_id, lang=lang, conn=conn)
     departments = get_shopping_departments(lang=lang, conn=conn)
@@ -155,9 +175,7 @@ async def shopping_list_cook(
     if not shopping_list:
         raise HTTPException(status_code=404, detail=gettext("error.shopping_list_not_found", lang))
 
-    user_id = _shopping_list_user_id(request)
-    if user_id is None:
-        _add_anon_list_id(request, list_id)
+    _require_shopping_access(request, shopping_list, lang)
 
     items = get_shopping_list_items(list_id, lang=lang, conn=conn)
     departments = get_shopping_departments(lang=lang, conn=conn)
@@ -369,6 +387,16 @@ async def shopping_item_toggle(
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
+    row = conn.execute(
+        "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
+    shopping_list = get_shopping_list_by_id(int(str(row["list_id"])), conn=conn)
+    if not shopping_list:
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
+    _require_shopping_access(request, shopping_list, lang)
+
     item = toggle_shopping_list_item(item_id, conn=conn)
     if not item:
         raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
@@ -400,13 +428,16 @@ async def shopping_item_remove(
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
-    list_id_before = None
-    if request.headers.get("hx-request"):
-        row = conn.execute(
-            "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
-        ).fetchone()
-        if row:
-            list_id_before = int(str(row["list_id"]))
+    row = conn.execute(
+        "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
+    list_id_before = int(str(row["list_id"]))
+    shopping_list_owner = get_shopping_list_by_id(list_id_before, conn=conn)
+    if not shopping_list_owner:
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
+    _require_shopping_access(request, shopping_list_owner, lang)
 
     removed = remove_shopping_list_item(item_id, conn=conn)
     if not removed:
@@ -453,6 +484,16 @@ async def shopping_item_update(
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
+    owner_row = conn.execute(
+        "SELECT list_id FROM shopping_list_items WHERE id = ?", (item_id,)
+    ).fetchone()
+    if not owner_row:
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
+    owner_list = get_shopping_list_by_id(int(str(owner_row["list_id"])), conn=conn)
+    if not owner_list:
+        raise HTTPException(status_code=404, detail=gettext("error.item_not_found", lang))
+    _require_shopping_access(request, owner_list, lang)
+
     text = text.strip()
     quantity = quantity.strip() if quantity else None
     updated = update_shopping_list_item(item_id, text, quantity, department_id, conn=conn)
@@ -514,6 +555,8 @@ async def shopping_add_from_recipe(
     elif data.new_list_name:
         lst = create_shopping_list(data.new_list_name, user_id=user_id, conn=conn)
         list_id = int(str(lst["id"]))
+        if user_id is None:
+            _add_anon_list_id(request, list_id)
     else:
         raise HTTPException(status_code=400, detail=gettext("error.list_id_or_name_required", lang))
 

@@ -225,7 +225,14 @@ async def recipe_detail(
                 )
 
     user_id = _shopping_list_user_id(request)
-    user_shopping_lists = get_user_shopping_lists(user_id, include_done=False, conn=conn)
+    if user_id is not None:
+        user_shopping_lists = get_user_shopping_lists(user_id, include_done=False, conn=conn)
+    else:
+        from recipes.features.shopping.services import get_shopping_lists_by_ids
+        from recipes.shared.web import get_anon_shopping_list_ids
+
+        anon_lists = get_shopping_lists_by_ids(get_anon_shopping_list_ids(request), conn=conn)
+        user_shopping_lists = [lst for lst in anon_lists if not lst.get("all_done_at")]
     shopping_lists_data = [
         {"id": int(str(lst["id"])), "name": str(lst["name"])} for lst in user_shopping_lists
     ]

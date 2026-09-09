@@ -100,10 +100,13 @@ def get_shopping_list_by_token(
 def get_user_shopping_lists(
     user_id: int | None, include_done: bool = True, conn: sqlite3.Connection | None = None
 ) -> list[JsonDict]:
-    """Return shopping lists for a user (or all if user_id is None for anon).
+    """Return shopping lists for a user.
 
     For logged-in users, returns their lists.
-    For anonymous (user_id=None), returns lists without a user_id.
+    For anonymous (user_id=None), returns ALL lists without a user_id:
+    callers serving anonymous HTTP requests must NOT use this directly —
+    filter by session IDs with `get_shopping_lists_by_ids()` instead,
+    otherwise one anonymous user would see everyone else's lists.
     """
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         if user_id is not None:
