@@ -20,10 +20,78 @@
     <div id="shopping-items-container">
         {% include "partials/shopping_list_items.html" %}
     </div>
+
+    {% if user and mode == 'edit' %}
+    <section class="shopping-scan-section" aria-label="{{ _('shopping.scan_title') }}">
+        <h2 class="shopping-scan-title">📷 {{ _('shopping.scan_title') }}</h2>
+        <p class="shopping-scan-hint">{{ _('shopping.scan_hint') }}</p>
+        <form id="shopping-scan-form"
+              data-scan-url="/shopping/lists/{{ shopping_list.id }}/scan"
+              data-vision-url="/shopping/lists/{{ shopping_list.id }}/scan/vision">
+            <input type="file" id="shopping-scan-file" name="photo" accept="image/*" capture="environment" class="shopping-scan-file">
+            <div class="shopping-scan-actions">
+                <button type="submit" class="shopping-dept-add-btn">{{ _('shopping.scan_transcribe') }}</button>
+            </div>
+        </form>
+        <div id="shopping-scan-result" aria-live="polite"></div>
+    </section>
+    {% endif %}
 </div>
 
 <script>
     (function () {
+        var scanForm = document.getElementById('shopping-scan-form');
+        if (scanForm) {
+            var fileInput = document.getElementById('shopping-scan-file');
+            var result = document.getElementById('shopping-scan-result');
+            var lastFile = null;
+            fileInput.addEventListener('change', function () {
+                lastFile = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+            });
+            scanForm.addEventListener('submit', function (evt) {
+                evt.preventDefault();
+                var file = lastFile;
+                if (!file) return;
+                uploadScan(scanForm.dataset.scanUrl, file);
+            });
+            result.addEventListener('click', function (evt) {
+                if (evt.target && evt.target.id === 'shopping-scan-retry-ai' && lastFile) {
+                    uploadScan(scanForm.dataset.visionUrl, lastFile);
+                }
+                if (evt.target && evt.target.id === 'shopping-scan-cancel') {
+                    result.innerHTML = '';
+                }
+            });
+            result.addEventListener('submit', function (evt) {
+                var confirmForm = evt.target.closest('#shopping-scan-confirm-form');
+                if (!confirmForm) return;
+                evt.preventDefault();
+                fetch(confirmForm.dataset.confirmUrl, {
+                    method: 'POST',
+                    body: new FormData(confirmForm),
+                    headers: {'HX-Request': 'true'}
+                }).then(function (resp) {
+                    if (!resp.ok) throw new Error('confirm failed');
+                    return resp.text();
+                }).then(function (html) {
+                    document.getElementById('shopping-items-container').innerHTML = html;
+                    result.innerHTML = '';
+                    fileInput.value = '';
+                    lastFile = null;
+                }).catch(function () {
+                    result.innerHTML = '';
+                });
+            });
+            function uploadScan(url, file) {
+                var data = new FormData();
+                data.append('photo', file);
+                result.innerHTML = '…';
+                fetch(url, {method: 'POST', body: data})
+                    .then(function (resp) { return resp.text().then(function (t) { return {ok: resp.ok, html: t}; }); })
+                    .then(function (r) { result.innerHTML = r.html; })
+                    .catch(function () { result.innerHTML = ''; });
+            }
+        }
         document.body.addEventListener('htmx:afterSwap', function (evt) {
             if (evt.detail.target && evt.detail.target.id === 'shopping-items-container') {
                 var forms = document.querySelectorAll('.shopping-dept-add-form');

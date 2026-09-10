@@ -604,3 +604,64 @@ def classify_ingredients(ingredients: list[str], lang: str = "fr") -> list[str]:
         result.append("autre")
 
     return result[: len(ingredients)]
+
+
+def chat_with_image(
+    system_prompt: str, user_text: str, image_bytes: bytes, content_type: str
+) -> str:
+    """Appel vision (image + texte) via le provider configuré, retourne le texte brut.
+
+    Utilisé comme fallback quand l'OCR local échoue (ex. scan de liste
+    d'épicerie). Lève `ValueError` si le modèle ne retourne rien.
+    """
+    import base64
+
+    payload = base64.b64encode(image_bytes).decode("ascii")
+    if _get_provider() == "anthropic":
+        response = _get_client().messages.create(
+            model=_get_model(),
+            max_tokens=4000,
+            system=system_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": content_type,
+                                "data": payload,
+                            },
+                        },
+                        {"type": "text", "text": user_text},
+                    ],
+                }
+            ],
+        )
+        raw = response.content[0].text.strip() if response.content else ""
+    else:
+        response = _get_client().chat.completions.create(
+            model=_get_model(),
+            max_tokens=4000,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_text},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{content_type};base64,{payload}"},
+                        },
+                    ],
+                },
+            ],
+        )
+        if not response.choices or not response.choices[0].message:
+            raise ValueError("LLM returned no choices or message")
+        raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        raise ValueError("LLM returned empty response")
+    return raw

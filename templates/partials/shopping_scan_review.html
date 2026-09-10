@@ -1,0 +1,42 @@
+<div class="shopping-scan-review" data-source="{{ source }}">
+    <h3 class="shopping-scan-review-title">
+        {{ _('shopping.scan_review_title') }}
+        {% if source == 'llm' %}
+        <span class="admin-badge admin-badge-user">{{ _('shopping.scan_source_llm') }}</span>
+        {% else %}
+        <span class="admin-badge admin-badge-active">{{ _('shopping.scan_source_local') }}</span>
+        {% endif %}
+    </h3>
+    {% if low_confidence %}
+    <p class="shopping-scan-warning">{{ _('shopping.scan_low_confidence', conf=mean_confidence) }}</p>
+    {% endif %}
+    {% if scan_rows %}
+    <form id="shopping-scan-confirm-form" data-confirm-url="/shopping/lists/{{ shopping_list.id }}/scan/confirm">
+        <input type="hidden" name="row_count" value="{{ scan_rows|length }}">
+        {% for row in scan_rows %}
+        <div class="shopping-scan-row">
+            <input type="checkbox" name="include_{{ loop.index0 }}" checked class="shopping-item-check" title="{{ _('shopping.scan_confirm_add') }}">
+            <input type="text" name="text_{{ loop.index0 }}" value="{{ row.text }}" required maxlength="500" class="shopping-dept-add-input">
+            <input type="text" name="quantity_{{ loop.index0 }}" value="{{ row.quantity }}" maxlength="100" class="shopping-dept-add-qty">
+            <select name="department_{{ loop.index0 }}" class="shopping-scan-select" aria-label="{{ _('shopping.department_label') }}">
+                {% for dept in departments %}
+                <option value="{{ dept.id }}"{% if dept.id == row.department_id %} selected{% endif %}>{{ dept.display_name }}</option>
+                {% endfor %}
+            </select>
+            {% if source == 'local' and row.confidence >= 0 %}
+            <span class="shopping-dept-count">{{ row.confidence|round }}%</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+        <div class="shopping-scan-actions">
+            <button type="submit" class="shopping-dept-add-btn">{{ _('shopping.scan_confirm_add') }}</button>
+            <button type="button" class="shopping-scan-secondary" id="shopping-scan-cancel">{{ _('shopping.scan_cancel') }}</button>
+        </div>
+    </form>
+    {% else %}
+    <p class="shopping-dept-empty">{{ _('shopping.scan_empty') }}</p>
+    {% endif %}
+    {% if source == 'local' %}
+    <button type="button" class="shopping-scan-secondary" id="shopping-scan-retry-ai">{{ _('shopping.scan_retry_ai') }}</button>
+    {% endif %}
+</div>

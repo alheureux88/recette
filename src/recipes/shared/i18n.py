@@ -527,6 +527,29 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "fr": "L'écran se verrouillera normalement hors de cette page.",
         "en": "The screen will lock normally outside this page.",
     },
+    "shopping.scan_title": {"fr": "Scanner une liste", "en": "Scan a list"},
+    "shopping.scan_hint": {
+        "fr": "Prenez en photo une liste manuscrite pour l'ajouter.",
+        "en": "Photograph a handwritten list to add it.",
+    },
+    "shopping.scan_transcribe": {"fr": "Transcrire", "en": "Transcribe"},
+    "shopping.scan_retry_ai": {"fr": "Réessayer avec l'IA", "en": "Retry with AI"},
+    "shopping.scan_review_title": {
+        "fr": "Vérifiez la transcription",
+        "en": "Review the transcription",
+    },
+    "shopping.scan_source_local": {"fr": "Transcription locale", "en": "Local scan"},
+    "shopping.scan_source_llm": {"fr": "Transcription IA", "en": "AI scan"},
+    "shopping.scan_confirm_add": {"fr": "Ajouter la sélection", "en": "Add selection"},
+    "shopping.scan_cancel": {"fr": "Annuler", "en": "Cancel"},
+    "shopping.scan_empty": {
+        "fr": "Aucune ligne lisible détectée. Réessayez avec une photo plus nette ou utilisez l'IA.",
+        "en": "No readable lines detected. Try a sharper photo or use AI.",
+    },
+    "shopping.scan_low_confidence": {
+        "fr": "Transcription incertaine ({conf} %) — vérifiez chaque ligne avant d'ajouter.",
+        "en": "Uncertain transcription ({conf}%) — check each line before adding.",
+    },
     # --- Modèles de liste d'épicerie ---
     "template.title": {"fr": "Modèles d'épicerie", "en": "Grocery templates"},
     "template.create": {"fr": "Créer", "en": "Create"},
@@ -590,6 +613,38 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "error.text_required": {"fr": "Le texte est requis", "en": "Text is required"},
     "error.department_required": {"fr": "Le rayon est requis", "en": "Department is required"},
     "error.item_not_found": {"fr": "Élément introuvable", "en": "Item not found"},
+    "error.scan_image_required": {
+        "fr": "Une photo est requise",
+        "en": "A photo is required",
+    },
+    "error.scan_unsupported_type": {
+        "fr": "Format d'image non pris en charge (JPEG, PNG ou WebP)",
+        "en": "Unsupported image format (JPEG, PNG or WebP)",
+    },
+    "error.scan_too_large": {
+        "fr": "Image trop lourde (8 Mo maximum)",
+        "en": "Image too large (8 MB maximum)",
+    },
+    "error.scan_rate_limited": {
+        "fr": "Trop de scans, réessayez dans quelques minutes",
+        "en": "Too many scans, try again in a few minutes",
+    },
+    "error.scan_ocr_unavailable": {
+        "fr": "OCR indisponible sur le serveur, utilisez la transcription IA",
+        "en": "OCR unavailable on the server, use AI transcription",
+    },
+    "error.scan_ocr_failed": {
+        "fr": "La transcription a échoué, réessayez ou utilisez l'IA",
+        "en": "Transcription failed, retry or use AI",
+    },
+    "error.scan_vision_failed": {
+        "fr": "La transcription IA a échoué, réessayez plus tard",
+        "en": "AI transcription failed, try again later",
+    },
+    "error.scan_no_selection": {
+        "fr": "Sélectionnez au moins un article",
+        "en": "Select at least one item",
+    },
     "error.list_id_or_name_required": {
         "fr": "ID de liste ou nom requis",
         "en": "List ID or name required",

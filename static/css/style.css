@@ -2573,6 +2573,107 @@ span.shopping-item-check.checked {
     background: var(--accent-dk);
 }
 
+/* Scan d'une liste manuscrite (photo -> OCR) */
+.shopping-scan-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+}
+.shopping-scan-title {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+.shopping-scan-hint {
+    color: var(--muted);
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+}
+.shopping-scan-file {
+    display: block;
+    width: 100%;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-scan-file::file-selector-button {
+    padding: 0.375rem 0.75rem;
+    margin-right: 0.75rem;
+    background: var(--surface-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.shopping-scan-review {
+    margin-top: 1rem;
+}
+.shopping-scan-review-title {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.shopping-scan-warning {
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-style: italic;
+    padding: 0.5rem 0;
+}
+.shopping-scan-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+.shopping-scan-row .shopping-dept-add-input {
+    flex: 2;
+}
+.shopping-scan-row .shopping-dept-add-qty {
+    flex: 1;
+}
+.shopping-scan-select {
+    flex: 1;
+    min-width: 0;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+.shopping-scan-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.shopping-scan-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.shopping-scan-secondary {
+    padding: 0.375rem 0.75rem;
+    background: var(--surface-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+.shopping-scan-secondary:hover {
+    border-color: var(--accent);
+}
+
 /* Add item form */
 .shopping-add-form {
     margin-top: 2rem;

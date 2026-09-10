@@ -19,9 +19,9 @@ RUN uv sync --no-dev --frozen
 # ---- final image ----
 FROM base AS final
 
-# Install system dependencies for file parsing
+# Install system dependencies for file parsing + local OCR (Tesseract, French+English)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends antiword && \
+    apt-get install -y --no-install-recommends antiword tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy installed venv from deps stage
