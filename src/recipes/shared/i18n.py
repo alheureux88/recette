@@ -82,6 +82,14 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "recipe.print_tags": {"fr": "Étiquettes", "en": "Tags"},
     "recipe.print_description": {"fr": "Description", "en": "Description"},
     "recipe.print_links": {"fr": "Liens externes", "en": "External links"},
+    "recipe.print_step_ingredients": {
+        "fr": "Ingrédients des étapes",
+        "en": "Step ingredients",
+    },
+    "recipe.show_step_ingredients": {
+        "fr": "Ingrédients dans les étapes",
+        "en": "Ingredients in steps",
+    },
     "recipe.print": {"fr": "Imprimer", "en": "Print"},
     "recipe.instructions": {"fr": "Instructions", "en": "Instructions"},
     "recipe.ingredients": {"fr": "Ingrédients", "en": "Ingredients"},
@@ -783,6 +791,11 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "prefs.print_hint": {
         "fr": "Options cochées par défaut sur la page d'une recette.",
         "en": "Options checked by default on a recipe page.",
+    },
+    "prefs.section_display": {"fr": "Affichage", "en": "Display"},
+    "prefs.display_hint": {
+        "fr": "Affichage par défaut des ingrédients dans les étapes, sur la page recette et en mode cuisine.",
+        "en": "Default display of ingredients in steps, on the recipe page and in cook mode.",
     },
     "prefs.section_departments": {"fr": "Départements d'épicerie", "en": "Grocery departments"},
     "prefs.departments_hint": {

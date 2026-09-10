@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from recipes.features.admin.services import get_recipe_provenances
 from recipes.features.preferences.controllers import (
     print_prefs_for_user,
+    show_step_ingredients_for_user,
     units_for_user,
 )
 from recipes.features.recipes.services import (
@@ -104,6 +105,45 @@ def _ingredient_context(
         "display_ingredients": display_ingredients,
         "ingredients_structures": any(isinstance(item, dict) for item in items),
     }
+
+
+def _build_steps_with_ingredients(
+    steps_raw: object,
+    multiplicateur: float = 1.0,
+    systeme: str = "original",
+    lang: str = DEFAULT_LANGUAGE,
+) -> list[JsonDict]:
+    """Enrichit chaque étape avec ses ingrédients fournis par le LLM.
+
+    Chaque étape stockée peut contenir `ingredients` : une liste de dicts
+    `{food, quantity_min, quantity_max, unit}` avec la quantité utilisée
+    dans cette étape. Les libellés sont mis à l'échelle (portions) et
+    convertis (unités) comme la liste principale.
+    """
+    enriched: list[JsonDict] = []
+    if not isinstance(steps_raw, list):
+        return enriched
+    for step in steps_raw:
+        if not isinstance(step, dict):
+            continue
+        has_timer = bool(step.get("timer_seconds"))
+        duration = int(step["timer_seconds"]) if step.get("timer_seconds") else 0
+        raw_ings = step.get("ingredients")
+        step_ings: list[str] = []
+        if isinstance(raw_ings, list):
+            for ing in raw_ings:
+                label = format_ingredient(ing, multiplicateur, systeme, lang=lang)
+                if label.strip():
+                    step_ings.append(label)
+        enriched.append(
+            {
+                "text": str(step.get("text") or ""),
+                "has_timer": has_timer,
+                "duration_seconds": duration,
+                "step_ingredients": step_ings,
+            }
+        )
+    return enriched
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -213,20 +253,24 @@ async def recipe_detail(
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
-    steps_raw = recipe.get("steps") or []
-    steps_list: list[JsonDict] = []
-    if isinstance(steps_raw, list):
-        for step in steps_raw:
-            if isinstance(step, dict):
-                steps_list.append(
-                    {
-                        "text": str(step.get("text") or ""),
-                        "has_timer": bool(step.get("timer_seconds")),
-                        "duration_seconds": int(step["timer_seconds"])
-                        if step.get("timer_seconds")
-                        else 0,
-                    }
-                )
+    resolved_units_early = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
+    ingredient_ctx_early = _ingredient_context(
+        recipe,
+        _parse_servings_param(servings),
+        resolved_units_early,
+        _parse_multiplier_param(multiplier),
+        lang=lang,
+    )
+    _mult_raw = ingredient_ctx_early.get("current_multiplier", 1.0)
+    _mult = float(_mult_raw) if isinstance(_mult_raw, (int, float, str)) else 1.0
+    _sys_raw = ingredient_ctx_early.get("units_system", "original")
+    _sys = _sys_raw if isinstance(_sys_raw, str) else "original"
+    steps_list = _build_steps_with_ingredients(
+        recipe.get("steps"),
+        _mult,
+        _sys,
+        lang=lang,
+    )
 
     user_id = _shopping_list_user_id(request)
     if user_id is not None:
@@ -262,7 +306,6 @@ async def recipe_detail(
                     }
                 )
 
-    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
     return templates.TemplateResponse(
         request=request,
         name="recipe.html",
@@ -276,13 +319,8 @@ async def recipe_detail(
             shopping_templates=shopping_templates_data,
             ingredients_json=json.dumps(ingredients_for_json, ensure_ascii=False),
             print_prefs=print_prefs_for_user(request, conn),
-            **_ingredient_context(
-                recipe,
-                _parse_servings_param(servings),
-                resolved_units,
-                _parse_multiplier_param(multiplier),
-                lang=lang,
-            ),
+            show_step_ingredients=show_step_ingredients_for_user(request, conn),
+            **ingredient_ctx_early,
         ),
     )
 
@@ -313,28 +351,26 @@ async def recipe_cook(
         _parse_multiplier_param(multiplier),
         lang=lang,
     )
-    steps_raw = recipe.get("steps") or []
-    steps: list[JsonDict] = []
-    if isinstance(steps_raw, list):
-        for step in steps_raw:
-            if isinstance(step, dict):
-                steps.append(
-                    {
-                        "text": str(step.get("text") or ""),
-                        "has_timer": bool(step.get("timer_seconds")),
-                        "duration_seconds": int(step["timer_seconds"])
-                        if step.get("timer_seconds")
-                        else 0,
-                    }
-                )
+    _cook_mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
+    _cook_mult = float(_cook_mult_raw) if isinstance(_cook_mult_raw, (int, float, str)) else 1.0
+    _cook_sys_raw = ingredient_ctx.get("units_system", "original")
+    _cook_sys = _cook_sys_raw if isinstance(_cook_sys_raw, str) else "original"
+    steps = _build_steps_with_ingredients(
+        recipe.get("steps"),
+        _cook_mult,
+        _cook_sys,
+        lang=lang,
+    )
+    display_for_cook = ingredient_ctx.get("display_ingredients", [])
     return templates.TemplateResponse(
         request=request,
         name="recipe_cook.html",
         context=_base_context(
             request,
             recipe=recipe,
-            display_ingredients=ingredient_ctx.get("display_ingredients", []),
+            display_ingredients=display_for_cook,
             steps=steps,
+            show_step_ingredients=show_step_ingredients_for_user(request, conn),
             vapid_public_key=VAPID_PUBLIC_KEY,
         ),
     )
@@ -349,7 +385,12 @@ async def recipe_ingredients(
     units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
 ) -> Response:
-    """Partial HTMX : la section ingrédients avec portions/multiplicateur et unités."""
+    """Partial HTMX : ingrédients + ingrédients d'étape (OOB).
+
+    La section ingrédients est le swap principal ; les libellés
+    d'ingrédients de chaque étape suivent via des swaps hors-bande
+    (`steps_oob.html`), sans reconstruire les minuteurs.
+    """
     from recipes.shared.errors import render_not_found
     from recipes.shared.web import _resolve_request_lang, templates
 
@@ -358,18 +399,26 @@ async def recipe_ingredients(
     if not recipe:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
+    ingredient_ctx = _ingredient_context(
+        recipe,
+        _parse_servings_param(servings),
+        resolved_units,
+        _parse_multiplier_param(multiplier),
+        lang=lang,
+    )
+    _mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
+    _mult = float(_mult_raw) if isinstance(_mult_raw, (int, float, str)) else 1.0
+    _sys_raw = ingredient_ctx.get("units_system", "original")
+    _sys = _sys_raw if isinstance(_sys_raw, str) else "original"
     return templates.TemplateResponse(
         request=request,
-        name="partials/ingredients.html",
+        name="partials/ingredients_update.html",
         context={
             "recipe": recipe,
-            **_ingredient_context(
-                recipe,
-                _parse_servings_param(servings),
-                resolved_units,
-                _parse_multiplier_param(multiplier),
-                lang=lang,
+            "steps_list": _build_steps_with_ingredients(
+                recipe.get("steps"), _mult, _sys, lang=lang
             ),
+            **ingredient_ctx,
         },
     )
 

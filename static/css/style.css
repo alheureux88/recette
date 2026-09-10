@@ -726,6 +726,86 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
     border-color: var(--accent);
 }
 
+/* Ingrédients utilisés dans une étape (page recette + mode cuisine) */
+.step-ingredients,
+.cook-step-ingredients {
+    list-style: none;
+    padding: 0;
+    margin: 0.35rem 0 0 2.55rem;
+    flex-basis: calc(100% - 2.55rem);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+.step-ingredients li,
+.cook-step-ingredients li {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--muted);
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.12rem 0.6rem;
+}
+.cook-step-ingredients {
+    margin-left: 2.65rem;
+}
+
+/* Afficher / cacher les ingrédients dans les étapes */
+body.hide-step-ingredients .step-ingredients,
+body.hide-step-ingredients .cook-step-ingredients {
+    display: none;
+}
+.instructions-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+.instructions-header h2 {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+    flex: 1;
+}
+.step-ingredients-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.step-ingredients-toggle input {
+    accent-color: var(--accent);
+}
+.cook-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.cook-step-ingredients-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.cook-step-ingredients-toggle input {
+    accent-color: var(--accent);
+}
+
 /* Ingredient scaling controls (portions / unités) */
 .ingredient-controls {
     display: flex;
@@ -1776,6 +1856,7 @@ main.admin-main {
     body.print-no-tags .detail-tags { display: none !important; }
     body.print-no-description .lead { display: none !important; }
     body.print-no-links .recipe-links { display: none !important; }
+    body.print-no-step-ingredients .step-ingredients { display: none !important; }
 
     /* Contrôles interactifs inutiles à l'impression */
     .ingredient-controls { display: none !important; }

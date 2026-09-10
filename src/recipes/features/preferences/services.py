@@ -27,6 +27,7 @@ PRINT_KEYS: tuple[str, ...] = (
     "print_tags",
     "print_description",
     "print_links",
+    "print_step_ingredients",
 )
 
 DEFAULT_PREFERENCES: JsonDict = {
@@ -37,6 +38,8 @@ DEFAULT_PREFERENCES: JsonDict = {
     "print_tags": False,
     "print_description": False,
     "print_links": False,
+    "print_step_ingredients": False,
+    "show_step_ingredients": True,
     "department_order": [],
 }
 
@@ -77,6 +80,9 @@ def get_preferences(user_id: int, conn: sqlite3.Connection | None = None) -> dic
         value = stored.get(key)
         if isinstance(value, bool):
             merged[key] = value
+    show_step_ingredients = stored.get("show_step_ingredients")
+    if isinstance(show_step_ingredients, bool):
+        merged["show_step_ingredients"] = show_step_ingredients
     order = stored.get("department_order")
     if isinstance(order, list):
         merged["department_order"] = [str(name) for name in order if isinstance(name, str)]
@@ -111,6 +117,9 @@ def save_preferences(
         for key in PRINT_KEYS:
             if key in patch:
                 stored[key] = _to_bool(patch[key])
+
+        if "show_step_ingredients" in patch:
+            stored["show_step_ingredients"] = _to_bool(patch["show_step_ingredients"])
 
         if "department_order" in patch:
             order = patch["department_order"]

@@ -54,6 +54,8 @@ class TestPreferencesServices:
         assert prefs["print_tags"] is False
         assert prefs["print_description"] is False
         assert prefs["print_links"] is False
+        assert prefs["print_step_ingredients"] is False
+        assert prefs["show_step_ingredients"] is True
         assert prefs["department_order"] == []
 
     def test_save_and_reload_roundtrip(self):
@@ -364,6 +366,84 @@ class TestPreferencesIntegration:
         assert 'id="print-images" checked' in resp.text
         assert 'id="print-tags" checked' in resp.text
         assert 'id="print-links" checked' not in resp.text
+        assert 'id="print-step-ingredients" checked' not in resp.text
+
+    def test_recipe_applies_print_step_ingredients_preference(self, as_user):
+        recipe_id = _insert_structured_recipe()
+        save_preferences(1, {"print_step_ingredients": True})
+        resp = as_user.get(f"/recipe/{recipe_id}")
+        assert resp.status_code == 200
+        assert 'id="print-step-ingredients" checked' in resp.text
+
+    def test_save_form_persists_print_step_ingredients(self, as_user):
+        resp = as_user.post(
+            "/preferences",
+            data={"print_step_ingredients": "on"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert get_preferences(1)["print_step_ingredients"] is True
+
+    def test_save_form_persists_show_step_ingredients(self, as_user):
+        resp = as_user.post(
+            "/preferences",
+            data={"show_step_ingredients": "on"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert get_preferences(1)["show_step_ingredients"] is True
+
+    def test_save_form_unchecked_show_step_ingredients_turns_off(self, as_user):
+        save_preferences(1, {"show_step_ingredients": True})
+        resp = as_user.post(
+            "/preferences",
+            data={"language": "fr"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert get_preferences(1)["show_step_ingredients"] is False
+
+    def test_preferences_page_renders_show_step_ingredients(self, as_user):
+        resp = as_user.get("/preferences")
+        assert resp.status_code == 200
+        assert 'name="show_step_ingredients"' in resp.text
+        assert "Affichage" in resp.text or "Display" in resp.text
+
+    def test_recipe_toggle_checked_by_default(self, as_user):
+        recipe_id = _insert_structured_recipe()
+        resp = as_user.get(f"/recipe/{recipe_id}")
+        assert resp.status_code == 200
+        assert 'id="toggle-step-ingredients" checked' in resp.text
+
+    def test_recipe_toggle_unchecked_when_preference_off(self, as_user):
+        recipe_id = _insert_structured_recipe()
+        save_preferences(1, {"show_step_ingredients": False})
+        resp = as_user.get(f"/recipe/{recipe_id}")
+        assert resp.status_code == 200
+        assert 'id="toggle-step-ingredients"' in resp.text
+        assert 'id="toggle-step-ingredients" checked' not in resp.text
+
+    def test_cook_toggle_follows_preference(self, as_user):
+        recipe_id = upsert_recipe(
+            {
+                "source_file": "/recipes/prefs_cook.docx",
+                "file_hash": "prefscook1",
+                "category": "plat-principal",
+                "lang": {
+                    "title": "Prefs Cook",
+                    "description": "",
+                    "steps": [{"text": "Mélanger", "timer_seconds": None}],
+                    "ingredients": [],
+                },
+            }
+        )
+        resp = as_user.get(f"/recipe/{recipe_id}/cook")
+        assert resp.status_code == 200
+        assert 'id="toggle-cook-step-ingredients" checked' in resp.text
+        save_preferences(1, {"show_step_ingredients": False})
+        resp = as_user.get(f"/recipe/{recipe_id}/cook")
+        assert 'id="toggle-cook-step-ingredients"' in resp.text
+        assert 'id="toggle-cook-step-ingredients" checked' not in resp.text
 
     def test_shopping_list_follows_department_order(self, as_user):
         lst = create_shopping_list("Pref List", user_id=1)

@@ -549,9 +549,17 @@ class TestNormalizeSteps:
         ]
         result = _normalize_steps(raw, "fr")
         assert len(result) == 3
-        assert result[0] == {"text": "Cuire 5 minutes", "timer_seconds": 300}
-        assert result[1] == {"text": "Mélanger", "timer_seconds": None}
-        assert result[2] == {"text": "Laisser reposer 10 min", "timer_seconds": 600}
+        assert result[0] == {
+            "text": "Cuire 5 minutes",
+            "timer_seconds": 300,
+            "ingredients": [],
+        }
+        assert result[1] == {"text": "Mélanger", "timer_seconds": None, "ingredients": []}
+        assert result[2] == {
+            "text": "Laisser reposer 10 min",
+            "timer_seconds": 600,
+            "ingredients": [],
+        }
 
     def test_normalize_steps_empty_text_filtered(self):
         from recipes.shared.tagger import _normalize_steps
@@ -563,7 +571,7 @@ class TestNormalizeSteps:
         ]
         result = _normalize_steps(raw, "fr")
         assert len(result) == 1
-        assert result[0] == {"text": "Valid step", "timer_seconds": None}
+        assert result[0] == {"text": "Valid step", "timer_seconds": None, "ingredients": []}
 
     def test_normalize_steps_invalid_timer(self):
         from recipes.shared.tagger import _normalize_steps
@@ -596,7 +604,7 @@ class TestNormalizeSteps:
         ]
         result = _normalize_steps(raw, "fr")
         assert len(result) == 1
-        assert result[0] == {"text": "Step 1", "timer_seconds": None}
+        assert result[0] == {"text": "Step 1", "timer_seconds": None, "ingredients": []}
 
 
 class TestTagRecipeWithSteps:
@@ -638,12 +646,18 @@ class TestTagRecipeWithSteps:
         assert result["lang_fr"]["steps"][0] == {
             "text": "Préchauffer le four",
             "timer_seconds": None,
+            "ingredients": [],
         }
-        assert result["lang_fr"]["steps"][1] == {"text": "Cuire 30 minutes", "timer_seconds": 1800}
+        assert result["lang_fr"]["steps"][1] == {
+            "text": "Cuire 30 minutes",
+            "timer_seconds": 1800,
+            "ingredients": [],
+        }
         assert len(result["lang_en"]["steps"]) == 2
         assert result["lang_en"]["steps"][1] == {
             "text": "Cook for 30 minutes",
             "timer_seconds": 1800,
+            "ingredients": [],
         }
 
     def test_tag_recipe_without_steps(self):
@@ -663,3 +677,93 @@ class TestTagRecipeWithSteps:
 
         assert result["lang_fr"]["steps"] == []
         assert result["lang_en"]["steps"] == []
+
+
+class TestNormalizeStepIngredients:
+    """Ingrédients par étape fournis par le LLM (quantités utilisées dans l'étape)."""
+
+    def test_normalize_step_ingredients(self):
+        from recipes.shared.tagger import _normalize_steps
+
+        raw = [
+            {
+                "text": "Ajouter la farine",
+                "timer_seconds": None,
+                "ingredients": [
+                    {"food": "farine", "quantity_min": 100, "quantity_max": None, "unit": "g"},
+                    {"food": "  ", "quantity_min": 1, "quantity_max": None, "unit": None},
+                ],
+            },
+            {"text": "Mélanger", "timer_seconds": None},
+        ]
+        result = _normalize_steps(raw, "fr")
+        assert result[0]["ingredients"] == [
+            {"food": "farine", "quantity_min": 100.0, "quantity_max": None, "unit": "g"},
+        ]
+        assert result[1]["ingredients"] == []
+
+    def test_normalize_step_ingredients_rejects_non_list(self):
+        from recipes.shared.tagger import _normalize_steps
+
+        raw = [{"text": "Cuire", "timer_seconds": 60, "ingredients": "farine"}]
+        assert _normalize_steps(raw, "fr")[0]["ingredients"] == []
+
+    def test_tag_recipe_steps_keep_ingredients_per_language(self):
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Tarte",
+                "title_en": "Pie",
+                "steps_fr": [
+                    {
+                        "text": "Ajouter 100 g de farine",
+                        "timer_seconds": None,
+                        "ingredients": [
+                            {
+                                "food": "farine",
+                                "quantity_min": 100,
+                                "quantity_max": None,
+                                "unit": "g",
+                            }
+                        ],
+                    }
+                ],
+                "steps_en": [
+                    {
+                        "text": "Add 100 g of flour",
+                        "timer_seconds": None,
+                        "ingredients": [
+                            {
+                                "food": "flour",
+                                "quantity_min": 100,
+                                "quantity_max": None,
+                                "unit": "g",
+                            }
+                        ],
+                    }
+                ],
+                "ingredients": [],
+            }
+        )
+        mock_response = MagicMock()
+        mock_message = MagicMock()
+        mock_message.content = recipe_json
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert result["lang_fr"]["steps"][0]["ingredients"] == [
+            {"food": "farine", "quantity_min": 100.0, "quantity_max": None, "unit": "g"},
+        ]
+        assert result["lang_en"]["steps"][0]["ingredients"] == [
+            {"food": "flour", "quantity_min": 100.0, "quantity_max": None, "unit": "g"},
+        ]
+
+    def test_prompt_asks_for_step_ingredients(self):
+        prompt = build_system_prompt()
+        assert "PAR CETTE ÉTAPE" in prompt
+        assert '"ingredients"' in prompt

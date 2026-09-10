@@ -39,6 +39,12 @@
         </select>
     </label>
 
+    <h2 class="admin-section-title">{{ _('prefs.section_display') }}</h2>
+    <p class="prefs-hint">{{ _('prefs.display_hint') }}</p>
+    <div class="prefs-checks">
+        <label><input type="checkbox" name="show_step_ingredients" value="on"{% if prefs.show_step_ingredients %} checked{% endif %}> {{ _('recipe.show_step_ingredients') }}</label>
+    </div>
+
     <h2 class="admin-section-title">{{ _('prefs.section_print') }}</h2>
     <p class="prefs-hint">{{ _('prefs.print_hint') }}</p>
     <div class="prefs-checks">
@@ -46,6 +52,7 @@
         <label><input type="checkbox" name="print_tags" value="on"{% if prefs.print_tags %} checked{% endif %}> {{ _('recipe.print_tags') }}</label>
         <label><input type="checkbox" name="print_description" value="on"{% if prefs.print_description %} checked{% endif %}> {{ _('recipe.print_description') }}</label>
         <label><input type="checkbox" name="print_links" value="on"{% if prefs.print_links %} checked{% endif %}> {{ _('recipe.print_links') }}</label>
+        <label><input type="checkbox" name="print_step_ingredients" value="on"{% if prefs.print_step_ingredients %} checked{% endif %}> {{ _('recipe.print_step_ingredients') }}</label>
     </div>
 
     <h2 class="admin-section-title">{{ _('prefs.section_departments') }}</h2>

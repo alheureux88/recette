@@ -420,3 +420,99 @@ def test_resolve_session_secret_requires_secret_with_oidc(monkeypatch):
     monkeypatch.delenv("SESSION_SECRET", raising=False)
     with pytest.raises(RuntimeError, match="SESSION_SECRET"):
         _resolve_session_secret(oidc_enabled=True)
+
+
+def _insert_recipe_with_step_ingredients() -> int:
+    data = {
+        **SAMPLE,
+        "title": "Gâteau aux étapes",
+        "servings": 4,
+        "ingredients": [
+            {"food": "farine", "quantity_min": 200, "quantity_max": None, "unit": "g"},
+            {"food": "sucre", "quantity_min": 100, "quantity_max": None, "unit": "g"},
+        ],
+        "steps": [
+            {
+                "text": "Ajouter 100 g de farine",
+                "timer_seconds": None,
+                "ingredients": [
+                    {"food": "farine", "quantity_min": 100, "quantity_max": None, "unit": "g"},
+                ],
+            },
+            {"text": "Mélanger le tout", "timer_seconds": None, "ingredients": []},
+        ],
+        "source_file": "/recipes/gateau_etapes.docx",
+        "file_hash": "ccc333",
+    }
+    recipe_id = upsert_recipe(data)
+    sync_recipe_tags(recipe_id, SAMPLE["tags"])
+    return recipe_id
+
+
+def test_recipe_detail_shows_step_ingredients(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}"))
+    assert "step-ingredients" in page
+    assert "100 g de farine" in page
+
+
+def test_recipe_detail_step_ingredients_scale_with_servings(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}?servings=8"))
+    assert "200 g de farine" in page
+
+
+def test_recipe_cook_shows_step_ingredients(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    resp = client.get(f"/recipe/{recipe_id}/cook")
+    assert resp.status_code == 200
+    page = _page(resp)
+    assert "cook-step-ingredients" in page
+    assert "100 g de farine" in page
+
+
+def test_recipe_ingredients_partial_updates_step_ingredients(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}/ingredients?servings=8"))
+    assert "200 g de farine" in page
+    assert 'hx-swap-oob="true"' in page
+    assert 'id="step-ingredients-0"' in page
+
+
+def test_recipe_detail_toggle_defaults_to_checked(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}"))
+    assert 'id="toggle-step-ingredients" checked' in page
+
+
+def test_recipe_cook_toggle_defaults_to_checked(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}/cook"))
+    assert 'id="toggle-cook-step-ingredients" checked' in page
+
+
+def test_recipe_ingredients_partial_multiplier_updates_step_ingredients(client):
+    data = {
+        **SAMPLE,
+        "title": "Soupe aux étapes",
+        "servings": None,
+        "ingredients": [
+            {"food": "farine", "quantity_min": 200, "quantity_max": None, "unit": "g"},
+        ],
+        "steps": [
+            {
+                "text": "Ajouter 100 g de farine",
+                "timer_seconds": None,
+                "ingredients": [
+                    {"food": "farine", "quantity_min": 100, "quantity_max": None, "unit": "g"},
+                ],
+            },
+        ],
+        "source_file": "/recipes/soupe_etapes.docx",
+        "file_hash": "ddd444",
+    }
+    recipe_id = upsert_recipe(data)
+    sync_recipe_tags(recipe_id, SAMPLE["tags"])
+    page = _page(client.get(f"/recipe/{recipe_id}/ingredients?multiplier=2"))
+    assert "200 g de farine" in page
+    assert 'id="step-ingredients-0"' in page

@@ -50,7 +50,13 @@
 
     {% if steps %}
     <section class="cook-section">
-        <h2 class="cook-section-title">{{ _('cook.steps_title') }}</h2>
+        <h2 class="cook-section-title">
+            <span>{{ _('cook.steps_title') }}</span>
+            <label class="cook-step-ingredients-toggle">
+                <input type="checkbox" id="toggle-cook-step-ingredients"{% if show_step_ingredients %} checked{% endif %}>
+                {{ _('recipe.show_step_ingredients') }}
+            </label>
+        </h2>
         <ol class="cook-list cook-steps">
             {% for step in steps %}
             <li>
@@ -60,6 +66,13 @@
                         <span class="cook-step-number" aria-hidden="true">{{ loop.index }}</span>
                         <span class="cook-text">{{ step.text }}</span>
                     </label>
+                    {% if step.step_ingredients %}
+                    <ul class="cook-step-ingredients">
+                        {% for ing in step.step_ingredients %}
+                        <li>{{ ing }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
                     {% if step.has_timer %}
                     <div class="cook-timer" data-step-index="{{ loop.index0 }}" data-default-duration="{{ step.duration_seconds }}">
                         <div class="cook-timer-display">
@@ -213,6 +226,15 @@
         resetBtn.addEventListener('click', clearAll);
         applyState(loadState());
         updateProgress();
+
+        var stepIngsToggle = document.getElementById('toggle-cook-step-ingredients');
+        if (stepIngsToggle) {
+            var applyStepIngs = function () {
+                document.body.classList.toggle('hide-step-ingredients', !stepIngsToggle.checked);
+            };
+            stepIngsToggle.addEventListener('change', applyStepIngs);
+            applyStepIngs();
+        }
 
         // --- Timer logic ---
         var timerDoneMsg = page.dataset.timerDoneMsg || 'Time!';

@@ -109,7 +109,7 @@
         <div id="step-rows">
             {% for step in recipe.steps %}
             {% if step is mapping %}
-            <div class="step-row">
+            <div class="step-row" data-ingredients='{{ (step.ingredients if step.ingredients is defined else [])|tojson }}'>
                 <input type="text" name="step_text" value="{{ step.text or '' }}" placeholder="{{ _('admin.step_text_placeholder') }}">
                 <input type="number" name="step_timer" min="0" step="1"
                        value="{{ step.timer_seconds if step.timer_seconds else '' }}"
@@ -178,9 +178,15 @@
             const text = row.querySelector("input[name='step_text']").value.trim();
             const timerVal = row.querySelector("input[name='step_timer']").value;
             if (text) {
+                let ingredients = [];
+                try {
+                    const parsed = JSON.parse(row.dataset.ingredients || "[]");
+                    if (Array.isArray(parsed)) ingredients = parsed;
+                } catch (e) { ingredients = []; }
                 steps.push({
                     text: text,
-                    timer_seconds: timerVal ? parseInt(timerVal, 10) : null
+                    timer_seconds: timerVal ? parseInt(timerVal, 10) : null,
+                    ingredients: ingredients
                 });
             }
         });

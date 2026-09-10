@@ -88,6 +88,8 @@ async def preferences_save(
     print_tags: str | None = Form(default=None),
     print_description: str | None = Form(default=None),
     print_links: str | None = Form(default=None),
+    print_step_ingredients: str | None = Form(default=None),
+    show_step_ingredients: str | None = Form(default=None),
     department_order: str | None = Form(default=None),
 ) -> RedirectResponse:
     """Save preferences from the HTML form, then redirect back."""
@@ -103,14 +105,19 @@ async def preferences_save(
         patch["units"] = units
     if theme is not None:
         patch["theme"] = theme
-    # Le formulaire envoie toujours les 4 cases : absente = décochée.
+    # Le formulaire envoie toujours les cases : absente = décochée.
     for key, value in (
         ("print_images", print_images),
         ("print_tags", print_tags),
         ("print_description", print_description),
         ("print_links", print_links),
+        ("print_step_ingredients", print_step_ingredients),
     ):
         patch[key] = value if value is not None else False
+    # Case à cocher d'affichage (défaut coché) : absente = décochée.
+    patch["show_step_ingredients"] = (
+        show_step_ingredients if show_step_ingredients is not None else False
+    )
     if department_order is not None:
         patch["department_order"] = (
             [name for name in department_order.split(",") if name.strip()]
@@ -232,6 +239,16 @@ def units_for_user(request: Request, conn: sqlite3.Connection) -> str:
     return str(units) if units in ("original", "metric", "imperial") else "original"
 
 
+def show_step_ingredients_for_user(request: Request, conn: sqlite3.Connection) -> bool:
+    """Afficher les ingrédients dans les étapes (défaut vrai, y compris anonymes)."""
+    user_id = _current_user_id(request)
+    if user_id is None:
+        return True
+    prefs = get_preferences(user_id, conn=conn)
+    value = prefs.get("show_step_ingredients", True)
+    return bool(value) if isinstance(value, bool) else True
+
+
 def print_prefs_for_user(request: Request, conn: sqlite3.Connection) -> dict[str, bool]:
     """Default print checkboxes for the current user."""
     user_id = _current_user_id(request)
@@ -240,5 +257,11 @@ def print_prefs_for_user(request: Request, conn: sqlite3.Connection) -> dict[str
     prefs = get_preferences(user_id, conn=conn)
     return {
         key: bool(prefs.get(key))
-        for key in ("print_images", "print_tags", "print_description", "print_links")
+        for key in (
+            "print_images",
+            "print_tags",
+            "print_description",
+            "print_links",
+            "print_step_ingredients",
+        )
     }

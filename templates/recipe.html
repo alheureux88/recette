@@ -14,6 +14,7 @@
                     <label><input type="checkbox" id="print-tags"{% if print_prefs and print_prefs.print_tags %} checked{% endif %}> {{ _('recipe.print_tags') }}</label>
                     <label><input type="checkbox" id="print-description"{% if print_prefs and print_prefs.print_description %} checked{% endif %}> {{ _('recipe.print_description') }}</label>
                     <label><input type="checkbox" id="print-links"{% if print_prefs and print_prefs.print_links %} checked{% endif %}> {{ _('recipe.print_links') }}</label>
+                    <label><input type="checkbox" id="print-step-ingredients"{% if print_prefs and print_prefs.print_step_ingredients %} checked{% endif %}> {{ _('recipe.print_step_ingredients') }}</label>
                 </div>
             </details>
             <button type="button" class="btn-print" onclick="recettePrint()">{{ _('recipe.print') }}</button>
@@ -80,7 +81,13 @@
         {% include "partials/ingredients.html" %}
 
         <section class="instructions">
-            <h2>{{ _('recipe.instructions') }}</h2>
+            <div class="instructions-header">
+                <h2>{{ _('recipe.instructions') }}</h2>
+                <label class="step-ingredients-toggle">
+                    <input type="checkbox" id="toggle-step-ingredients"{% if show_step_ingredients %} checked{% endif %}>
+                    {{ _('recipe.show_step_ingredients') }}
+                </label>
+            </div>
             <ol class="instruction-list">
                 {% for step in steps_list %}
                     {% if step.text.strip() %}
@@ -89,6 +96,13 @@
                             <span class="instruction-number" aria-hidden="true">{{ loop.index }}</span>
                             <span class="instruction-text">{{ step.text }}</span>
                         </div>
+                        {% if step.step_ingredients %}
+                        <ul class="step-ingredients" id="step-ingredients-{{ loop.index0 }}" aria-label="{{ _('recipe.ingredients') }}">
+                            {% for ing in step.step_ingredients %}
+                            <li>{{ ing }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
                         {% if step.has_timer %}
                         <div class="instruction-timer-widget" data-step-index="{{ loop.index0 }}" data-default-duration="{{ step.duration_seconds }}">
                             <span class="instruction-timer-display" data-role="remaining">{{ step.duration_seconds }}</span>
@@ -144,12 +158,14 @@
             tags: document.getElementById('print-tags'),
             description: document.getElementById('print-description'),
             links: document.getElementById('print-links'),
+            stepIngredients: document.getElementById('print-step-ingredients'),
         };
         var classes = {
             images: 'print-no-images',
             tags: 'print-no-tags',
             description: 'print-no-description',
             links: 'print-no-links',
+            stepIngredients: 'print-no-step-ingredients',
         };
         function applyPrintClasses() {
             Object.keys(checks).forEach(function (key) {
@@ -596,6 +612,16 @@
                 bindShoppingBtn();
             }
         });
+    })();
+
+    (function () {
+        var toggle = document.getElementById('toggle-step-ingredients');
+        if (!toggle) return;
+        function applyStepIngredients() {
+            document.body.classList.toggle('hide-step-ingredients', !toggle.checked);
+        }
+        toggle.addEventListener('change', applyStepIngredients);
+        applyStepIngredients();
     })();
 </script>
 

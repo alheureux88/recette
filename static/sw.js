@@ -1,5 +1,5 @@
-const CACHE = "recettes-v1";
-const SHELL = ["/", "/static/css/style.css", "/static/favicon.svg", "/manifest.webmanifest"];
+const CACHE = "recettes-v2";
+const SHELL = ["/", "/static/css/style.css", "/static/favicon.ico", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

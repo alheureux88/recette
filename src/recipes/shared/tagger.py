@@ -174,11 +174,20 @@ def build_system_prompt() -> str:
             "=== IMPORTANT pour les étapes ===",
             "",
             "Les étapes de la recette doivent être retournées dans un tableau 'steps_fr' et 'steps_en'.",
-            "Chaque étape est un objet avec 'text' (le texte de l'étape) et 'timer_seconds' (entier ou null).",
+            "Chaque étape est un objet avec 'text' (le texte de l'étape), 'timer_seconds' (entier ou null)",
+            "et 'ingredients' (tableau, éventuellement vide).",
             "",
             "Si une étape mentionne un temps d'attente, de cuisson, de repos, de marinade, etc.",
             "(ex: 'cuire 5 minutes', 'laisser reposer 10 min'), mets la durée",
             "en SECONDES dans 'timer_seconds'. Sinon, mets null.",
+            "",
+            "Pour chaque étape, liste dans 'ingredients' les ingrédients utilisés PAR CETTE ÉTAPE,",
+            "avec la quantité utilisée DANS CETTE ÉTAPE (elle peut être partielle : ex. 100 g sur 500 g",
+            "de farine au total). Chaque entrée contient 'food' (nom de l'aliment dans la langue de",
+            "l'étape, avec le même libellé que dans la liste principale), 'quantity_min', 'quantity_max'",
+            "et 'unit' (mêmes conventions que la liste principale). Si la quantité n'est pas précisée,",
+            "mets null dans 'quantity_min' et 'quantity_max' mais liste quand même l'aliment. Si l'étape",
+            "n'utilise aucun ingrédient, mets un tableau vide.",
             "",
             "=== IMPORTANT pour les ingrédients ===",
             "",
@@ -226,12 +235,16 @@ def build_system_prompt() -> str:
             "    }",
             "  ],",
             '  "steps_fr": [',
-            '    {"text": "Étape 1.", "timer_seconds": null},',
-            '    {"text": "Cuire 5 minutes.", "timer_seconds": 300}',
+            '    {"text": "Étape 1.", "timer_seconds": null, "ingredients": []},',
+            '    {"text": "Ajouter 100 g de farine.", "timer_seconds": null,',
+            '     "ingredients": [{"food": "farine", "quantity_min": 100, "quantity_max": null, "unit": "g"}]},',
+            '    {"text": "Cuire 5 minutes.", "timer_seconds": 300, "ingredients": []}',
             "  ],",
             '  "steps_en": [',
-            '    {"text": "Step 1.", "timer_seconds": null},',
-            '    {"text": "Cook for 5 minutes.", "timer_seconds": 300}',
+            '    {"text": "Step 1.", "timer_seconds": null, "ingredients": []},',
+            '    {"text": "Add 100 g of flour.", "timer_seconds": null,',
+            '     "ingredients": [{"food": "flour", "quantity_min": 100, "quantity_max": null, "unit": "g"}]},',
+            '    {"text": "Cook for 5 minutes.", "timer_seconds": 300, "ingredients": []}',
             "  ],",
             '  "category": "plat-principal",',
             '  "tags": {',
@@ -504,11 +517,48 @@ def _parse_servings(value: object) -> int | float | None:
     return parsed
 
 
+def _normalize_step_ingredients(raw: object) -> list[JsonDict]:
+    """Normalise les ingrédients d'une étape (quantités utilisées dans l'étape).
+
+    Chaque entrée contient `food` (nom dans la langue de l'étape),
+    `quantity_min` / `quantity_max` (nombres ou null) et `unit`.
+    Tolère les clés `food_fr` / `food_en` / `name` par robustesse.
+    """
+    if not isinstance(raw, list):
+        return []
+    normalized: list[JsonDict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        food = item.get("food")
+        if not isinstance(food, str) or not food.strip():
+            for key in ("food_fr", "food_en", "name"):
+                candidate = item.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    food = candidate
+                    break
+        if not isinstance(food, str) or not food.strip():
+            continue
+        normalized.append(
+            {
+                "food": food.strip(),
+                "quantity_min": parse_quantity(item.get("quantity_min")),
+                "quantity_max": parse_quantity(item.get("quantity_max")),
+                "unit": _clean_unit(item.get("unit")),
+            }
+        )
+    return normalized
+
+
 def _normalize_steps(raw: object, lang: str) -> list[JsonDict]:
     """Normalize the steps array from the LLM response.
 
-    Each step is an object with 'text' (string) and 'timer_seconds' (int or null).
+    Each step is an object with 'text' (string), 'timer_seconds' (int or null)
+    and 'ingredients' (list of {food, quantity_min, quantity_max, unit} used
+    in that step — possibly empty). `lang` is unused (food is already in the
+    step language) but kept for symmetry with ingredients normalization.
     """
+    del lang
     if not isinstance(raw, list):
         return []
     result: list[JsonDict] = []
@@ -521,7 +571,13 @@ def _normalize_steps(raw: object, lang: str) -> list[JsonDict]:
             timer_seconds: int | None = None
             if isinstance(timer, (int, float)) and timer > 0:
                 timer_seconds = int(timer)
-            result.append({"text": text.strip(), "timer_seconds": timer_seconds})
+            result.append(
+                {
+                    "text": text.strip(),
+                    "timer_seconds": timer_seconds,
+                    "ingredients": _normalize_step_ingredients(item.get("ingredients")),
+                }
+            )
     return result
 
 

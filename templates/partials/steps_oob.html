@@ -1,0 +1,13 @@
+{# Mises à jour hors-bande (HTMX OOB) des ingrédients d'étape.
+   Renvoyé avec le partial ingrédients : les libellés suivent portions /
+   multiplicateur / unités sans toucher au reste de la page (minuteurs).
+   Les `id` doivent correspondre à ceux de recipe.html (index global). #}
+{% for step in steps_list %}
+{% if step.text.strip() and step.step_ingredients %}
+<ul class="step-ingredients" id="step-ingredients-{{ loop.index0 }}" hx-swap-oob="true" aria-label="{{ _('recipe.ingredients') }}">
+    {% for ing in step.step_ingredients %}
+    <li>{{ ing }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endfor %}
