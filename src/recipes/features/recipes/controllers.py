@@ -410,7 +410,12 @@ async def favorites_list(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse | RedirectResponse:
     from recipes.shared.auth import OIDC_ENABLED
-    from recipes.shared.web import _base_context, _resolve_request_lang, templates
+    from recipes.shared.web import (
+        _base_context,
+        _provenance_context,
+        _resolve_request_lang,
+        templates,
+    )
 
     if not OIDC_ENABLED:
         return RedirectResponse(url="/", status_code=302)
@@ -419,8 +424,14 @@ async def favorites_list(
         return RedirectResponse(url="/auth/login", status_code=302)
     lang = _resolve_request_lang(request)
     recipes = get_favorite_recipes(user["id"], lang=lang, conn=conn)
+    favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="favorites.html",
-        context=_base_context(request, recipes=recipes),
+        context=_base_context(
+            request,
+            recipes=recipes,
+            favorite_ids=favorite_ids,
+            **_provenance_context(request, conn),
+        ),
     )
