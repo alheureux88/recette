@@ -46,6 +46,50 @@ body {
     min-height: 100vh;
 }
 
+/* Base form controls — filet de sécurité thème clair/sombre.
+ * Toute nouvelle page DOIT réutiliser les classes existantes
+ * (voir AGENTS.md) ; ces règles garantissent seulement qu'un
+ * <input>/<select>/<textarea>/<button> oublié sans classe reste
+ * lisible en mode sombre au lieu de retomber sur les couleurs
+ * natives du navigateur (fond blanc, texte noir).
+ * Les sélecteurs de classe (ex. .shopping-create-btn) restent
+ * plus spécifiques et s'appliquent par-dessus sans changement.
+ */
+input[type="text"],
+input[type="search"],
+input[type="number"],
+input[type="password"],
+input[type="email"],
+input[type="url"],
+input:not([type]),
+select,
+textarea {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+}
+input::placeholder,
+textarea::placeholder {
+    color: var(--muted);
+    opacity: 1;
+}
+select option {
+    background: var(--surface);
+    color: var(--text);
+}
+button,
+input[type="submit"],
+input[type="button"] {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    cursor: pointer;
+}
+
 /* Header */
 header {
     position: sticky;

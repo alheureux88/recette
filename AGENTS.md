@@ -89,6 +89,24 @@ Clés de traduction sous le préfixe `admin.*`:
 "admin.action_view": {"fr": "Voir", "en": "View"},
 ```
 
+## Thème clair / sombre (obligatoire pour chaque nouvelle page)
+
+Le thème passe par `document.documentElement.dataset.theme` (`light`/`dark`, voir `base.html`) et les variables CSS `--bg`, `--surface`, `--surface-alt`, `--border`, `--text`, `--muted`, `--accent`, `--on-accent` définies dans `static/css/style.css`. `color-scheme: light/dark` suit le thème pour les contrôles natifs.
+
+### Règles
+
+- **Réutiliser les classes CSS existantes** (ou les partiels existants) au lieu d'inventer un nouveau markup : ex. formulaires d'ajout d'article (`shopping-dept-add-form` + `shopping-dept-add-input` / `shopping-dept-add-qty` / `shopping-dept-add-btn`), renommage (`shopping-rename-form` + `shopping-rename-input` / `shopping-rename-save` / `shopping-rename-cancel`), édition inline (`shopping-item-edit-form` + `shopping-item-edit-qty` / `shopping-item-edit-text` / `shopping-item-save-btn`), suppression (`shopping-item-remove-form` + `shopping-item-remove`).
+- **Ne jamais laisser un `<input type="text|search|number|...">`, `<select>`, `<textarea>` ou `<button>` sans classe ni sélecteur d'ancêtre thémé** : sans style, ils retombent sur les couleurs natives du navigateur (fond blanc / texte noir) et cassent le mode sombre. Chaque contrôle doit être couvert soit par une classe dédiée (`background: var(--surface); color: var(--text); border: 1px solid var(--border);`), soit par un sélecteur d'ancêtre (ex. `.admin-edit-form input`, `.search-bar input`).
+- **Ne pas coder de couleurs en dur** (`#fff`, `#000`, `white`, `black`) dans les nouveaux styles : toujours passer par les variables `var(--*)`. Les seules exceptions sont les couleurs sémantiques fixes (ex. rouge de suppression) qui doivent alors avoir une variante `[data-theme="dark"]`.
+- **Vérifier visuellement les deux thèmes** : tester chaque nouvelle page en `light` ET en `dark` (bascule dans le header), en particulier textbox, boutons, selects et placeholders (`color: var(--muted)`).
+- Un filet de sécurité existe dans `style.css` (`/* Base form controls */`) : il rend les contrôles oubliés lisibles en mode sombre, mais **il ne faut pas s'en servir comme excuse** — les contrôles doivent avoir leurs vraies classes.
+
+### Checklist avant de finir une page
+
+1. Tous les `input`/`select`/`textarea`/`button` ont une classe existante ou un ancêtre stylé.
+2. Aucune couleur en dur hors variables (chercher `#fff`, `#000`, `white`, `black` dans le nouveau CSS).
+3. Rendu vérifié en mode clair ET sombre.
+
 ## Règles de qualité du code
 
 ### Tests

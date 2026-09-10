@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ _('template.title') }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<div class="shopping-page">
+    <div class="shopping-header">
+        <h1>{{ _('template.title') }}</h1>
+    </div>
+
+    <p><a href="/shopping" class="back">{{ _('shopping.back_to_lists') }}</a></p>
+
+    <form method="post" action="/shopping/templates" class="shopping-create-form">
+        <input type="text" name="name" placeholder="{{ _('template.name_placeholder') }}" required maxlength="200" class="shopping-create-input">
+        <button type="submit" class="shopping-create-btn">{{ _('template.create') }}</button>
+    </form>
+
+    {% if templates_list %}
+    <div class="shopping-lists-grid">
+        {% for tpl in templates_list %}
+        <div class="shopping-list-card">
+            <a href="/shopping/templates/{{ tpl.id }}" class="shopping-list-card-link">
+                <div class="shopping-list-card-header">
+                    <h2 class="shopping-list-card-name">{{ tpl.name }}</h2>
+                    <span class="shopping-list-card-count">{{ ngettext('shopping.items_count_one', 'shopping.items_count_other', tpl.item_count) }}</span>
+                </div>
+            </a>
+            <form method="post" action="/shopping/templates/{{ tpl.id }}/delete" class="shopping-list-card-delete" onsubmit="return confirm('{{ _('template.confirm_delete') }}')">
+                <button type="submit" class="shopping-delete-btn" title="{{ _('template.delete') }}">×</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="shopping-empty">{{ _('template.no_templates') }}</p>
+    {% endif %}
+</div>
+
+{% endblock %}

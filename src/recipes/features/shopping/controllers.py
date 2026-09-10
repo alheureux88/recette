@@ -22,6 +22,11 @@ from recipes.features.shopping.services import (
     toggle_shopping_list_item,
     update_shopping_list_item,
 )
+from recipes.features.shopping.template_services import (
+    get_template_by_id,
+    get_user_templates,
+    seed_list_from_template,
+)
 from recipes.shared.auth import get_user
 from recipes.shared.db import get_db, get_recipe
 from recipes.shared.i18n import gettext
@@ -95,8 +100,10 @@ async def shopping_lists_page(
 
     if user_id is not None:
         lists = get_user_shopping_lists(user_id, conn=conn)
+        shopping_templates = get_user_templates(user_id, conn=conn)
     else:
         lists = get_shopping_lists_by_ids(_get_anon_list_ids(request), conn=conn)
+        shopping_templates = []
 
     lists_with_counts = []
     for lst in lists:
@@ -113,6 +120,7 @@ async def shopping_lists_page(
             request,
             lists=lists_with_counts,
             user_id=user_id,
+            shopping_templates=shopping_templates,
         ),
     )
 
@@ -262,12 +270,18 @@ async def shopping_list_create(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     name: str = Form(...),
+    template_id: int | None = Form(None),
 ) -> RedirectResponse:
-    """Create a new shopping list."""
+    """Create a new shopping list, optionally seeded from a template."""
     user_id = _shopping_list_user_id(request)
     lst = create_shopping_list(name, user_id=user_id, conn=conn)
+    list_id = int(str(lst["id"]))
     if user_id is None:
-        _add_anon_list_id(request, int(str(lst["id"])))
+        _add_anon_list_id(request, list_id)
+    elif template_id:
+        template = get_template_by_id(template_id, conn=conn)
+        if template is not None and int(str(template.get("user_id"))) == user_id:
+            seed_list_from_template(list_id, template_id, conn=conn)
     return RedirectResponse(url=f"/shopping/{lst['id']}", status_code=303)
 
 
@@ -558,6 +572,10 @@ async def shopping_add_from_recipe(
         list_id = int(str(lst["id"]))
         if user_id is None:
             _add_anon_list_id(request, list_id)
+        elif data.template_id:
+            template = get_template_by_id(data.template_id, conn=conn)
+            if template is not None and int(str(template.get("user_id"))) == user_id:
+                seed_list_from_template(list_id, data.template_id, conn=conn)
     else:
         raise HTTPException(status_code=400, detail=gettext("error.list_id_or_name_required", lang))
 

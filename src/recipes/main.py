@@ -28,6 +28,7 @@ from recipes.features.push.controllers import set_scheduler as set_push_schedule
 from recipes.features.recipes.controllers import router as recipes_router
 from recipes.features.shopping.controllers import router as shopping_router
 from recipes.features.shopping.services import cleanup_expired_shopping_lists
+from recipes.features.shopping.template_controllers import router as shopping_templates_router
 from recipes.shared.auth import OIDC_ENABLED
 from recipes.shared.db import init_db
 from recipes.shared.i18n import (
@@ -134,6 +135,7 @@ app.include_router(auth_router)
 app.include_router(push_router)
 app.include_router(preferences_router)
 app.include_router(recipes_router)
+app.include_router(shopping_templates_router)
 app.include_router(shopping_router)
 app.include_router(admin_router)
 

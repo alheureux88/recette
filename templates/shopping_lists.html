@@ -13,8 +13,20 @@
 
     <form method="post" action="/shopping/lists" class="shopping-create-form">
         <input type="text" name="name" placeholder="{{ _('shopping.list_name_placeholder') }}" required maxlength="200" class="shopping-create-input">
+        {% if user and shopping_templates %}
+        <select name="template_id" class="shopping-create-input" aria-label="{{ _('template.seed_from') }}">
+            <option value="">{{ _('template.no_seed') }}</option>
+            {% for tpl in shopping_templates %}
+            <option value="{{ tpl.id }}">{{ tpl.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <button type="submit" class="shopping-create-btn">{{ _('shopping.create') }}</button>
     </form>
+
+    {% if user and auth_enabled %}
+    <p><a href="/shopping/templates" class="nav-link">{{ _('template.manage') }}</a></p>
+    {% endif %}
 
     {% if lists %}
     <div class="shopping-lists-grid">

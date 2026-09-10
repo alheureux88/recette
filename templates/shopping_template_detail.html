@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ shopping_template.name }} — {{ _('template.title') }}{% endblock %}
+{% block content %}
+
+<div class="shopping-detail">
+    <div class="shopping-detail-nav">
+        <a href="/shopping/templates" class="back">{{ _('template.back_to_templates') }}</a>
+        <div class="shopping-detail-actions">
+            <form method="post" action="/shopping/templates/{{ shopping_template.id }}/delete" class="shopping-delete-form" onsubmit="return confirm('{{ _('template.confirm_delete') }}')">
+                <button type="submit" class="shopping-delete-btn">{{ _('template.delete') }}</button>
+            </form>
+        </div>
+    </div>
+
+    <h1 class="shopping-detail-title">
+        <span class="shopping-list-name-text">{{ shopping_template.name }}</span>
+        <button type="button" class="shopping-rename-btn" id="shopping-rename-toggle" aria-label="{{ _('shopping.rename') }}">✏️</button>
+    </h1>
+    <form method="post" action="/shopping/templates/{{ shopping_template.id }}/rename" class="shopping-rename-form" id="shopping-rename-form" hidden>
+        <input type="text" name="name" value="{{ shopping_template.name }}" required maxlength="200" class="shopping-rename-input">
+        <button type="submit" class="shopping-rename-save">{{ _('shopping.save_name') }}</button>
+        <button type="button" class="shopping-rename-cancel" id="shopping-rename-cancel">{{ _('shopping.cancel') }}</button>
+    </form>
+
+    {% for group in grouped_departments %}
+    <section class="shopping-department" data-dept-id="{{ group.department.id }}">
+        <h2 class="shopping-dept-title">
+            <span class="shopping-dept-emoji" aria-hidden="true">{{ group.department.emoji }}</span>
+            <span class="shopping-dept-name">{{ group.department.display_name }}</span>
+            {% if group.item_list %}
+            <span class="shopping-dept-count">{{ group.item_list|length }}</span>
+            {% endif %}
+        </h2>
+        {% if group.item_list %}
+        <ul class="shopping-dept-items">
+            {% for item in group.item_list %}
+            <li class="shopping-item" data-item-id="{{ item.id }}">
+                <form method="post" action="/shopping/template-items/{{ item.id }}/update" class="shopping-item-edit-form">
+                    <input type="hidden" name="department_id" value="{{ item.department_id }}">
+                    <input type="text" name="quantity" value="{{ item.quantity or '' }}" placeholder="{{ _('shopping.quantity_placeholder') }}" class="shopping-item-edit-qty">
+                    <input type="text" name="text" value="{{ item.text }}" required class="shopping-item-edit-text">
+                    <button type="submit" class="shopping-item-save-btn" title="{{ _('shopping.save') }}">✓</button>
+                </form>
+                <form method="post" action="/shopping/template-items/{{ item.id }}/remove" class="shopping-item-remove-form" onsubmit="return confirm('{{ _('shopping.confirm_delete') }}')">
+                    <button type="submit" class="shopping-item-remove" title="{{ _('shopping.remove_item') }}">×</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="shopping-dept-empty">{{ _('shopping.empty_department') }}</p>
+        {% endif %}
+        <form method="post" action="/shopping/templates/{{ shopping_template.id }}/items" class="shopping-dept-add-form">
+            <input type="hidden" name="department_id" value="{{ group.department.id }}">
+            <input type="text" name="text" placeholder="{{ _('shopping.item_placeholder') }}" required maxlength="500" class="shopping-dept-add-input">
+            <input type="text" name="quantity" placeholder="{{ _('shopping.quantity_placeholder') }}" maxlength="100" class="shopping-dept-add-qty">
+            <button type="submit" class="shopping-dept-add-btn">+</button>
+        </form>
+    </section>
+    {% endfor %}
+</div>
+
+<script>
+    (function () {
+        var toggle = document.getElementById('shopping-rename-toggle');
+        var form = document.getElementById('shopping-rename-form');
+        var cancel = document.getElementById('shopping-rename-cancel');
+        var nameText = document.querySelector('.shopping-list-name-text');
+        if (toggle && form && cancel && nameText) {
+            toggle.addEventListener('click', function () {
+                nameText.hidden = true;
+                toggle.hidden = true;
+                form.hidden = false;
+                form.querySelector('input').focus();
+            });
+            cancel.addEventListener('click', function () {
+                form.hidden = true;
+                nameText.hidden = false;
+                toggle.hidden = false;
+            });
+        }
+    })();
+</script>
+
+{% endblock %}

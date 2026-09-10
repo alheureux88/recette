@@ -336,6 +336,24 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             sort_order    INTEGER NOT NULL DEFAULT 0,
             created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS shopping_templates (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name         TEXT NOT NULL,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS shopping_template_items (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id   INTEGER NOT NULL REFERENCES shopping_templates(id) ON DELETE CASCADE,
+            department_id INTEGER NOT NULL REFERENCES shopping_departments(id),
+            text          TEXT NOT NULL,
+            quantity      TEXT,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
 

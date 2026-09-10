@@ -438,6 +438,7 @@
         var backdrop = document.getElementById('shopping-modal-backdrop');
 
         var existingLists = {{ shopping_lists|tojson }};
+        var existingTemplates = {{ shopping_templates|default([])|tojson }};
 
         function openModal() {
             modal.hidden = false;
@@ -463,6 +464,14 @@
             listsHtml += '<h3>{{ _('shopping.or_create_new') }}</h3>';
             listsHtml += '<div class="shopping-modal-new">';
             listsHtml += '<input type="text" id="shopping-new-list-name" placeholder="{{ _('shopping.list_name_placeholder') }}" class="shopping-modal-input">';
+            if (existingTemplates && existingTemplates.length > 0) {
+                listsHtml += '<select id="shopping-new-list-template" class="shopping-modal-input" aria-label="{{ _('template.seed_from') }}">';
+                listsHtml += '<option value="">{{ _('template.no_seed') }}</option>';
+                existingTemplates.forEach(function (tpl) {
+                    listsHtml += '<option value="' + tpl.id + '">' + tpl.name + '</option>';
+                });
+                listsHtml += '</select>';
+            }
             listsHtml += '</div>';
             listsHtml += '<div class="shopping-modal-ingredients">';
             listsHtml += '<h3>{{ _('recipe.ingredients') }}</h3>';
@@ -547,9 +556,16 @@
                 ingredient_indices: indices,
                 list_id: listId,
                 new_list_name: newListName || null,
+                template_id: null,
                 multiplier: multiplier,
                 units: units
             };
+            if (!listId) {
+                var tplSelect = document.getElementById('shopping-new-list-template');
+                if (tplSelect && tplSelect.value) {
+                    body.template_id = parseInt(tplSelect.value);
+                }
+            }
 
             fetch('/api/shopping/from-recipe?recipe_id=' + recipeId, {
                 method: 'POST',

@@ -527,6 +527,30 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "fr": "L'écran se verrouillera normalement hors de cette page.",
         "en": "The screen will lock normally outside this page.",
     },
+    # --- Modèles de liste d'épicerie ---
+    "template.title": {"fr": "Modèles d'épicerie", "en": "Grocery templates"},
+    "template.create": {"fr": "Créer", "en": "Create"},
+    "template.name_placeholder": {"fr": "Nom du modèle", "en": "Template name"},
+    "template.no_templates": {
+        "fr": "Aucun modèle. Créez-en un pour vos achats hebdomadaires.",
+        "en": "No templates yet. Create one for your weekly shopping.",
+    },
+    "template.manage": {"fr": "Gérer mes modèles", "en": "Manage my templates"},
+    "template.seed_from": {
+        "fr": "À partir d'un modèle (optionnel)",
+        "en": "From a template (optional)",
+    },
+    "template.no_seed": {"fr": "Sans modèle", "en": "No template"},
+    "template.back_to_templates": {
+        "fr": "← Tous les modèles",
+        "en": "← All templates",
+    },
+    "template.delete": {"fr": "Supprimer le modèle", "en": "Delete template"},
+    "template.confirm_delete": {
+        "fr": "Supprimer ce modèle définitivement ?",
+        "en": "Delete this template permanently?",
+    },
+    "nav.templates": {"fr": "Mes modèles", "en": "My templates"},
     # --- Administration : listes d'épicerie ---
     "admin.shopping_title": {
         "fr": "Administration des listes d'épicerie",
@@ -555,6 +579,10 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "error.shopping_list_not_found": {
         "fr": "Liste de courses introuvable",
         "en": "Shopping list not found",
+    },
+    "error.template_not_found": {
+        "fr": "Modèle introuvable",
+        "en": "Template not found",
     },
     "error.not_authorized": {"fr": "Action non autorisée", "en": "Not authorized"},
     "error.name_required": {"fr": "Le nom est requis", "en": "Name is required"},

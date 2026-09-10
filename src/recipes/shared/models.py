@@ -70,6 +70,7 @@ class RecipeIngredientsToShopping(BaseModel):
     new_list_name: str | None = Field(
         default=None, description="Name for new list if list_id is None"
     )
+    template_id: int | None = Field(default=None, description="Template ID to seed a new list with")
     multiplier: float | None = Field(
         default=None, description="Multiplier for ingredient quantities"
     )

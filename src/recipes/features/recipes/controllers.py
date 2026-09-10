@@ -231,14 +231,21 @@ async def recipe_detail(
     user_id = _shopping_list_user_id(request)
     if user_id is not None:
         user_shopping_lists = get_user_shopping_lists(user_id, include_done=False, conn=conn)
+        from recipes.features.shopping.template_services import get_user_templates
+
+        user_templates = get_user_templates(user_id, conn=conn)
     else:
         from recipes.features.shopping.services import get_shopping_lists_by_ids
         from recipes.shared.web import get_anon_shopping_list_ids
 
         anon_lists = get_shopping_lists_by_ids(get_anon_shopping_list_ids(request), conn=conn)
         user_shopping_lists = [lst for lst in anon_lists if not lst.get("all_done_at")]
+        user_templates = []
     shopping_lists_data = [
         {"id": int(str(lst["id"])), "name": str(lst["name"])} for lst in user_shopping_lists
+    ]
+    shopping_templates_data = [
+        {"id": int(str(tpl["id"])), "name": str(tpl["name"])} for tpl in user_templates
     ]
 
     ingredients_raw = recipe.get("ingredients") or []
@@ -266,6 +273,7 @@ async def recipe_detail(
             show_provenance=len(get_recipe_provenances(conn=conn)) > 1,
             steps_list=steps_list,
             shopping_lists=shopping_lists_data,
+            shopping_templates=shopping_templates_data,
             ingredients_json=json.dumps(ingredients_for_json, ensure_ascii=False),
             print_prefs=print_prefs_for_user(request, conn),
             **_ingredient_context(
