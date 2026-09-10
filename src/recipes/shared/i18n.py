@@ -77,6 +77,7 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     # --- Page recette ---
     "recipe.back_to_list": {"fr": "← Toutes les recettes", "en": "← All recipes"},
     "recipe.cook_mode": {"fr": "Mode cuisine", "en": "Cook mode"},
+    "recipe.cook_slides_mode": {"fr": "Mode cuisine mobile", "en": "Mobile cook mode"},
     "recipe.print_options": {"fr": "Options d'impression", "en": "Print options"},
     "recipe.print_images": {"fr": "Images", "en": "Images"},
     "recipe.print_tags": {"fr": "Étiquettes", "en": "Tags"},
@@ -137,6 +138,19 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "cook.timer_add": {"fr": "Ajouter", "en": "Add"},
     "cook.timer_remove": {"fr": "Retirer", "en": "Remove"},
     "cook.timer_label": {"fr": "Minuteur", "en": "Timer"},
+    "cook.slides_prev": {"fr": "Précédent", "en": "Previous"},
+    "cook.slides_next": {"fr": "Suivant", "en": "Next"},
+    "cook.slides_ingredients_slide": {"fr": "Ingrédients", "en": "Ingredients"},
+    "cook.slides_step_slide": {
+        "fr": "Étape {current} sur {total}",
+        "en": "Step {current} of {total}",
+    },
+    "cook.slides_mark_done": {"fr": "Marquer comme terminée", "en": "Mark as done"},
+    "cook.slides_mark_undone": {"fr": "Marquer comme à faire", "en": "Mark as to do"},
+    "cook.slides_all_done": {"fr": "Bonne cuisine ! 🎉", "en": "Happy cooking! 🎉"},
+    "cook.slides_goto_classic": {"fr": "Vue classique", "en": "Classic view"},
+    "cook.slides_active_timers": {"fr": "Minuteurs en cours", "en": "Active timers"},
+    "cook.slides_goto_step": {"fr": "Aller à l'étape {n}", "en": "Go to step {n}"},
     # --- Favoris ---
     "favorites.title": {"fr": "Mes favoris", "en": "My favorites"},
     "favorites.add": {"fr": "Ajouter aux favoris", "en": "Add to favorites"},

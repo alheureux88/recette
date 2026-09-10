@@ -7,6 +7,7 @@
         <a href="/" class="back">{{ _('recipe.back_to_list') }}</a>
         <div class="print-actions">
             <a href="/recipe/{{ recipe.id }}/cook" class="btn-cook" id="btn-cook">{{ _('recipe.cook_mode') }}</a>
+            <a href="/recipe/{{ recipe.id }}/cook/slides" class="btn-cook" id="btn-cook-slides">{{ _('recipe.cook_slides_mode') }}</a>
             <details class="print-options" id="print-options">
                 <summary>{{ _('recipe.print_options') }}</summary>
                 <div class="print-options-grid">
@@ -133,8 +134,10 @@
 <script>
     (function () {
         var cookLink = document.getElementById('btn-cook');
-        if (cookLink) {
-            cookLink.addEventListener('click', function (e) {
+        var slidesLink = document.getElementById('btn-cook-slides');
+        [cookLink, slidesLink].forEach(function (link) {
+            if (!link) return;
+            link.addEventListener('click', function (e) {
                 var form = document.querySelector('.ingredient-controls');
                 if (!form) return;
                 var params = new URLSearchParams();
@@ -147,7 +150,7 @@
                 var qs = params.toString();
                 if (qs) {
                     e.preventDefault();
-                    window.location.href = cookLink.getAttribute('href') + '?' + qs;
+                    window.location.href = link.getAttribute('href') + '?' + qs;
                 }
             });
         }

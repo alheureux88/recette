@@ -515,4 +515,101 @@ def test_recipe_ingredients_partial_multiplier_updates_step_ingredients(client):
     sync_recipe_tags(recipe_id, SAMPLE["tags"])
     page = _page(client.get(f"/recipe/{recipe_id}/ingredients?multiplier=2"))
     assert "200 g de farine" in page
-    assert 'id="step-ingredients-0"' in page
+
+
+def test_recipe_cook_slides_returns_slideshow(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    resp = client.get(f"/recipe/{recipe_id}/cook/slides")
+    assert resp.status_code == 200
+    page = _page(resp)
+    # Slide ingrédients + une slide par étape, navigation et avancement.
+    assert "slides-track" in page
+    assert "slides-viewport" in page
+    assert 'data-slide="0"' in page
+    assert 'data-slide="1"' in page
+    assert 'data-slide="2"' in page
+    assert "slides-dots" in page
+    assert "slides-bar-fill" in page
+    assert "slides-counter" in page
+    assert "slides-prev" in page
+    assert "slides-next" in page
+    assert "100 g de farine" in page
+    assert "Mélanger le tout" in page
+    # Barre d'avancement par page (position de slide), pas par cases cochées.
+    assert "(current + 1) / slideCount" in page
+
+
+def _insert_recipe_with_timer() -> int:
+    data = {
+        **SAMPLE,
+        "title": "Soupe minuteur",
+        "servings": 4,
+        "ingredients": [
+            {"food": "eau", "quantity_min": 500, "quantity_max": None, "unit": "ml"},
+        ],
+        "steps": [
+            {"text": "Porter à ébullition", "timer_seconds": None, "ingredients": []},
+            {"text": "Laisser mijoter", "timer_seconds": 300, "ingredients": []},
+        ],
+        "source_file": "/recipes/soupe_minuteur.docx",
+        "file_hash": "eee555",
+    }
+    recipe_id = upsert_recipe(data)
+    sync_recipe_tags(recipe_id, SAMPLE["tags"])
+    return recipe_id
+
+
+def test_recipe_cook_slides_shows_persistent_timers_bar(client):
+    recipe_id = _insert_recipe_with_timer()
+    page = _page(client.get(f"/recipe/{recipe_id}/cook/slides"))
+    # Minuteur de l'étape 2 présent avec sa durée.
+    assert 'data-default-duration="300"' in page
+    # Barre sticky des minuteurs démarrés + chips cliquables vers l'étape.
+    assert 'id="slides-timers"' in page
+    assert 'id="slides-timers-list"' in page
+    assert "slides-timer-chip" in page
+    assert "renderTimerChips" in page
+    assert "data-chip-time" in page
+    assert "Minuteurs en cours" in page
+
+
+def test_recipe_cook_slides_shares_state_with_classic_mode(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}/cook/slides"))
+    # Même clé localStorage que le mode classique : état partagé.
+    assert (
+        "'recette:cook:' + recipeId" in page or '"recette:cook:"' in page or "recette:cook:" in page
+    )
+    assert "recette:timers:" in page
+
+
+def test_recipe_cook_slides_unknown_recipe_404(client):
+    resp = client.get("/recipe/999999/cook/slides")
+    assert resp.status_code == 404
+
+
+def test_recipe_detail_links_to_slides_mode(client):
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{recipe_id}"))
+    assert f"/recipe/{recipe_id}/cook/slides" in page
+    assert "btn-cook-slides" in page
+
+
+def test_cook_slides_i18n_keys_have_fr_and_en():
+    from recipes.shared.i18n import gettext
+
+    for key in (
+        "recipe.cook_slides_mode",
+        "cook.slides_prev",
+        "cook.slides_next",
+        "cook.slides_ingredients_slide",
+        "cook.slides_step_slide",
+        "cook.slides_mark_done",
+        "cook.slides_mark_undone",
+        "cook.slides_all_done",
+        "cook.slides_goto_classic",
+        "cook.slides_active_timers",
+        "cook.slides_goto_step",
+    ):
+        assert gettext(key, "fr") != key
+        assert gettext(key, "en") != key

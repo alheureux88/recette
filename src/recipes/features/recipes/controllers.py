@@ -376,6 +376,57 @@ async def recipe_cook(
     )
 
 
+@router.get("/recipe/{recipe_id}/cook/slides", response_class=HTMLResponse)
+async def recipe_cook_slides(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    recipe_id: int = Path(gt=0),
+    servings: str | None = Query(default=None),
+    units: str | None = Query(default=None),
+    multiplier: str | None = Query(default=None),
+) -> Response:
+    """Mode cuisine mobile : slideshow (slide ingrédients + une slide par étape)."""
+    from recipes.shared.errors import render_not_found
+    from recipes.shared.push import VAPID_PUBLIC_KEY
+    from recipes.shared.web import _base_context, _resolve_request_lang, templates
+
+    lang = _resolve_request_lang(request)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
+    if not recipe:
+        return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
+    ingredient_ctx = _ingredient_context(
+        recipe,
+        _parse_servings_param(servings),
+        resolved_units,
+        _parse_multiplier_param(multiplier),
+        lang=lang,
+    )
+    _cook_mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
+    _cook_mult = float(_cook_mult_raw) if isinstance(_cook_mult_raw, (int, float, str)) else 1.0
+    _cook_sys_raw = ingredient_ctx.get("units_system", "original")
+    _cook_sys = _cook_sys_raw if isinstance(_cook_sys_raw, str) else "original"
+    steps = _build_steps_with_ingredients(
+        recipe.get("steps"),
+        _cook_mult,
+        _cook_sys,
+        lang=lang,
+    )
+    display_for_cook = ingredient_ctx.get("display_ingredients", [])
+    return templates.TemplateResponse(
+        request=request,
+        name="recipe_cook_slides.html",
+        context=_base_context(
+            request,
+            recipe=recipe,
+            display_ingredients=display_for_cook,
+            steps=steps,
+            show_step_ingredients=show_step_ingredients_for_user(request, conn),
+            vapid_public_key=VAPID_PUBLIC_KEY,
+        ),
+    )
+
+
 @router.get("/recipe/{recipe_id}/ingredients", response_class=HTMLResponse)
 async def recipe_ingredients(
     request: Request,

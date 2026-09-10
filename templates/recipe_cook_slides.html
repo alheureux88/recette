@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+{% block title %}Mode cuisine — {{ recipe.title }}{% endblock %}
+{% block body_class %}cook-mode{% endblock %}
+{% block content %}
+
+<div class="cook-page slides-page"
+     data-recipe-id="{{ recipe.id }}"
+     data-slide-count="{{ 1 + (steps|length) }}"
+     data-ing-singular="{{ _('cook.progress_ingredient_one') }}"
+     data-ing-plural="{{ _('cook.progress_ingredient_other') }}"
+     data-step-singular="{{ _('cook.progress_step_one') }}"
+     data-step-plural="{{ _('cook.progress_step_other') }}"
+     data-timer-done-msg="{{ _('cook.timer_done') }}"
+     data-timer-start="{{ _('cook.timer_start') }}"
+     data-timer-pause="{{ _('cook.timer_pause') }}"
+     data-timer-resume="{{ _('cook.timer_resume') }}"
+     data-timer-reset="{{ _('cook.timer_reset') }}"
+     data-label-ingredients="{{ _('cook.slides_ingredients_slide') }}"
+     data-label-step="{{ _('cook.slides_step_slide') }}"
+     data-label-mark-done="{{ _('cook.slides_mark_done') }}"
+     data-label-mark-undone="{{ _('cook.slides_mark_undone') }}"
+     data-label-goto-step="{{ _('cook.slides_goto_step') }}"
+     data-vapid-public-key="{{ vapid_public_key }}">
+    <header class="cook-bar">
+        <a href="/recipe/{{ recipe.id }}" class="cook-exit" aria-label="{{ _('cook.back_aria') }}"><span aria-hidden="true">←</span> {{ _('cook.back') }}</a>
+        <h1 class="cook-title">{{ recipe.title }}</h1>
+        <a href="/recipe/{{ recipe.id }}/cook" class="cook-reset slides-classic-link">{{ _('cook.slides_goto_classic') }}</a>
+        <button type="button" class="cook-reset" id="slides-reset">{{ _('cook.reset') }}</button>
+    </header>
+
+    <div class="slides-progress" aria-live="polite">
+        <div class="slides-progress-row">
+            <span class="slides-counter" id="slides-counter"></span>
+            <span class="cook-progress slides-check-progress" id="slides-check-progress"></span>
+        </div>
+        <div class="slides-bar" aria-hidden="true"><div class="slides-bar-fill" id="slides-bar-fill"></div></div>
+        <nav class="slides-dots" id="slides-dots" aria-label="{{ _('cook.steps_title') }}"></nav>
+    </div>
+    <div class="cook-wake-status" id="slides-wake-status" role="status" aria-live="polite" hidden></div>
+
+    <div class="slides-timers" id="slides-timers" hidden>
+        <span class="slides-timers-label">{{ _('cook.slides_active_timers') }}</span>
+        <div class="slides-timers-list" id="slides-timers-list" aria-live="polite"></div>
+    </div>
+
+    <div class="slides-viewport" id="slides-viewport">
+        <div class="slides-track" id="slides-track">
+            <section class="slides-slide" data-slide="0" aria-label="{{ _('cook.slides_ingredients_slide') }}">
+                <h2 class="cook-section-title">{{ _('cook.ingredients_title') }}</h2>
+                {% if display_ingredients %}
+                <ul class="cook-list">
+                    {% for ing in display_ingredients %}
+                    <li>
+                        <label class="cook-item">
+                            <input type="checkbox" class="cook-check" data-kind="ingredient" data-index="{{ loop.index0 }}">
+                            <span class="cook-bullet" aria-hidden="true"></span>
+                            <span class="cook-text">{{ ing }}</span>
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </section>
+            {% for step in steps %}
+            <section class="slides-slide" data-slide="{{ loop.index }}" aria-label="{{ _('cook.steps_title') }} {{ loop.index }}">
+                <h2 class="cook-section-title">{{ _('cook.steps_title') }} — {{ loop.index }}/{{ steps|length }}</h2>
+                <div class="cook-item cook-step" data-step-index="{{ loop.index0 }}">
+                    <label class="cook-step-label">
+                        <input type="checkbox" class="cook-check" data-kind="step" data-index="{{ loop.index0 }}">
+                        <span class="cook-step-number" aria-hidden="true">{{ loop.index }}</span>
+                        <span class="cook-text">{{ step.text }}</span>
+                    </label>
+                    {% if step.step_ingredients %}
+                    <ul class="cook-step-ingredients">
+                        {% for ing in step.step_ingredients %}
+                        <li>{{ ing }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if step.has_timer %}
+                    <div class="cook-timer" data-step-index="{{ loop.index0 }}" data-default-duration="{{ step.duration_seconds }}">
+                        <div class="cook-timer-display">
+                            <span class="cook-timer-icon" aria-hidden="true">&#9202;</span>
+                            <span class="cook-timer-remaining" data-role="remaining">{{ step.duration_seconds }}</span>
+                        </div>
+                        <div class="cook-timer-controls">
+                            <button type="button" class="cook-timer-btn cook-timer-btn--start" data-role="start-pause">{{ _('cook.timer_start') }}</button>
+                            <button type="button" class="cook-timer-btn cook-timer-btn--reset" data-role="reset">{{ _('cook.timer_reset') }}</button>
+                            <button type="button" class="cook-timer-btn cook-timer-btn--minus" data-role="minus">-1m</button>
+                            <button type="button" class="cook-timer-btn cook-timer-btn--plus" data-role="plus">+1m</button>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <button type="button" class="slides-done-btn" data-role="toggle-step" data-step="{{ loop.index0 }}"></button>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+    </div>
+
+    <footer class="slides-nav">
+        <button type="button" class="slides-nav-btn" id="slides-prev">{{ _('cook.slides_prev') }}</button>
+        <button type="button" class="slides-nav-btn slides-nav-btn--next" id="slides-next">{{ _('cook.slides_next') }}</button>
+    </footer>
+    <p class="slides-all-done" id="slides-all-done" hidden>{{ _('cook.slides_all_done') }}</p>
+</div>
+
+<script>
+(function () {
+    var page = document.querySelector('.slides-page');
+    if (!page) return;
+    var recipeId = page.dataset.recipeId;
+    // Même clé que le mode classique : état partagé.
+    var storageKey = 'recette:cook:' + recipeId;
+    var timerStorageKey = 'recette:timers:' + recipeId;
+    var slideKey = 'recette:cook:slide:' + recipeId;
+    var slideCount = parseInt(page.dataset.slideCount, 10) || 1;
+    var current = 0;
+
+    var track = document.getElementById('slides-track');
+    var viewport = document.getElementById('slides-viewport');
+    var counter = document.getElementById('slides-counter');
+    var checkProgress = document.getElementById('slides-check-progress');
+    var barFill = document.getElementById('slides-bar-fill');
+    var dotsNav = document.getElementById('slides-dots');
+    var prevBtn = document.getElementById('slides-prev');
+    var nextBtn = document.getElementById('slides-next');
+    var resetBtn = document.getElementById('slides-reset');
+    var allDone = document.getElementById('slides-all-done');
+    var cookBar = page.querySelector('.cook-bar');
+    var timersBar = document.getElementById('slides-timers');
+    var timersList = document.getElementById('slides-timers-list');
+    var labelGotoStep = page.dataset.labelGotoStep || 'Go to step {n}';
+    var checks = page.querySelectorAll('.cook-check');
+
+    var dots = [];
+    for (var i = 0; i < slideCount; i++) {
+        var d = document.createElement('button');
+        d.type = 'button';
+        d.className = 'slides-dot';
+        d.dataset.slide = String(i);
+        d.textContent = String(i + 1);
+        d.setAttribute('aria-label', (i === 0 ? page.dataset.labelIngredients : 'Slide ' + (i + 1)) );
+        (function (idx) { d.addEventListener('click', function () { showSlide(idx); }); })(i);
+        dotsNav.appendChild(d);
+        dots.push(d);
+    }
+
+    function loadState() {
+        try {
+            var raw = localStorage.getItem(storageKey);
+            if (!raw) return null;
+            var data = JSON.parse(raw);
+            return (data && typeof data === 'object') ? data : null;
+        } catch (e) { return null; }
+    }
+    function saveState() {
+        var state = { ingredients: {}, steps: {} };
+        checks.forEach(function (cb) {
+            state[cb.dataset.kind + 's'][cb.dataset.index] = cb.checked;
+        });
+        try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
+    }
+    function applyState(state) {
+        if (!state) return;
+        var ing = state.ingredients || {};
+        var stp = state.steps || {};
+        checks.forEach(function (cb) {
+            cb.checked = !!(cb.dataset.kind === 'ingredient' ? ing : stp)[cb.dataset.index];
+        });
+    }
+    function counts() {
+        var ti = page.querySelectorAll('.cook-check[data-kind="ingredient"]').length;
+        var ts = page.querySelectorAll('.cook-check[data-kind="step"]').length;
+        var di = page.querySelectorAll('.cook-check[data-kind="ingredient"]:checked').length;
+        var ds = page.querySelectorAll('.cook-check[data-kind="step"]:checked').length;
+        return { ti: ti, ts: ts, di: di, ds: ds };
+    }
+    function updateProgress() {
+        var c = counts();
+        var total = c.ti + c.ts;
+        var done = c.di + c.ds;
+        var parts = [];
+        if (c.ti) parts.push(c.di + '/' + c.ti + ' ' + (c.ti > 1 ? page.dataset.ingPlural : page.dataset.ingSingular));
+        if (c.ts) parts.push(c.ds + '/' + c.ts + ' ' + (c.ts > 1 ? page.dataset.stepPlural : page.dataset.stepSingular));
+        checkProgress.textContent = parts.join(' · ');
+        allDone.hidden = !(total > 0 && done === total);
+        page.querySelectorAll('.slides-slide').forEach(function (slide) {
+            var idx = parseInt(slide.dataset.slide, 10);
+            var doneSlide = false;
+            if (idx === 0) {
+                doneSlide = c.ti > 0 && c.di === c.ti;
+            } else {
+                var cb = slide.querySelector('.cook-check[data-kind="step"]');
+                doneSlide = !!(cb && cb.checked);
+            }
+            if (dots[idx]) dots[idx].classList.toggle('is-done', doneSlide);
+        });
+        refreshDoneButtons();
+    }
+    function refreshDoneButtons() {
+        page.querySelectorAll('[data-role="toggle-step"]').forEach(function (btn) {
+            var slide = btn.closest('.slides-slide');
+            var cb = slide ? slide.querySelector('.cook-check[data-kind="step"]') : null;
+            var done = !!(cb && cb.checked);
+            btn.textContent = done ? page.dataset.labelMarkUndone : page.dataset.labelMarkDone;
+            btn.classList.toggle('is-done', done);
+        });
+    }
+    function updateCounter() {
+        if (current === 0) {
+            counter.textContent = page.dataset.labelIngredients;
+        } else {
+            counter.textContent = page.dataset.labelStep
+                .replace('{current}', String(current))
+                .replace('{total}', String(slideCount - 1));
+        }
+    }
+    function showSlide(i) {
+        current = Math.max(0, Math.min(slideCount - 1, i));
+        track.style.transform = 'translateX(-' + (current * 100) + '%)';
+        dots.forEach(function (d, idx) { d.classList.toggle('is-active', idx === current); });
+        prevBtn.disabled = current === 0;
+        nextBtn.disabled = current === slideCount - 1;
+        // Barre d'avancement par page (les cases cochées ne la font plus bouger).
+        barFill.style.width = Math.round((current + 1) / slideCount * 100) + '%';
+        updateCounter();
+        try { localStorage.setItem(slideKey, String(current)); } catch (e) {}
+    }
+    function restoreSlide() {
+        try {
+            var raw = localStorage.getItem(slideKey);
+            var n = parseInt(raw, 10);
+            if (!isNaN(n)) current = Math.max(0, Math.min(slideCount - 1, n));
+        } catch (e) {}
+    }
+
+    checks.forEach(function (cb) {
+        cb.addEventListener('change', function () { saveState(); updateProgress(); });
+    });
+    page.querySelectorAll('[data-role="toggle-step"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var slide = btn.closest('.slides-slide');
+            var cb = slide ? slide.querySelector('.cook-check[data-kind="step"]') : null;
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            saveState(); updateProgress();
+            if (cb.checked && current < slideCount - 1) {
+                setTimeout(function () { showSlide(current + 1); }, 350);
+            }
+        });
+    });
+    prevBtn.addEventListener('click', function () { showSlide(current - 1); });
+    nextBtn.addEventListener('click', function () { showSlide(current + 1); });
+    resetBtn.addEventListener('click', function () {
+        checks.forEach(function (cb) { cb.checked = false; });
+        try { localStorage.removeItem(storageKey); } catch (e) {}
+        resetAllTimers();
+        saveState(); updateProgress(); showSlide(0);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight') showSlide(current + 1);
+        else if (e.key === 'ArrowLeft') showSlide(current - 1);
+    });
+    var touchX = null;
+    viewport.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 1) touchX = e.touches[0].clientX;
+    }, { passive: true });
+    viewport.addEventListener('touchend', function (e) {
+        if (touchX === null) return;
+        var dx = e.changedTouches[0].clientX - touchX;
+        touchX = null;
+        if (Math.abs(dx) < 50) return;
+        if (dx < 0) showSlide(current + 1);
+        else showSlide(current - 1);
+    }, { passive: true });
+
+    // Wake lock (comme le mode classique).
+    var wakeStatus = document.getElementById('slides-wake-status');
+    var wakeSentinel = null;
+    async function requestWakeLock() {
+        if (!('wakeLock' in navigator)) return;
+        try {
+            wakeSentinel = await navigator.wakeLock.request('screen');
+            if (wakeStatus) wakeStatus.hidden = true;
+        } catch (e) {}
+    }
+    async function releaseWakeLock() {
+        if (wakeSentinel) { try { await wakeSentinel.release(); } catch (e) {} wakeSentinel = null; }
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') { requestWakeLock(); syncAllTimers(); }
+        else { releaseWakeLock(); saveTimerStates(); }
+    });
+    window.addEventListener('pagehide', function () { releaseWakeLock(); saveTimerStates(); });
+    requestWakeLock();
+
+    // --- Minuteurs (même clé que le mode classique : état partagé) ---
+    var timerDoneMsg = page.dataset.timerDoneMsg || 'Time!';
+    var timerStartLabel = page.dataset.timerStart || 'Start';
+    var timerPauseLabel = page.dataset.timerPause || 'Pause';
+    var timerResumeLabel = page.dataset.timerResume || 'Resume';
+    var timerContainers = page.querySelectorAll('.cook-timer');
+    var timers = {};
+    function formatTime(s) {
+        if (s < 0) s = 0;
+        var m = Math.floor(s / 60);
+        var r = s % 60;
+        return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+    }
+    function loadTimerStates() {
+        try {
+            var raw = localStorage.getItem(timerStorageKey);
+            if (!raw) return {};
+            var data = JSON.parse(raw);
+            return (data && typeof data === 'object') ? data : {};
+        } catch (e) { return {}; }
+    }
+    function saveTimerStates() {
+        var states = {};
+        timerContainers.forEach(function (el) {
+            var t = timers[el.dataset.stepIndex];
+            if (!t) return;
+            states[el.dataset.stepIndex] = {
+                remainingSeconds: t.remainingSeconds,
+                running: t.running,
+                started: t.started,
+                done: t.done,
+                endTimestamp: t.running ? (Date.now() + t.remainingSeconds * 1000) : null
+            };
+        });
+        try { localStorage.setItem(timerStorageKey, JSON.stringify(states)); } catch (e) {}
+    }
+    function notifyDone(t) {
+        try {
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) {
+                var ctx = new Ctx();
+                var o = ctx.createOscillator();
+                var g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.frequency.value = 800; o.type = 'sine';
+                g.gain.setValueAtTime(0.3, ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.5);
+            }
+        } catch (e) {}
+        try { if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]); } catch (e) {}
+        try {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(timerDoneMsg, { tag: 'timer-' + recipeId });
+            }
+        } catch (e) {}
+        t.remainingEl.textContent = formatTime(0);
+        t.el.classList.add('cook-timer--done');
+        t.done = true;
+        renderTimerChips();
+    }
+    function startTimer(t) {
+        if (t.remainingSeconds <= 0) return;
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().catch(function () {});
+        }
+        t.running = true;
+        t.started = true;
+        t.done = false;
+        t.startPauseBtn.textContent = timerPauseLabel;
+        t.el.classList.add('cook-timer--running');
+        t.el.classList.remove('cook-timer--done');
+        t.intervalId = setInterval(function () {
+            t.remainingSeconds--;
+            t.remainingEl.textContent = formatTime(t.remainingSeconds);
+            updateChipTime(t);
+            if (t.remainingSeconds <= 0) {
+                clearInterval(t.intervalId); t.intervalId = null; t.running = false;
+                t.startPauseBtn.textContent = timerStartLabel;
+                t.el.classList.remove('cook-timer--running');
+                notifyDone(t); saveTimerStates();
+            }
+        }, 1000);
+        saveTimerStates();
+        renderTimerChips();
+    }
+    function pauseTimer(t) {
+        t.running = false;
+        if (t.intervalId) { clearInterval(t.intervalId); t.intervalId = null; }
+        t.startPauseBtn.textContent = timerResumeLabel;
+        t.el.classList.remove('cook-timer--running');
+        saveTimerStates();
+        renderTimerChips();
+    }
+    function resetTimer(t) {
+        if (t.intervalId) { clearInterval(t.intervalId); t.intervalId = null; }
+        t.running = false;
+        t.started = false;
+        t.done = false;
+        t.remainingSeconds = t.defaultDuration;
+        t.remainingEl.textContent = formatTime(t.remainingSeconds);
+        t.startPauseBtn.textContent = timerStartLabel;
+        t.el.classList.remove('cook-timer--running', 'cook-timer--done');
+        saveTimerStates();
+        renderTimerChips();
+    }
+    function adjustTimer(t, d) {
+        t.remainingSeconds = Math.max(0, t.remainingSeconds + d);
+        t.remainingEl.textContent = formatTime(t.remainingSeconds);
+        if (t.remainingSeconds > 0) t.el.classList.remove('cook-timer--done');
+        saveTimerStates();
+        updateChipTime(t);
+    }
+    function restoreTimer(idx, state) {
+        var t = timers[idx];
+        if (!t) return;
+        if (state.endTimestamp && state.running) {
+            var remaining = Math.round((state.endTimestamp - Date.now()) / 1000);
+            if (remaining <= 0) {
+                t.remainingSeconds = 0; t.remainingEl.textContent = formatTime(0);
+                t.el.classList.add('cook-timer--done'); t.started = true; notifyDone(t);
+            } else {
+                t.remainingSeconds = remaining;
+                t.remainingEl.textContent = formatTime(remaining);
+                startTimer(t);
+            }
+        } else {
+            t.remainingSeconds = state.remainingSeconds || t.defaultDuration;
+            t.remainingEl.textContent = formatTime(t.remainingSeconds);
+            t.started = !!(state.started || t.remainingSeconds !== t.defaultDuration);
+            t.done = !!state.done && t.remainingSeconds <= 0;
+            if (t.done) t.el.classList.add('cook-timer--done');
+        }
+    }
+    // --- Minuteurs persistants : barre sticky avec retour à l'étape ---
+    function placeTimersBar() {
+        if (cookBar) timersBar.style.top = cookBar.offsetHeight + 'px';
+    }
+    function flashTimer(t) {
+        t.el.classList.add('slides-flash');
+        setTimeout(function () { t.el.classList.remove('slides-flash'); }, 1200);
+    }
+    function renderTimerChips() {
+        timersList.innerHTML = '';
+        var shown = 0;
+        Object.keys(timers).sort().forEach(function (idx) {
+            var t = timers[idx];
+            if (!t || !t.started) return;
+            shown++;
+            var stepNum = parseInt(idx, 10) + 1;
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'slides-timer-chip'
+                + (t.done ? ' is-done' : (t.running ? ' is-running' : ' is-paused'));
+            chip.setAttribute('aria-label', labelGotoStep.replace('{n}', String(stepNum)));
+            var icon = document.createElement('span');
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = '\u23F1 ';
+            chip.appendChild(icon);
+            chip.appendChild(document.createTextNode(labelGotoStep.replace('{n}', String(stepNum)) + ' · '));
+            var time = document.createElement('span');
+            time.dataset.chipTime = idx;
+            time.textContent = formatTime(t.remainingSeconds);
+            chip.appendChild(time);
+            (function (timer, slideIdx) {
+                chip.addEventListener('click', function () {
+                    showSlide(slideIdx);
+                    flashTimer(timer);
+                });
+            })(t, stepNum);
+            timersList.appendChild(chip);
+        });
+        timersBar.hidden = shown === 0;
+        placeTimersBar();
+    }
+    function updateChipTime(t) {
+        var el = timersList.querySelector('[data-chip-time="' + t.stepIndex + '"]');
+        if (el) el.textContent = formatTime(t.remainingSeconds);
+    }
+    function syncAllTimers() {
+        var states = loadTimerStates();
+        Object.keys(states).forEach(function (idx) { restoreTimer(idx, states[idx]); });
+    }
+    function resetAllTimers() {
+        Object.keys(timers).forEach(function (idx) { resetTimer(timers[idx]); });
+        try { localStorage.removeItem(timerStorageKey); } catch (e) {}
+    }
+    timerContainers.forEach(function (el) {
+        var idx = el.dataset.stepIndex;
+        var t = {
+            el: el,
+            stepIndex: idx,
+            remainingEl: el.querySelector('[data-role="remaining"]'),
+            startPauseBtn: el.querySelector('[data-role="start-pause"]'),
+            defaultDuration: parseInt(el.dataset.defaultDuration, 10) || 0,
+            remainingSeconds: parseInt(el.dataset.defaultDuration, 10) || 0,
+            running: false, intervalId: null, started: false, done: false
+        };
+        timers[idx] = t;
+        t.remainingEl.textContent = formatTime(t.remainingSeconds);
+        t.startPauseBtn.addEventListener('click', function () { t.running ? pauseTimer(t) : startTimer(t); });
+        el.querySelector('[data-role="reset"]').addEventListener('click', function (e) { e.preventDefault(); resetTimer(t); });
+        el.querySelector('[data-role="minus"]').addEventListener('click', function () { adjustTimer(t, -60); });
+        el.querySelector('[data-role="plus"]').addEventListener('click', function () { adjustTimer(t, 60); });
+    });
+    var savedTimers = loadTimerStates();
+    Object.keys(savedTimers).forEach(function (idx) { restoreTimer(idx, savedTimers[idx]); });
+    renderTimerChips();
+    window.addEventListener('resize', placeTimersBar);
+    setInterval(saveTimerStates, 5000);
+
+    applyState(loadState());
+    restoreSlide();
+    updateProgress();
+    showSlide(current);
+})();
+</script>
+
+{% endblock %}
