@@ -1,8 +1,10 @@
 """Shopping scan — OCR d'une photo de liste d'épicerie (local-first, sans LLM).
 
 Pipeline :
-1. `preprocess_image` — Pillow, en mémoire (gris, contraste, downscale).
-2. `run_tesseract` — binaire `tesseract` via stdin, sortie TSV (lignes + confiance).
+1. `preprocess_image` — Pillow, en mémoire (gris, upscale ~300 DPI,
+   contraste, débruitage, accentuation, marge blanche, downscale borné).
+2. `run_tesseract` — binaire `tesseract` via stdin, sortie TSV (lignes +
+   confiance), retry PSM 6 -> 4, meilleur résultat gardé.
 3. `parse_scanned_lines` — lignes brutes -> candidats {text, quantity, department}.
 4. `classify_local` — heuristique mots-clés -> clé de département (jamais de LLM).
 5. `vision_scan_items` — fallback LLM vision quand le local échoue.
@@ -30,7 +32,12 @@ log = logging.getLogger(__name__)
 # --- Limites ---------------------------------------------------------------
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
-MAX_IMAGE_DIMENSION = 2000
+MAX_IMAGE_DIMENSION = 2600
+# Sous ce seuil, le texte est trop petit pour le LSTM de Tesseract (~300 DPI
+# requis) : on agrandit avant l'OCR.
+MIN_IMAGE_DIMENSION = 1600
+UPSCALE_FACTOR = 2.0
+OCR_WHITE_BORDER = 24
 TESSERACT_TIMEOUT_SECONDS = 30
 TESSERACT_LANGS = "fra+eng"
 MAX_SCAN_LINES = 100
@@ -89,16 +96,31 @@ def tesseract_available() -> bool:
 def preprocess_image(raw: bytes) -> bytes:
     """Normalise une photo pour l'OCR et retourne un PNG en mémoire.
 
-    Gris + autocontraste + downscale : améliore Tesseract sur manuscrit
-    tout en bornant le coût CPU (anti-abus).
+    Tesseract attend ~300 DPI (hauteur d'x d'au moins 30 px) avec une marge
+    blanche : gris + borne haute + agrandissement si petit + autocontraste +
+    débruitage + accentuation + bordure blanche. Tout reste en mémoire et le
+    coût CPU est borné (anti-abus).
     """
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageFilter, ImageOps
 
     try:
         with Image.open(io.BytesIO(raw)) as raw_image:
             image = ImageOps.exif_transpose(raw_image).convert("L")
-            image = ImageOps.autocontrast(image, cutoff=1)
-            image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION))
+            image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
+            width, height = image.size
+            if max(width, height) < MIN_IMAGE_DIMENSION:
+                factor = min(
+                    UPSCALE_FACTOR,
+                    MAX_IMAGE_DIMENSION / max(width, height),
+                )
+                image = image.resize(
+                    (round(width * factor), round(height * factor)),
+                    Image.Resampling.LANCZOS,
+                )
+            image = ImageOps.autocontrast(image, cutoff=2)
+            image = image.filter(ImageFilter.MedianFilter(size=3))
+            image = image.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+            image = ImageOps.expand(image, border=OCR_WHITE_BORDER, fill=255)
             out = io.BytesIO()
             image.save(out, format="PNG")
             return out.getvalue()
@@ -142,10 +164,20 @@ def parse_tsv(tsv_text: str) -> list[OcrLine]:
     return lines
 
 
-def run_tesseract(image_png: bytes) -> list[OcrLine]:
-    """Passe un PNG (mémoire) à Tesseract via stdin et retourne les lignes."""
-    if not tesseract_available():
-        raise OcrError("tesseract binary not found")
+# PSM 6 = bloc uniforme (listes denses), PSM 4 = colonne variable (listes
+# clairsemées / espacements irréguliers typiques d'une photo de manuscrit).
+_TESSERACT_PSMS = ("6", "4")
+
+
+def _tesseract_score(lines: list[OcrLine]) -> tuple[int, float]:
+    """Score de tri : lignes confiantes d'abord, confiance moyenne ensuite."""
+    confident = sum(1 for line in lines if line["confidence"] >= LOW_CONFIDENCE_THRESHOLD)
+    mean = sum(line["confidence"] for line in lines) / len(lines) if lines else 0.0
+    return (confident, mean)
+
+
+def _run_tesseract_once(image_png: bytes, psm: str) -> list[OcrLine]:
+    """Une passe Tesseract avec un mode de segmentation donné."""
     try:
         completed = subprocess.run(
             [
@@ -155,9 +187,13 @@ def run_tesseract(image_png: bytes) -> list[OcrLine]:
                 "--oem",
                 "1",
                 "--psm",
-                "6",
+                psm,
+                "--dpi",
+                "300",
                 "-l",
                 TESSERACT_LANGS,
+                "-c",
+                "preserve_interword_spaces=1",
                 "tsv",
             ],
             input=image_png,
@@ -171,13 +207,37 @@ def run_tesseract(image_png: bytes) -> list[OcrLine]:
         raise OcrError("tesseract timeout") from exc
     if completed.returncode != 0:
         log.warning(
-            "Tesseract failed (code %s): %s",
+            "Tesseract failed (psm %s, code %s): %s",
+            psm,
             completed.returncode,
             completed.stderr.decode("utf-8", "ignore")[-500:],
         )
         raise OcrError("tesseract failed")
     tsv_text = completed.stdout.decode("utf-8", "ignore")
     return parse_tsv(tsv_text)
+
+
+def run_tesseract(image_png: bytes) -> list[OcrLine]:
+    """Passe un PNG (mémoire) à Tesseract via stdin et retourne les lignes.
+
+    Essaie PSM 6 puis PSM 4 si le premier résultat est vide ou peu confiant,
+    et garde le meilleur des deux (les photos de listes manuscrites ont des
+    espacements irréguliers que le seul PSM 6 rate souvent).
+    """
+    if not tesseract_available():
+        raise OcrError("tesseract binary not found")
+    best = _run_tesseract_once(image_png, _TESSERACT_PSMS[0])
+    if best and _tesseract_score(best)[0] > 0:
+        return best
+    for psm in _TESSERACT_PSMS[1:]:
+        try:
+            lines = _run_tesseract_once(image_png, psm)
+        except OcrError:
+            log.warning("Tesseract retry (psm %s) failed", psm)
+            break
+        if _tesseract_score(lines) > _tesseract_score(best):
+            best = lines
+    return best
 
 
 # --- Découpage quantité / texte --------------------------------------------

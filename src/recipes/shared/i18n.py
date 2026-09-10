@@ -529,8 +529,8 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "shopping.scan_title": {"fr": "Scanner une liste", "en": "Scan a list"},
     "shopping.scan_hint": {
-        "fr": "Prenez en photo une liste manuscrite pour l'ajouter.",
-        "en": "Photograph a handwritten list to add it.",
+        "fr": "Prenez en photo une liste manuscrite, la transcription démarre automatiquement.",
+        "en": "Photograph a handwritten list, transcription starts automatically.",
     },
     "shopping.scan_transcribe": {"fr": "Transcrire", "en": "Transcribe"},
     "shopping.scan_retry_ai": {"fr": "Réessayer avec l'IA", "en": "Retry with AI"},

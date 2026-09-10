@@ -45,13 +45,15 @@
             var fileInput = document.getElementById('shopping-scan-file');
             var result = document.getElementById('shopping-scan-result');
             var lastFile = null;
+            var uploading = false;
             fileInput.addEventListener('change', function () {
                 lastFile = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+                if (lastFile && !uploading) uploadScan(scanForm.dataset.scanUrl, lastFile);
             });
             scanForm.addEventListener('submit', function (evt) {
                 evt.preventDefault();
                 var file = lastFile;
-                if (!file) return;
+                if (!file || uploading) return;
                 uploadScan(scanForm.dataset.scanUrl, file);
             });
             result.addEventListener('click', function (evt) {
@@ -83,13 +85,14 @@
                 });
             });
             function uploadScan(url, file) {
+                uploading = true;
                 var data = new FormData();
                 data.append('photo', file);
                 result.innerHTML = '…';
                 fetch(url, {method: 'POST', body: data})
                     .then(function (resp) { return resp.text().then(function (t) { return {ok: resp.ok, html: t}; }); })
-                    .then(function (r) { result.innerHTML = r.html; })
-                    .catch(function () { result.innerHTML = ''; });
+                    .then(function (r) { result.innerHTML = r.html; uploading = false; })
+                    .catch(function () { result.innerHTML = ''; uploading = false; });
             }
         }
         document.body.addEventListener('htmx:afterSwap', function (evt) {

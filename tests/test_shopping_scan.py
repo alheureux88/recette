@@ -159,13 +159,88 @@ class TestPreprocess:
     def test_downscales_and_returns_png(self):
         from PIL import Image
 
+        from recipes.features.shopping.scan_services import (
+            MAX_IMAGE_DIMENSION,
+            OCR_WHITE_BORDER,
+        )
+
         image = Image.new("RGB", (3000, 100), color="red")
         out = io.BytesIO()
         image.save(out, format="JPEG")
         result = preprocess_image(out.getvalue())
         assert result[:8] == b"\x89PNG\r\n\x1a\n"
         reopened = Image.open(io.BytesIO(result))
-        assert max(reopened.size) <= 2000
+        assert reopened.mode == "L"
+        assert max(reopened.size) <= MAX_IMAGE_DIMENSION + 2 * OCR_WHITE_BORDER
+
+    def test_upscales_small_images_for_ocr(self):
+        from PIL import Image
+
+        image = Image.new("RGB", (400, 300), color="white")
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        result = preprocess_image(out.getvalue())
+        reopened = Image.open(io.BytesIO(result))
+        # x2 + bordure blanche : le texte trop petit est agrandi vers ~300 DPI.
+        assert reopened.size == (400 * 2 + 48, 300 * 2 + 48)
+
+    def test_adds_white_border(self):
+        from PIL import Image
+
+        image = Image.new("RGB", (2000, 2000), color="white")
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        result = preprocess_image(out.getvalue())
+        reopened = Image.open(io.BytesIO(result))
+        assert reopened.size == (2000 + 48, 2000 + 48)
+        assert reopened.getpixel((0, 0)) == 255
+
+
+class TestRunTesseract:
+    def _tsv(self, words: list[tuple[str, float]]) -> bytes:
+        header = (
+            "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num"
+            "\tleft\ttop\twidth\theight\tconf\ttext\n"
+        )
+        rows = "".join(
+            f"5\t1\t1\t1\t1\t{i}\t0\t0\t10\t10\t{conf}\t{text}\n"
+            for i, (text, conf) in enumerate(words, start=1)
+        )
+        return (header + rows).encode()
+
+    def test_keeps_good_psm6_result_without_retry(self, monkeypatch):
+        import subprocess
+
+        calls: list[str] = []
+
+        def fake_run(cmd, **kwargs):
+            psm = cmd[cmd.index("--psm") + 1]
+            calls.append(psm)
+            assert "--dpi" in cmd
+            completed = subprocess.CompletedProcess(cmd, 0, self._tsv([("pommes", 90.0)]), b"")
+            return completed
+
+        monkeypatch.setattr(scan_services, "tesseract_available", lambda: True)
+        monkeypatch.setattr(scan_services.subprocess, "run", fake_run)
+        lines = scan_services.run_tesseract(b"png")
+        assert lines == [{"text": "pommes", "confidence": 90.0}]
+        assert calls == ["6"]
+
+    def test_retries_psm4_when_psm6_weak(self, monkeypatch):
+        import subprocess
+
+        def fake_run(cmd, **kwargs):
+            psm = cmd[cmd.index("--psm") + 1]
+            if psm == "6":
+                out = self._tsv([("flou", 10.0)])
+            else:
+                out = self._tsv([("pommes", 90.0), ("lait", 85.0)])
+            return subprocess.CompletedProcess(cmd, 0, out, b"")
+
+        monkeypatch.setattr(scan_services, "tesseract_available", lambda: True)
+        monkeypatch.setattr(scan_services.subprocess, "run", fake_run)
+        lines = scan_services.run_tesseract(b"png")
+        assert [line["text"] for line in lines] == ["pommes lait"]
 
 
 class TestScanRoutes:
