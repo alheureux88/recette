@@ -383,9 +383,10 @@ class TestOauthFlow:
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
         admin.get("/admin/config/dropbox/connect", follow_redirects=False)
 
-        def fake_exchange(code, redirect_uri):
+        def fake_exchange(code, redirect_uri, code_verifier=None):
             assert code == "the-code"
             assert redirect_uri.endswith("/admin/config/dropbox/callback")
+            assert code_verifier, "PKCE verifier must be forwarded to the exchange"
             return "rt-from-oauth"
 
         def fake_verify(refresh_token):
@@ -418,7 +419,8 @@ class TestOauthFlow:
         set_setting("dropbox_oauth_state", "st-1")
 
         monkeypatch.setattr(
-            "recipes.features.admin.controllers.exchange_authorization_code", lambda c, r: "rt-x"
+            "recipes.features.admin.controllers.exchange_authorization_code",
+            lambda c, r, v=None: "rt-x",
         )
         monkeypatch.setattr(
             "recipes.features.admin.controllers.verify_connection_credentials", lambda rt: "X"
@@ -442,6 +444,40 @@ class TestOauthFlow:
         resp = admin.get("/admin/config/dropbox/callback?error=access_denied")
         assert resp.status_code == 200
         assert "refusee" in resp.text
+
+    def test_connect_uses_forwarded_proto(self, admin, monkeypatch):
+        """Derrière un proxy https, le redirect_uri doit être en https."""
+        monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
+        monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
+        for var in ("DROPBOX_REDIRECT_URI", "PUBLIC_URL", "APP_BASE_URL"):
+            monkeypatch.delenv(var, raising=False)
+        resp = admin.get(
+            "/admin/config/dropbox/connect",
+            headers={"X-Forwarded-Proto": "https"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert "code_challenge=" in location
+        assert "code_challenge_method=S256" in location
+        assert "redirect_uri=https%3A" in location
+
+    def test_connect_pkce_verifier_stored_and_forwarded(self, admin, monkeypatch):
+        monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
+        monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
+        resp = admin.get("/admin/config/dropbox/connect", follow_redirects=False)
+        assert resp.status_code == 302
+        assert get_setting("dropbox_oauth_verifier") != ""
+
+    def test_redirect_uri_env_override(self, admin, monkeypatch):
+        monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
+        monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
+        monkeypatch.setenv(
+            "DROPBOX_REDIRECT_URI", "https://recettes.example.com/admin/config/dropbox/callback"
+        )
+        resp = admin.get("/admin/config/dropbox/connect", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "redirect_uri=https%3A%2F%2Frecettes.example.com" in resp.headers["location"]
 
 
 class TestModelOverride:
@@ -548,7 +584,11 @@ class TestPollerMultiAccount:
         assert mock_post.call_args[1]["data"]["client_id"] == "key-123"
 
     def test_build_and_exchange_oauth(self, monkeypatch):
-        from recipes.shared.poller import build_oauth_authorize_url, exchange_authorization_code
+        from recipes.shared.poller import (
+            build_oauth_authorize_url,
+            create_pkce_pair,
+            exchange_authorization_code,
+        )
 
         monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
@@ -559,6 +599,12 @@ class TestPollerMultiAccount:
         assert "response_type=code" in url
         assert "token_access_type=offline" in url
 
+        verifier, challenge = create_pkce_pair()
+        assert len(verifier) >= 43
+        url_pkce = build_oauth_authorize_url("http://test/cb", "state-1", challenge)
+        assert f"code_challenge={challenge}" in url_pkce
+        assert "code_challenge_method=S256" in url_pkce
+
         mock_response = MagicMock()
         mock_response.ok = True
         mock_response.json.return_value = {}
@@ -568,9 +614,10 @@ class TestPollerMultiAccount:
                 exchange_authorization_code("c", "cb")
 
             mock_response.json.return_value = {"refresh_token": "rt-new"}
-            rt = exchange_authorization_code("code-x", "http://test/cb")
+            rt = exchange_authorization_code("code-x", "http://test/cb", verifier)
 
         assert rt == "rt-new"
         data = mock_post.call_args[1]["data"]
         assert data["grant_type"] == "authorization_code"
         assert data["redirect_uri"] == "http://test/cb"
+        assert data["code_verifier"] == verifier

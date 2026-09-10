@@ -7,8 +7,10 @@ import fnmatch
 import hashlib
 import logging
 import os
+import secrets
 import threading
 import time
+from base64 import urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode
@@ -201,34 +203,55 @@ def verify_connection_credentials(refresh_token: str) -> str:
     return " — ".join(x for x in (name, email) if x) or "Compte Dropbox"
 
 
-def build_oauth_authorize_url(redirect_uri: str, state: str) -> str:
+def create_pkce_pair() -> tuple[str, str]:
+    """Génère un couple PKCE (code_verifier, code_challenge S256).
+
+    Dropbox exige PKCE pour autoriser des redirect_uri en ``http://``
+    non-localhost. Le challenge est dérivé du verifier (RFC 7636).
+    """
+    verifier = urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
+
+
+def build_oauth_authorize_url(
+    redirect_uri: str, state: str, code_challenge: str | None = None
+) -> str:
     """URL d'autorisation OAuth2 Dropbox (offline → refresh token)."""
     app_key, _ = _env_app_credentials()
-    params = urlencode(
-        {
-            "client_id": app_key,
-            "response_type": "code",
-            "token_access_type": "offline",
-            "redirect_uri": redirect_uri,
-            "state": state,
-        }
-    )
+    params_dict: dict[str, str] = {
+        "client_id": app_key,
+        "response_type": "code",
+        "token_access_type": "offline",
+        "redirect_uri": redirect_uri,
+        "state": state,
+    }
+    if code_challenge:
+        params_dict["code_challenge"] = code_challenge
+        params_dict["code_challenge_method"] = "S256"
+    params = urlencode(params_dict)
     return f"https://www.dropbox.com/oauth2/authorize?{params}"
 
 
-def exchange_authorization_code(code: str, redirect_uri: str) -> str:
+def exchange_authorization_code(
+    code: str, redirect_uri: str, code_verifier: str | None = None
+) -> str:
     """Échange le code d'autorisation OAuth2 contre un refresh token."""
     app_key, app_secret = _env_app_credentials()
     log.info("Exchanging Dropbox authorization code for refresh token...")
+    data: dict[str, str] = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": app_key,
+        "client_secret": app_secret,
+        "redirect_uri": redirect_uri,
+    }
+    if code_verifier:
+        data["code_verifier"] = code_verifier
     response = requests.post(
         "https://api.dropbox.com/oauth2/token",
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "client_id": app_key,
-            "client_secret": app_secret,
-            "redirect_uri": redirect_uri,
-        },
+        data=data,
         timeout=30,
     )
 

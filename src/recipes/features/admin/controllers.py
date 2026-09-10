@@ -65,6 +65,7 @@ from recipes.shared.models import (
 from recipes.shared.poller import (
     DROPBOX_FOLDER,
     build_oauth_authorize_url,
+    create_pkce_pair,
     exchange_authorization_code,
     forget_connection_client,
     has_env_dropbox_credentials,
@@ -154,7 +155,35 @@ def _admin_config_context(
 
 
 def _dropbox_redirect_uri(request: Request) -> str:
-    return f"{str(request.base_url).rstrip('/')}/admin/config/dropbox/callback"
+    """Construit le redirect_uri OAuth Dropbox.
+
+    Respecte ``DROPBOX_REDIRECT_URI`` / ``PUBLIC_URL`` / ``APP_BASE_URL`` si
+    défini (utile derrière un reverse-proxy), sinon le schéma vu par le
+    client via ``X-Forwarded-Proto`` — car ``request.base_url`` vaut
+    ``http://`` derrière un proxy nginx sans ce header, ce que Dropbox
+    refuse (``Invalid redirect_uri ... must start with "https://"``).
+    """
+    override = (
+        os.environ.get("DROPBOX_REDIRECT_URI")
+        or os.environ.get("PUBLIC_URL")
+        or os.environ.get("APP_BASE_URL")
+    )
+    if override:
+        return f"{override.rstrip('/')}/admin/config/dropbox/callback"
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    # X-Forwarded-Proto peut valoir "https, http" : on garde la première.
+    scheme = scheme.split(",")[0].strip().lower() or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.url.hostname or ""
+    # Préserve un port non-standard éventuel.
+    port = request.url.port
+    default_port = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
+    netloc = host
+    if port and not default_port and ":" not in host:
+        netloc = f"{host}:{port}"
+    elif not netloc:
+        # Repli : base_url d'origine.
+        return f"{str(request.base_url).rstrip('/')}/admin/config/dropbox/callback"
+    return f"{scheme}://{netloc}/admin/config/dropbox/callback"
 
 
 def _config_template_name(request: Request) -> str:
@@ -436,9 +465,11 @@ async def admin_config_connect_dropbox(
     from recipes.shared.web import templates
 
     state = secrets.token_urlsafe(24)
+    verifier, challenge = create_pkce_pair()
     set_setting("dropbox_oauth_state", state, conn=conn)
+    set_setting("dropbox_oauth_verifier", verifier, conn=conn)
     try:
-        url = build_oauth_authorize_url(_dropbox_redirect_uri(request), state)
+        url = build_oauth_authorize_url(_dropbox_redirect_uri(request), state, challenge)
     except ValueError as e:
         return templates.TemplateResponse(
             request=request,
@@ -473,7 +504,9 @@ async def admin_config_dropbox_callback(
         )
 
     expected_state = get_setting("dropbox_oauth_state", conn=conn)
+    verifier = get_setting("dropbox_oauth_verifier", conn=conn)
     delete_setting("dropbox_oauth_state", conn=conn)
+    delete_setting("dropbox_oauth_verifier", conn=conn)
 
     if not code:
         detail = "code manquant"
@@ -498,7 +531,9 @@ async def admin_config_dropbox_callback(
         )
 
     try:
-        refresh_token = exchange_authorization_code(str(code), _dropbox_redirect_uri(request))
+        refresh_token = exchange_authorization_code(
+            str(code), _dropbox_redirect_uri(request), verifier or None
+        )
         try:
             account_label = verify_connection_credentials(refresh_token)
         except Exception as e:
