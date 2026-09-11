@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/cook_bar.html" import cook_bar %}
 {% block title %}{{ shopping_list.name }} — Magasinage{% endblock %}
 {% block body_class %}cook-mode{% endblock %}
 {% block content %}
@@ -9,11 +10,7 @@
      data-progress-template="{{ done_items }}/{{ total_items }} {{ item_label }}"
      data-item-singular="{{ _('shopping.progress_item_one') }}"
      data-item-plural="{{ _('shopping.progress_item_other') }}">
-    <header class="cook-bar">
-        <a href="/shopping/{{ shopping_list.id }}" class="cook-exit" aria-label="{{ _('shopping.back_aria') }}"><span aria-hidden="true">←</span> {{ _('shopping.back') }}</a>
-        <h1 class="cook-title">{{ shopping_list.name }}</h1>
-        <button type="button" class="cook-reset" id="shopping-reset">{{ _('shopping.reset') }}</button>
-    </header>
+    {{ cook_bar('/shopping/' ~ shopping_list.id, _('shopping.back'), _('shopping.back_aria'), shopping_list.name, 'shopping-reset', _('shopping.reset')) }}
 
     <div class="cook-progress" id="shopping-progress" aria-live="polite"></div>
     <div class="cook-wake-status" id="shopping-wake-status" role="status" aria-live="polite" hidden></div>
@@ -48,6 +45,7 @@
     {% endif %}
 </div>
 
+<script src="/static/js/wake_lock.js"></script>
 <script>
     (function () {
         var page = document.querySelector('.cook-page');
@@ -101,62 +99,11 @@
             updateProgress();
         }
 
-        var wakeStatus = document.getElementById('shopping-wake-status');
-        var unsupportedMsg = {{ _('shopping.wake_lock_unsupported')|tojson }};
-        var releasedMsg = {{ _('shopping.wake_lock_released')|tojson }};
-        var wakeSentinel = null;
-
-        function showWakeStatus(msg) {
-            if (!wakeStatus) return;
-            wakeStatus.textContent = msg;
-            wakeStatus.hidden = false;
-        }
-
-        function hideWakeStatus() {
-            if (!wakeStatus) return;
-            wakeStatus.hidden = true;
-            wakeStatus.textContent = '';
-        }
-
-        async function requestWakeLock() {
-            if (!('wakeLock' in navigator)) {
-                showWakeStatus(unsupportedMsg);
-                return;
-            }
-            try {
-                wakeSentinel = await navigator.wakeLock.request('screen');
-                wakeSentinel.addEventListener('release', function () {
-                    if (document.visibilityState !== 'visible') {
-                        showWakeStatus(releasedMsg);
-                    }
-                });
-                hideWakeStatus();
-            } catch (e) {
-                showWakeStatus(unsupportedMsg);
-            }
-        }
-
-        async function releaseWakeLock() {
-            if (wakeSentinel) {
-                try { await wakeSentinel.release(); } catch (e) {}
-                wakeSentinel = null;
-            }
-        }
-
-        document.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'visible') {
-                requestWakeLock();
-            } else {
-                releaseWakeLock();
-            }
+        window.RecetteWakeLock.init({
+            statusEl: document.getElementById('shopping-wake-status'),
+            unsupportedMsg: {{ _('shopping.wake_lock_unsupported')|tojson }},
+            releasedMsg: {{ _('shopping.wake_lock_released')|tojson }}
         });
-
-        window.addEventListener('pagehide', function () {
-            releaseWakeLock();
-        });
-
-        requestWakeLock();
-
         checks.forEach(function (cb) {
             cb.addEventListener('change', function () {
                 var itemId = cb.dataset.itemId;

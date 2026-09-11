@@ -69,7 +69,7 @@ Ou utiliser les boutons existants: `.btn-edit`, `.btn-blacklist`, `.btn-restore`
 
 ### Navigation
 
-Les liens du menu admin dans `nav.html` et `base.html` utilisent le pattern `nav.admin_*`:
+Les liens du menu admin dans `base.html` utilisent le pattern `nav.admin_*`:
 
 ```python
 "nav.admin_recipes": {"fr": "Administration Recettes", "en": "Recipe administration"},

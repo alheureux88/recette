@@ -217,6 +217,105 @@ header {
     background: var(--border);
 }
 
+/* Anti-scroll horizontal + header compact mobile.
+ * Le header n'avait aucune règle responsive : sur ~360px, le titre
+ * + la nav (thème, langue, listes, favoris, nom d'utilisateur)
+ * débordaient et créaient un scroll gauche-droite sur toute la page.
+ */
+html, body {
+    overflow-x: clip;
+}
+@supports not (overflow: clip) {
+    html, body {
+        overflow-x: hidden;
+    }
+}
+img {
+    max-width: 100%;
+    height: auto;
+}
+.site-title,
+.header-nav,
+.cook-title {
+    min-width: 0;
+}
+.nav-user {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 12rem;
+}
+.cook-title {
+    overflow-wrap: anywhere;
+}
+.shopping-create-input {
+    min-width: 0;
+}
+
+@media (max-width: 600px) {
+    header {
+        padding: 0.6rem 0.75rem;
+    }
+    .header-inner {
+        gap: 0.5rem;
+    }
+    .site-title {
+        font-size: 1.02rem;
+        gap: 0.45rem;
+        flex: 1 1 auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .site-title span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .site-logo {
+        width: 26px;
+        height: 26px;
+        flex-shrink: 0;
+    }
+    .header-nav {
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        margin-left: auto;
+        flex-shrink: 0;
+    }
+    .nav-link {
+        padding: 0.3rem 0.55rem;
+    }
+    .theme-toggle {
+        padding: 0.25rem 0.4rem;
+    }
+    .nav-user {
+        max-width: 5.5rem;
+    }
+    .nav-user-toggle {
+        padding: 0.3rem 0.4rem;
+    }
+    main {
+        padding: 1.25rem 0.75rem;
+    }
+    .cook-bar {
+        gap: 0.5rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .cook-title {
+        font-size: 0.95rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .cook-exit,
+    .cook-reset {
+        padding: 0.4rem 0.7rem;
+        font-size: 0.8rem;
+    }
+}
+
 /* Main layout */
 main {
     max-width: 1280px;
@@ -620,111 +719,6 @@ a.tag:hover { background: var(--accent); color: var(--on-accent); }
     margin-top: 0.1rem;
 }
 .instruction-text { flex: 1; }
-
-.instruction-timer-badge {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.2rem 0.55rem;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--accent-dk);
-    background: var(--accent-soft);
-    border: 1px solid var(--accent);
-    border-radius: 999px;
-    white-space: nowrap;
-    margin-top: 0.15rem;
-}
-
-.instruction-timer-widget {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-    margin-left: 2.55rem;
-    padding: 0.75rem;
-    background: var(--surface-alt);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    transition: all 0.2s ease;
-    flex-basis: calc(100% - 2.55rem);
-}
-
-.instruction-timer-widget.instruction-timer--running {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-}
-
-.instruction-timer-widget.instruction-timer--done {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-    animation: timer-pulse 1s ease-in-out infinite;
-}
-
-@keyframes timer-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-}
-
-.instruction-timer-display {
-    font-size: 1.5rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--text);
-    text-align: center;
-}
-
-.instruction-timer-controls {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: center;
-}
-
-.instruction-timer-btn {
-    padding: 0.4rem 0.8rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.instruction-timer-btn:hover {
-    background: var(--surface-alt);
-    border-color: var(--accent);
-}
-
-.instruction-timer-btn--start {
-    background: var(--accent);
-    color: var(--on-accent);
-    border-color: var(--accent);
-}
-
-.instruction-timer-btn--start:hover {
-    background: var(--accent-dk);
-    border-color: var(--accent-dk);
-}
-
-.instruction-timer-btn--reset {
-    background: transparent;
-}
-
-.instruction-timer-btn--minus,
-.instruction-timer-btn--plus {
-    background: var(--surface-alt);
-    font-weight: 600;
-    min-width: 3rem;
-}
-
-.instruction-timer-btn--minus:hover,
-.instruction-timer-btn--plus:hover {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-}
 
 /* Ingrédients utilisés dans une étape (page recette + mode cuisine) */
 .step-ingredients,
@@ -1860,7 +1854,7 @@ main.admin-main {
 
     /* Contrôles interactifs inutiles à l'impression */
     .ingredient-controls { display: none !important; }
-    .instruction-timer-widget { display: none !important; }
+    .cook-timer { display: none !important; }
     .shopping-recipe-action { display: none !important; }
 
 

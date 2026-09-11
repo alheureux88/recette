@@ -1,0 +1,17 @@
+{# Widget minuteur partagé (page recette + modes cuisine).
+   Contexte requis : `step` (duration_seconds, duration_display)
+   et `loop.index0` (boucle appelante). Le JS de chaque page pilote
+   les hooks `.cook-timer` / `[data-role=...]` et partage l'état via
+   la clé localStorage `recette:timers:<recipe_id>`. #}
+<div class="cook-timer" data-step-index="{{ loop.index0 }}" data-default-duration="{{ step.duration_seconds }}">
+    <div class="cook-timer-display">
+        <span class="cook-timer-icon" aria-hidden="true">&#9202;</span>
+        <span class="cook-timer-remaining" data-role="remaining">{{ step.duration_display }}</span>
+    </div>
+    <div class="cook-timer-controls">
+        <button type="button" class="cook-timer-btn cook-timer-btn--start" data-role="start-pause">{{ _('cook.timer_start') }}</button>
+        <button type="button" class="cook-timer-btn cook-timer-btn--reset" data-role="reset">{{ _('cook.timer_reset') }}</button>
+        <button type="button" class="cook-timer-btn cook-timer-btn--minus" data-role="minus">-1m</button>
+        <button type="button" class="cook-timer-btn cook-timer-btn--plus" data-role="plus">+1m</button>
+    </div>
+</div>

@@ -1,0 +1,13 @@
+{# Barre supérieure des modes cuisine (classique, slides, épicerie).
+   Les libellés traduits sont passés par l'appelant car ils diffèrent
+   par page (`cook.*` vs `shopping.*`). #}
+{% macro cook_bar(back_href, back_label, back_aria, title, reset_id, reset_label, extra_href=None, extra_label=None) %}
+<header class="cook-bar">
+    <a href="{{ back_href }}" class="cook-exit" aria-label="{{ back_aria }}"><span aria-hidden="true">←</span> {{ back_label }}</a>
+    <h1 class="cook-title">{{ title }}</h1>
+    {% if extra_href %}
+    <a href="{{ extra_href }}" class="cook-reset slides-classic-link">{{ extra_label }}</a>
+    {% endif %}
+    <button type="button" class="cook-reset" id="{{ reset_id }}">{{ reset_label }}</button>
+</header>
+{% endmacro %}

@@ -29,6 +29,7 @@ from recipes.shared.db import (
     get_recipe,
     search_recipes,
 )
+from recipes.shared.duration import format_duration
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
 from recipes.shared.models import JsonDict
 from recipes.shared.units import format_ingredient
@@ -140,10 +141,42 @@ def _build_steps_with_ingredients(
                 "text": str(step.get("text") or ""),
                 "has_timer": has_timer,
                 "duration_seconds": duration,
+                "duration_display": format_duration(duration),
                 "step_ingredients": step_ings,
             }
         )
     return enriched
+
+
+def _resolved_steps(
+    recipe: JsonDict,
+    servings: str | None,
+    units: str | None,
+    multiplier: str | None,
+    request: Request,
+    conn: sqlite3.Connection,
+    lang: str = DEFAULT_LANGUAGE,
+) -> tuple[JsonDict, list[JsonDict]]:
+    """Résout portions/unités et construit les étapes enrichies.
+
+    Factorise le prologue commun aux pages recette, cuisine et au
+    partial HTMX ingrédients : mêmes portions, mêmes libellés d'étapes
+    et mêmes minuteurs partout.
+    """
+    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
+    ingredient_ctx = _ingredient_context(
+        recipe,
+        _parse_servings_param(servings),
+        resolved_units,
+        _parse_multiplier_param(multiplier),
+        lang=lang,
+    )
+    mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
+    mult = float(mult_raw) if isinstance(mult_raw, (int, float, str)) else 1.0
+    sys_raw = ingredient_ctx.get("units_system", "original")
+    systeme = sys_raw if isinstance(sys_raw, str) else "original"
+    steps = _build_steps_with_ingredients(recipe.get("steps"), mult, systeme, lang=lang)
+    return ingredient_ctx, steps
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -253,23 +286,8 @@ async def recipe_detail(
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
-    resolved_units_early = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
-    ingredient_ctx_early = _ingredient_context(
-        recipe,
-        _parse_servings_param(servings),
-        resolved_units_early,
-        _parse_multiplier_param(multiplier),
-        lang=lang,
-    )
-    _mult_raw = ingredient_ctx_early.get("current_multiplier", 1.0)
-    _mult = float(_mult_raw) if isinstance(_mult_raw, (int, float, str)) else 1.0
-    _sys_raw = ingredient_ctx_early.get("units_system", "original")
-    _sys = _sys_raw if isinstance(_sys_raw, str) else "original"
-    steps_list = _build_steps_with_ingredients(
-        recipe.get("steps"),
-        _mult,
-        _sys,
-        lang=lang,
+    ingredient_ctx_early, steps_list = _resolved_steps(
+        recipe, servings, units, multiplier, request, conn, lang=lang
     )
 
     user_id = _shopping_list_user_id(request)
@@ -343,23 +361,8 @@ async def recipe_cook(
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
-    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
-    ingredient_ctx = _ingredient_context(
-        recipe,
-        _parse_servings_param(servings),
-        resolved_units,
-        _parse_multiplier_param(multiplier),
-        lang=lang,
-    )
-    _cook_mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
-    _cook_mult = float(_cook_mult_raw) if isinstance(_cook_mult_raw, (int, float, str)) else 1.0
-    _cook_sys_raw = ingredient_ctx.get("units_system", "original")
-    _cook_sys = _cook_sys_raw if isinstance(_cook_sys_raw, str) else "original"
-    steps = _build_steps_with_ingredients(
-        recipe.get("steps"),
-        _cook_mult,
-        _cook_sys,
-        lang=lang,
+    ingredient_ctx, steps = _resolved_steps(
+        recipe, servings, units, multiplier, request, conn, lang=lang
     )
     display_for_cook = ingredient_ctx.get("display_ingredients", [])
     return templates.TemplateResponse(
@@ -394,23 +397,8 @@ async def recipe_cook_slides(
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
-    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
-    ingredient_ctx = _ingredient_context(
-        recipe,
-        _parse_servings_param(servings),
-        resolved_units,
-        _parse_multiplier_param(multiplier),
-        lang=lang,
-    )
-    _cook_mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
-    _cook_mult = float(_cook_mult_raw) if isinstance(_cook_mult_raw, (int, float, str)) else 1.0
-    _cook_sys_raw = ingredient_ctx.get("units_system", "original")
-    _cook_sys = _cook_sys_raw if isinstance(_cook_sys_raw, str) else "original"
-    steps = _build_steps_with_ingredients(
-        recipe.get("steps"),
-        _cook_mult,
-        _cook_sys,
-        lang=lang,
+    ingredient_ctx, steps = _resolved_steps(
+        recipe, servings, units, multiplier, request, conn, lang=lang
     )
     display_for_cook = ingredient_ctx.get("display_ingredients", [])
     return templates.TemplateResponse(
@@ -449,26 +437,15 @@ async def recipe_ingredients(
     recipe = get_recipe(recipe_id, lang=lang, conn=conn)
     if not recipe:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
-    resolved_units = units if units in SYSTEMES_UNITES else units_for_user(request, conn)
-    ingredient_ctx = _ingredient_context(
-        recipe,
-        _parse_servings_param(servings),
-        resolved_units,
-        _parse_multiplier_param(multiplier),
-        lang=lang,
+    ingredient_ctx, steps_list = _resolved_steps(
+        recipe, servings, units, multiplier, request, conn, lang=lang
     )
-    _mult_raw = ingredient_ctx.get("current_multiplier", 1.0)
-    _mult = float(_mult_raw) if isinstance(_mult_raw, (int, float, str)) else 1.0
-    _sys_raw = ingredient_ctx.get("units_system", "original")
-    _sys = _sys_raw if isinstance(_sys_raw, str) else "original"
     return templates.TemplateResponse(
         request=request,
         name="partials/ingredients_update.html",
         context={
             "recipe": recipe,
-            "steps_list": _build_steps_with_ingredients(
-                recipe.get("steps"), _mult, _sys, lang=lang
-            ),
+            "steps_list": steps_list,
             **ingredient_ctx,
         },
     )
