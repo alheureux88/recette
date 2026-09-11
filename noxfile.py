@@ -6,6 +6,7 @@ Commands:
     nox -s lint          # just lint + format check
     nox -s typecheck     # just mypy
     nox -s test          # just pytest
+    nox -s test_js       # just node:test for static/js
     nox -s vulture       # just dead code detection
     nox -s docker        # build the Docker image
     nox -s fmt           # auto-fix formatting in place (not part of default pipeline)
@@ -76,6 +77,15 @@ def test(session: nox.Session) -> None:
     """Run pytest with coverage. Fails if coverage < 70%."""
     _install(session)
     session.run("pytest", *session.posargs)
+
+
+# ---------------------------------------------------------------------------
+# test_js — node:test for shared browser JS (no dependencies)
+# ---------------------------------------------------------------------------
+@nox.session(python=False)  # uses the runner's node, like docker uses docker
+def test_js(session: nox.Session) -> None:
+    """Run the dependency-free node:test suite for static/js."""
+    session.run("node", "--test", "static/js/tests/*.test.js", external=True)
 
 
 # ---------------------------------------------------------------------------

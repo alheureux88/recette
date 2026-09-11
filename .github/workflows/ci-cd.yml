@@ -53,7 +53,7 @@ jobs:
 
       # Step 1: Run your quality checks via Nox (runs on push AND pull requests)
       - name: Run Quality Checks
-        run: nox -s lint typecheck test vulture
+        run: nox -s lint typecheck test test_js vulture
 
       # Step 2: Build ONCE and push all required tags (push only — never from a PR)
       - name: Build & Push Docker Image

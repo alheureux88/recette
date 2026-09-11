@@ -559,6 +559,17 @@ def _insert_recipe_with_timer() -> int:
     return recipe_id
 
 
+def test_recipe_detail_uses_shared_cook_timer_widget(client):
+    recipe_id = _insert_recipe_with_timer()
+    page = _page(client.get(f"/recipe/{recipe_id}"))
+    # Même widget que le mode cuisine : horloge, durée lisible, hooks JS.
+    assert 'data-default-duration="300"' in page
+    assert "cook-timer" in page
+    assert "cook-timer-icon" in page
+    assert "05:00" in page
+    assert "instruction-timer-widget" not in page
+
+
 def test_recipe_cook_slides_shows_persistent_timers_bar(client):
     recipe_id = _insert_recipe_with_timer()
     page = _page(client.get(f"/recipe/{recipe_id}/cook/slides"))
