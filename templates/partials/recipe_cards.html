@@ -15,17 +15,17 @@
         {% if auth_enabled and user %}
         <button
             class="fav-btn {% if recipe.id in favorite_ids %}is-favorite{% endif %}"
-            hx-post="/favorites/{{ recipe.id }}"
+            hx-post="/favorites/{{ recipe.slug }}"
             hx-swap="outerHTML"
             title="{{ _('favorites.remove') if recipe.id in favorite_ids else _('favorites.add') }}"
         >
             <span class="fav-icon">{% if recipe.id in favorite_ids %}★{% else %}☆{% endif %}</span>
         </button>
         {% endif %}
-        <a href="/recipe/{{ recipe.id }}" class="recipe-card card-emoji-cat-{{ recipe.category.name if recipe.category else 'default' }}">
+        <a href="/recipe/{{ recipe.slug }}" class="recipe-card card-emoji-cat-{{ recipe.category.name if recipe.category else 'default' }}">
             {% if recipe.images %}
             <div class="card-image">
-                <img src="/images/{{ recipe.id }}/{{ recipe.images[0].filename }}" alt="{{ recipe.title }}" loading="lazy">
+                <img src="/images/{{ recipe.slug }}/{{ recipe.images[0].filename }}" alt="{{ recipe.title }}" loading="lazy">
             </div>
             {% else %}
             {% set cat_key = recipe.category.name if recipe.category else 'default' %}

@@ -3,7 +3,7 @@
 import pytest
 
 from recipes.features.recipes.services import add_favorite
-from recipes.shared.db import get_conn, init_db, upsert_recipe
+from recipes.shared.db import get_conn, get_recipe, init_db, upsert_recipe
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +28,12 @@ def as_user(client, monkeypatch):
     ):
         monkeypatch.setattr(namespace, lambda request: fake_user)
     return client
+
+
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
 
 
 def _insert_sample():
@@ -56,12 +62,12 @@ def test_favorites_page_shows_toggled_state(as_user):
 def test_toggle_favorite_roundtrip(as_user):
     recipe_id = _insert_sample()
 
-    first = as_user.post(f"/favorites/{recipe_id}")
+    first = as_user.post(f"/favorites/{_slug(recipe_id)}")
     assert first.status_code == 200
     assert "is-favorite" in first.text
     assert "★" in first.text
 
-    second = as_user.post(f"/favorites/{recipe_id}")
+    second = as_user.post(f"/favorites/{_slug(recipe_id)}")
     assert second.status_code == 200
     assert "is-favorite" not in second.text
     assert "☆" in second.text
@@ -72,7 +78,7 @@ def test_unfavorited_recipe_disappears_from_favorites_page(as_user):
     add_favorite(1, recipe_id)
     assert as_user.get("/favorites").status_code == 200
 
-    resp = as_user.post(f"/favorites/{recipe_id}")
+    resp = as_user.post(f"/favorites/{_slug(recipe_id)}")
     assert resp.status_code == 200
     assert "is-favorite" not in resp.text
 

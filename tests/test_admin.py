@@ -77,6 +77,12 @@ def as_user(client, monkeypatch):
     return client
 
 
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
+
+
 def _insert_sample(data=None):
     d = data or SAMPLE
     recipe_id = upsert_recipe(d)
@@ -232,9 +238,10 @@ class TestOrphans:
         from recipes.shared.db import reconcile_account_files
 
         recipe_id = _insert_sample()
-        assert client.get(f"/recipe/{recipe_id}").status_code == 200
+        slug = _slug(recipe_id)
+        assert client.get(f"/recipe/{slug}").status_code == 200
         reconcile_account_files(None, set())
-        assert client.get(f"/recipe/{recipe_id}").status_code == 404
+        assert client.get(f"/recipe/{slug}").status_code == 404
 
 
 class TestUpdateRecipeManual:

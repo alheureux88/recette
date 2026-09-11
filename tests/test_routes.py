@@ -7,6 +7,7 @@ import pytest
 from recipes.shared.db import (
     get_all_categories,
     get_all_tags_grouped,
+    get_recipe,
     init_db,
     sync_recipe_tags,
     upsert_recipe,
@@ -44,6 +45,12 @@ def seed(temp_db):
 def _page(resp) -> str:
     """Texte HTML déséchappé (Jinja transforme les apostrophes en &#39;)."""
     return html.unescape(resp.text)
+
+
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
 
 
 def test_index_returns_200(client):
@@ -99,7 +106,7 @@ def test_search_by_category(client):
 
 
 def test_recipe_detail(client):
-    resp = client.get("/recipe/1")
+    resp = client.get("/recipe/poulet-roti")
     assert resp.status_code == 200
     assert "Poulet Rôti" in resp.text
     assert "ail" in resp.text
@@ -107,7 +114,7 @@ def test_recipe_detail(client):
 
 
 def test_recipe_detail_shows_formatted_ingredients_and_controls(client):
-    resp = client.get("/recipe/1")
+    resp = client.get("/recipe/poulet-roti")
     assert resp.status_code == 200
     page = _page(resp)
     assert "Portions" in page
@@ -118,52 +125,52 @@ def test_recipe_detail_shows_formatted_ingredients_and_controls(client):
 
 
 def test_recipe_detail_servings_scaling(client):
-    resp = client.get("/recipe/1?servings=8")
+    resp = client.get("/recipe/poulet-roti?servings=8")
     assert resp.status_code == 200
     assert "100 g de beurre" in _page(resp)
 
 
 def test_recipe_detail_units_imperial(client):
-    resp = client.get("/recipe/1?units=imperial")
+    resp = client.get("/recipe/poulet-roti?units=imperial")
     assert resp.status_code == 200
     assert "1 3/4 oz de beurre" in _page(resp)
 
 
 def test_recipe_detail_invalid_params_fall_back(client):
-    resp = client.get("/recipe/1?servings=abc&units=bogus")
+    resp = client.get("/recipe/poulet-roti?servings=abc&units=bogus")
     assert resp.status_code == 200
     assert "50 g de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_partial(client):
-    resp = client.get("/recipe/1/ingredients")
+    resp = client.get("/recipe/poulet-roti/ingredients")
     assert resp.status_code == 200
     page = _page(resp)
     assert "Ingrédients" in page
     assert "3 gousses d'ail" in page
-    assert 'hx-get="/recipe/1/ingredients"' in page
+    assert 'hx-get="/recipe/poulet-roti/ingredients"' in page
 
 
 def test_recipe_ingredients_partial_scales_servings(client):
-    resp = client.get("/recipe/1/ingredients?servings=2")
+    resp = client.get("/recipe/poulet-roti/ingredients?servings=2")
     assert resp.status_code == 200
     assert "25 g de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_partial_metric(client):
-    resp = client.get("/recipe/1/ingredients?servings=8&units=metric")
+    resp = client.get("/recipe/poulet-roti/ingredients?servings=8&units=metric")
     assert resp.status_code == 200
     assert "100 g de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_partial_imperial(client):
-    resp = client.get("/recipe/1/ingredients?units=imperial")
+    resp = client.get("/recipe/poulet-roti/ingredients?units=imperial")
     assert resp.status_code == 200
     assert "1 3/4 oz de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_partial_invalid_params_fall_back(client):
-    resp = client.get("/recipe/1/ingredients?servings=&units=metric")
+    resp = client.get("/recipe/poulet-roti/ingredients?servings=&units=metric")
     assert resp.status_code == 200
     assert "50 g de beurre" in _page(resp)
 
@@ -184,7 +191,7 @@ def _insert_without_servings(**overrides: object) -> int:
 
 def test_recipe_detail_multiplier_when_no_servings(client):
     recipe_id = _insert_without_servings()
-    resp = client.get(f"/recipe/{recipe_id}?multiplier=2")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}?multiplier=2")
     page = _page(resp)
     assert "Multiplicateur" in page
     assert "Portions" not in page
@@ -193,34 +200,34 @@ def test_recipe_detail_multiplier_when_no_servings(client):
 
 
 def test_recipe_detail_multiplier_ignored_when_servings_known(client):
-    resp = client.get("/recipe/1?multiplier=3")
+    resp = client.get("/recipe/poulet-roti?multiplier=3")
     assert "50 g de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_multiplier_scales(client):
     recipe_id = _insert_without_servings()
-    resp = client.get(f"/recipe/{recipe_id}/ingredients?multiplier=1.5")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/ingredients?multiplier=1.5")
     assert resp.status_code == 200
     assert "75 g de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_multiplier_with_units(client):
     recipe_id = _insert_without_servings()
-    resp = client.get(f"/recipe/{recipe_id}/ingredients?multiplier=2&units=imperial")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/ingredients?multiplier=2&units=imperial")
     assert resp.status_code == 200
     assert "3 1/2 oz de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_multiplier_invalid_falls_back(client):
     recipe_id = _insert_without_servings()
-    resp = client.get(f"/recipe/{recipe_id}/ingredients?multiplier=abc")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/ingredients?multiplier=abc")
     assert resp.status_code == 200
     assert "50 g de beurre" in _page(resp)
 
 
 def test_recipe_ingredients_multiplier_fraction_value(client):
     recipe_id = _insert_without_servings()
-    resp = client.get(f"/recipe/{recipe_id}/ingredients?multiplier=0.5")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/ingredients?multiplier=0.5")
     assert resp.status_code == 200
     assert "25 g de beurre" in _page(resp)
     assert 'value="0.5"' in resp.text
@@ -230,7 +237,7 @@ def test_recipe_ingredients_controls_hidden_for_legacy_strings(client):
     recipe_id = _insert_without_servings(
         ingredients=["du beurre", "de l'ail", "sel au goût"],
     )
-    resp = client.get(f"/recipe/{recipe_id}/ingredients")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/ingredients")
     page = _page(resp)
     assert "Multiplicateur" not in page
     assert "Unités" not in page
@@ -258,14 +265,14 @@ def test_search_invalid_category_returns_422(client):
     assert resp.status_code == 422
 
 
-def test_recipe_detail_invalid_id_returns_422(client):
+def test_recipe_detail_unknown_slug_returns_404(client):
     resp = client.get("/recipe/0")
-    assert resp.status_code == 422
+    assert resp.status_code == 404
 
 
-def test_recipe_detail_negative_id_returns_422(client):
+def test_recipe_detail_negative_id_returns_404(client):
     resp = client.get("/recipe/-1")
-    assert resp.status_code == 422
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +316,7 @@ def _insert_bilingual_recipe(source_file: str, file_hash: str) -> int:
 
 def test_recipe_detail_en_uses_english_units_and_preposition(client):
     recipe_id = _insert_bilingual_recipe("/r/en1.docx", "en1")
-    resp = client.get(f"/recipe/{recipe_id}", cookies={"lang": "en"})
+    resp = client.get(f"/recipe/{_slug(recipe_id)}", cookies={"lang": "en"})
     page = _page(resp)
     assert resp.status_code == 200
     assert "3 cloves of garlic" in page
@@ -319,7 +326,7 @@ def test_recipe_detail_en_uses_english_units_and_preposition(client):
 
 def test_recipe_detail_en_imperial_units(client):
     recipe_id = _insert_bilingual_recipe("/r/en2.docx", "en2")
-    resp = client.get(f"/recipe/{recipe_id}?units=imperial", cookies={"lang": "en"})
+    resp = client.get(f"/recipe/{_slug(recipe_id)}?units=imperial", cookies={"lang": "en"})
     page = _page(resp)
     assert "1 3/4 oz of butter" in page
 
@@ -327,7 +334,7 @@ def test_recipe_detail_en_imperial_units(client):
 def test_recipe_detail_fr_keeps_french_units(client):
     """The same recipe rendered in French still shows French units and d' elision."""
     recipe_id = _insert_bilingual_recipe("/r/en3.docx", "en3")
-    page = _page(client.get(f"/recipe/{recipe_id}"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
     assert "3 gousses d'ail" in page
     assert "50 g de beurre" in page
 
@@ -356,8 +363,8 @@ def test_recipe_detail_en_tbsp_unit(client):
         "file_hash": "vinaigrette",
     }
     recipe_id = upsert_recipe(data)
-    fr = _page(client.get(f"/recipe/{recipe_id}"))
-    en = _page(client.get(f"/recipe/{recipe_id}", cookies={"lang": "en"}))
+    fr = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
+    en = _page(client.get(f"/recipe/{_slug(recipe_id)}", cookies={"lang": "en"}))
     assert "3 c. à soupe d'huile" in fr
     assert "3 tbsp of oil" in en
 
@@ -388,7 +395,7 @@ def test_recipe_detail_en_with_cup_unit(client):
         "file_hash": "crepes",
     }
     recipe_id = upsert_recipe(data)
-    resp = client.get(f"/recipe/{recipe_id}", cookies={"lang": "en"})
+    resp = client.get(f"/recipe/{_slug(recipe_id)}", cookies={"lang": "en"})
     page = _page(resp)
     assert "1 cup of flour" in page
     assert "2 cups of milk" in page
@@ -451,20 +458,20 @@ def _insert_recipe_with_step_ingredients() -> int:
 
 def test_recipe_detail_shows_step_ingredients(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
     assert "step-ingredients" in page
     assert "100 g de farine" in page
 
 
 def test_recipe_detail_step_ingredients_scale_with_servings(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}?servings=8"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}?servings=8"))
     assert "200 g de farine" in page
 
 
 def test_recipe_cook_shows_step_ingredients(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    resp = client.get(f"/recipe/{recipe_id}/cook")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/cook")
     assert resp.status_code == 200
     page = _page(resp)
     assert "cook-step-ingredients" in page
@@ -473,7 +480,7 @@ def test_recipe_cook_shows_step_ingredients(client):
 
 def test_recipe_ingredients_partial_updates_step_ingredients(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}/ingredients?servings=8"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}/ingredients?servings=8"))
     assert "200 g de farine" in page
     assert 'hx-swap-oob="true"' in page
     assert 'id="step-ingredients-0"' in page
@@ -481,13 +488,13 @@ def test_recipe_ingredients_partial_updates_step_ingredients(client):
 
 def test_recipe_detail_toggle_defaults_to_checked(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
     assert 'id="toggle-step-ingredients" checked' in page
 
 
 def test_recipe_cook_toggle_defaults_to_checked(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}/cook"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}/cook"))
     assert 'id="toggle-cook-step-ingredients" checked' in page
 
 
@@ -513,13 +520,13 @@ def test_recipe_ingredients_partial_multiplier_updates_step_ingredients(client):
     }
     recipe_id = upsert_recipe(data)
     sync_recipe_tags(recipe_id, SAMPLE["tags"])
-    page = _page(client.get(f"/recipe/{recipe_id}/ingredients?multiplier=2"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}/ingredients?multiplier=2"))
     assert "200 g de farine" in page
 
 
 def test_recipe_cook_slides_returns_slideshow(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    resp = client.get(f"/recipe/{recipe_id}/cook/slides")
+    resp = client.get(f"/recipe/{_slug(recipe_id)}/cook/slides")
     assert resp.status_code == 200
     page = _page(resp)
     # Slide ingrédients + une slide par étape, navigation et avancement.
@@ -561,7 +568,7 @@ def _insert_recipe_with_timer() -> int:
 
 def test_recipe_detail_uses_shared_cook_timer_widget(client):
     recipe_id = _insert_recipe_with_timer()
-    page = _page(client.get(f"/recipe/{recipe_id}"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
     # Même widget que le mode cuisine : horloge, durée lisible, hooks JS.
     assert 'data-default-duration="300"' in page
     assert "cook-timer" in page
@@ -572,7 +579,7 @@ def test_recipe_detail_uses_shared_cook_timer_widget(client):
 
 def test_recipe_cook_slides_shows_persistent_timers_bar(client):
     recipe_id = _insert_recipe_with_timer()
-    page = _page(client.get(f"/recipe/{recipe_id}/cook/slides"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}/cook/slides"))
     # Minuteur de l'étape 2 présent avec sa durée.
     assert 'data-default-duration="300"' in page
     # Barre sticky des minuteurs démarrés + chips cliquables vers l'étape.
@@ -586,7 +593,7 @@ def test_recipe_cook_slides_shows_persistent_timers_bar(client):
 
 def test_recipe_cook_slides_shares_state_with_classic_mode(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}/cook/slides"))
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}/cook/slides"))
     # Même clé localStorage que le mode classique : état partagé.
     assert (
         "'recette:cook:' + recipeId" in page or '"recette:cook:"' in page or "recette:cook:" in page
@@ -601,8 +608,8 @@ def test_recipe_cook_slides_unknown_recipe_404(client):
 
 def test_recipe_detail_links_to_slides_mode(client):
     recipe_id = _insert_recipe_with_step_ingredients()
-    page = _page(client.get(f"/recipe/{recipe_id}"))
-    assert f"/recipe/{recipe_id}/cook/slides" in page
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
+    assert f"/recipe/{_slug(recipe_id)}/cook/slides" in page
     assert "btn-cook-slides" in page
 
 

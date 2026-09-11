@@ -50,6 +50,12 @@ RECIPE = {
 }
 
 
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
+
+
 def _recipe_for(connection_id=None, source=""):
     return {
         **RECIPE,
@@ -133,7 +139,7 @@ class TestProvenanceRoutes:
         upsert_recipe(_recipe_for(conn_id))
         upsert_recipe(_recipe_for(None))
         assert "card-provenance" in client.get("/search").text
-        assert "provenance-badge" in client.get("/recipe/1").text
+        assert "provenance-badge" in client.get(f"/recipe/{_slug(1)}").text
 
     def test_search_endpoint_filters_by_account(self, admin, client):
         conn_id = add_dropbox_connection(**CONN_FORM)

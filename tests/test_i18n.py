@@ -177,7 +177,7 @@ def test_recipe_detail_translated_404_fr_default(client):
 
 
 def test_recipe_detail_en_uses_english_ingredients_labels(client):
-    resp = client.get("/recipe/1", cookies={"lang": "en"})
+    resp = client.get("/recipe/poulet-roti", cookies={"lang": "en"})
     page = resp.text
     assert "Ingredients" in page
     assert "Servings" in page
@@ -187,7 +187,7 @@ def test_recipe_detail_en_uses_english_ingredients_labels(client):
 
 
 def test_recipe_cook_en_titles(client):
-    resp = client.get("/recipe/1/cook", cookies={"lang": "en"})
+    resp = client.get("/recipe/poulet-roti/cook", cookies={"lang": "en"})
     assert resp.status_code == 200
     assert "Ingredients" in resp.text
     assert "Steps" in resp.text

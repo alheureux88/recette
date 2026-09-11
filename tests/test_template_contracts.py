@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from recipes.shared.db import init_db, upsert_recipe
+from recipes.shared.db import get_recipe, init_db, upsert_recipe
 from recipes.shared.i18n import gettext
 
 TEMPLATES = Path("templates")
@@ -38,6 +38,12 @@ TIMER_RECIPE = {
 @pytest.fixture(autouse=True)
 def seed(temp_db):
     init_db()
+
+
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
 
 
 def _template_keys() -> tuple[set[str], set[str]]:
@@ -114,7 +120,7 @@ class TestSmokeFrEn:
     )
     def test_pages_render_without_500(self, client: TestClient, url: str, lang: str):
         recipe_id = upsert_recipe(TIMER_RECIPE)
-        resp = client.get(url.format(id=recipe_id), headers={"Accept-Language": lang})
+        resp = client.get(url.format(id=_slug(recipe_id)), headers={"Accept-Language": lang})
         assert resp.status_code == 200, f"{url} [{lang}] → {resp.status_code}"
         assert "Traceback" not in resp.text
         page = html.unescape(resp.text)

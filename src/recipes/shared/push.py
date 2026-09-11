@@ -133,6 +133,7 @@ def schedule_timer_notification(
 
     recipe = get_recipe(recipe_id)
     recipe_title = recipe["title"] if recipe else "Recipe"
+    recipe_slug = recipe.get("slug") if recipe else None
 
     end_time = datetime.now(UTC) + timedelta(seconds=duration_seconds)
     job_id = f"timer_{recipe_id}_{step_index}_{int(end_time.timestamp())}"
@@ -140,7 +141,7 @@ def schedule_timer_notification(
     def send_notification() -> None:
         title = "Timer complete!"
         body = f"Step {step_index + 1} of {recipe_title}"
-        url = f"/recipe/{recipe_id}/cook"
+        url = f"/recipe/{recipe_slug}/cook" if recipe_slug else f"/recipe/{recipe_id}/cook"
 
         success = send_push_notification(
             subscription=subscription,

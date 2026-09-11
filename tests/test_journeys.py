@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from recipes.shared.db import init_db, upsert_recipe
+from recipes.shared.db import get_recipe, init_db, upsert_recipe
 
 JOURNEY_RECIPE = {
     "title": "Gratin parcours",
@@ -35,6 +35,12 @@ def seed(temp_db):
     init_db()
 
 
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
+
+
 def _page(resp) -> str:
     return html.unescape(resp.text)
 
@@ -50,7 +56,7 @@ class TestRecipeToShoppingToCookJourney:
         recipe_id = upsert_recipe(JOURNEY_RECIPE)
 
         # 1. Page recette : minuteur lisible affiché.
-        page = _page(client.get(f"/recipe/{recipe_id}"))
+        page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
         assert "20:00" in page
 
         # 2. Création d'une liste puis ajout des ingrédients de la recette.

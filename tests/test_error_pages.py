@@ -49,13 +49,13 @@ def test_422_json_preserved(client):
 
 
 def test_422_html_request_validation(client):
-    resp = client.get("/recipe/abc", headers=HTML_HEADERS)
+    resp = client.get("/shopping/abc", headers=HTML_HEADERS)
     assert resp.status_code == 422
     assert "Requête invalide" in resp.text
 
 
 def test_422_json_request_validation_shape(client):
-    resp = client.get("/recipe/abc")
+    resp = client.get("/shopping/abc")
     assert resp.status_code == 422
     assert isinstance(resp.json()["detail"], list)
 
@@ -63,17 +63,34 @@ def test_422_json_request_validation_shape(client):
 def test_500_html_and_json(temp_db, monkeypatch):
     from fastapi.testclient import TestClient
 
+    from recipes.shared.db import get_recipe, init_db, upsert_recipe
+
+    init_db()
+    recipe_id = upsert_recipe(
+        {
+            "title": "Soupe boom",
+            "description": "",
+            "steps": [],
+            "ingredients": [],
+            "source_file": "/recipes/boom.docx",
+            "file_hash": "boom1",
+        }
+    )
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    slug = str(recipe["slug"])
+
     monkeypatch.setattr("recipes.features.recipes.controllers.get_recipe", _boom)
     with mock.patch("recipes.main.poll_dropbox"):
         from recipes.main import app
 
         with TestClient(app, raise_server_exceptions=False) as raw:
-            html = raw.get("/recipe/1", headers=HTML_HEADERS)
+            html = raw.get(f"/recipe/{slug}", headers=HTML_HEADERS)
             assert html.status_code == 500
             assert "Erreur serveur" in html.text
             assert "boom" not in html.text  # pas de fuite de détail interne
 
-            api = raw.get("/recipe/1")
+            api = raw.get(f"/recipe/{slug}")
             assert api.status_code == 500
             assert api.json() == {
                 "detail": "Une erreur inattendue s'est produite. Réessayez dans un instant."

@@ -30,6 +30,7 @@ from recipes.features.admin.services import (
 from recipes.shared.db import (
     get_processed_dropbox_hash,
     get_processed_hash,
+    get_recipe_slug,
     get_setting,
     init_db,
     is_manually_edited,
@@ -381,7 +382,8 @@ def _save_images(recipe_id: int, filename: str, content: bytes) -> None:
     if not images:
         return
 
-    recipe_dir = IMAGES_DIR / str(recipe_id)
+    # Dossiers nommés par slug (URL publiques sans ID).
+    recipe_dir = IMAGES_DIR / str(get_recipe_slug(recipe_id) or recipe_id)
     recipe_dir.mkdir(parents=True, exist_ok=True)
 
     saved_filenames: list[str] = []

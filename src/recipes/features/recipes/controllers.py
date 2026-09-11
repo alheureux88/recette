@@ -27,6 +27,7 @@ from recipes.shared.db import (
     get_all_tags_grouped,
     get_db,
     get_recipe,
+    get_recipe_id_by_slug,
     search_recipes,
 )
 from recipes.shared.duration import format_duration
@@ -263,11 +264,28 @@ async def search(
     )
 
 
-@router.get("/recipe/{recipe_id}", response_class=HTMLResponse)
+def _get_recipe_by_slug(
+    slug: str, lang: str, conn: sqlite3.Connection
+) -> tuple[int, JsonDict] | None:
+    """Résout un slug d'URL vers (id numérique, recette localisée).
+
+    Retourne None si le slug est inconnu ou la recette masquée : les
+    appelants répondent alors 404.
+    """
+    recipe_id = get_recipe_id_by_slug(slug, conn=conn)
+    if recipe_id is None:
+        return None
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
+    if not recipe:
+        return None
+    return recipe_id, recipe
+
+
+@router.get("/recipe/{slug}", response_class=HTMLResponse)
 async def recipe_detail(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    recipe_id: int = Path(gt=0),
+    slug: str = Path(),
     servings: str | None = Query(default=None),
     units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
@@ -281,9 +299,10 @@ async def recipe_detail(
     )
 
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
-    if not recipe:
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    recipe_id, recipe = resolved
     user = get_user(request)
     is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
     ingredient_ctx_early, steps_list = _resolved_steps(
@@ -343,11 +362,11 @@ async def recipe_detail(
     )
 
 
-@router.get("/recipe/{recipe_id}/cook", response_class=HTMLResponse)
+@router.get("/recipe/{slug}/cook", response_class=HTMLResponse)
 async def recipe_cook(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    recipe_id: int = Path(gt=0),
+    slug: str = Path(),
     servings: str | None = Query(default=None),
     units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
@@ -358,9 +377,10 @@ async def recipe_cook(
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
-    if not recipe:
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    _, recipe = resolved
     ingredient_ctx, steps = _resolved_steps(
         recipe, servings, units, multiplier, request, conn, lang=lang
     )
@@ -379,11 +399,11 @@ async def recipe_cook(
     )
 
 
-@router.get("/recipe/{recipe_id}/cook/slides", response_class=HTMLResponse)
+@router.get("/recipe/{slug}/cook/slides", response_class=HTMLResponse)
 async def recipe_cook_slides(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    recipe_id: int = Path(gt=0),
+    slug: str = Path(),
     servings: str | None = Query(default=None),
     units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
@@ -394,9 +414,10 @@ async def recipe_cook_slides(
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
-    if not recipe:
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    _, recipe = resolved
     ingredient_ctx, steps = _resolved_steps(
         recipe, servings, units, multiplier, request, conn, lang=lang
     )
@@ -415,11 +436,11 @@ async def recipe_cook_slides(
     )
 
 
-@router.get("/recipe/{recipe_id}/ingredients", response_class=HTMLResponse)
+@router.get("/recipe/{slug}/ingredients", response_class=HTMLResponse)
 async def recipe_ingredients(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    recipe_id: int = Path(gt=0),
+    slug: str = Path(),
     servings: str | None = Query(default=None),
     units: str | None = Query(default=None),
     multiplier: str | None = Query(default=None),
@@ -434,9 +455,10 @@ async def recipe_ingredients(
     from recipes.shared.web import _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
-    if not recipe:
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
+    _, recipe = resolved
     ingredient_ctx, steps_list = _resolved_steps(
         recipe, servings, units, multiplier, request, conn, lang=lang
     )
@@ -451,31 +473,31 @@ async def recipe_ingredients(
     )
 
 
-@router.post("/favorites/{recipe_id}")
+@router.post("/favorites/{slug}")
 async def toggle_favorite(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    recipe_id: int = Path(gt=0),
+    slug: str = Path(),
     user: dict[str, Any] = Depends(require_user),
 ) -> HTMLResponse:
     from recipes.shared.web import _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
+    recipe_id, _recipe = resolved
     currently_fav = is_favorite(user["id"], recipe_id, conn=conn)
     if currently_fav:
         remove_favorite(user["id"], recipe_id, conn=conn)
     else:
         add_favorite(user["id"], recipe_id, conn=conn)
 
-    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
-    if not recipe:
-        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
-
     return templates.TemplateResponse(
         request=request,
         name="partials/favorite_button.html",
         context={
-            "recipe_id": recipe_id,
+            "slug": slug,
             "is_favorite": not currently_fav,
         },
     )

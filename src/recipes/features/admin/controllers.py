@@ -107,6 +107,7 @@ def _recipe_row(recipe: JsonDict) -> JsonDict:
     tags = [t for t in raw_tags if isinstance(t, dict)] if isinstance(raw_tags, list) else []
     return {
         "id": int(str(recipe["id"])),
+        "slug": str(recipe.get("slug") or recipe["id"]),
         "title": str(recipe["title"]),
         "provenance": str(recipe["provenance"]) if recipe.get("provenance") else "",
         "created_at": str(recipe["created_at"]) if recipe.get("created_at") else "",

@@ -3,7 +3,7 @@
 
     {% if ingredients_structures %}
     <form class="ingredient-controls"
-          hx-get="/recipe/{{ recipe.id }}/ingredients"
+          hx-get="/recipe/{{ recipe.slug }}/ingredients"
           hx-target="#ingredients-section"
           hx-swap="outerHTML"
           hx-trigger="change">

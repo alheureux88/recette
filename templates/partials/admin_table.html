@@ -338,7 +338,7 @@
                             ? ' <span class="admin-badge admin-badge-anon">'
                                 + recetteEscape(window.recetteI18n.orphans_title) + "</span>"
                             : "";
-                        return '<a href="/recipe/' + d.id + '" target="_blank">'
+                        return '<a href="/recipe/' + d.slug + '" target="_blank">'
                             + recetteEscape(d.title) + "</a>" + badge;
                     },
                 },
@@ -570,7 +570,7 @@
                     headerFilter: "input",
                     formatter: function (cell) {
                         var d = cell.getData();
-                        return '<a href="/recipe/' + d.id + '" target="_blank">'
+                        return '<a href="/recipe/' + d.slug + '" target="_blank">'
                             + recetteEscape(d.title) + "</a>";
                     },
                 },

@@ -22,7 +22,7 @@
      data-label-mark-undone="{{ _('cook.slides_mark_undone') }}"
      data-label-goto-step="{{ _('cook.slides_goto_step') }}"
      data-vapid-public-key="{{ vapid_public_key }}">
-    {{ cook_bar('/recipe/' ~ recipe.id, _('cook.back'), _('cook.back_aria'), recipe.title, 'slides-reset', _('cook.reset'), '/recipe/' ~ recipe.id ~ '/cook', _('cook.slides_goto_classic')) }}
+    {{ cook_bar('/recipe/' ~ recipe.slug, _('cook.back'), _('cook.back_aria'), recipe.title, 'slides-reset', _('cook.reset'), '/recipe/' ~ recipe.slug ~ '/cook', _('cook.slides_goto_classic')) }}
 
     <div class="slides-progress" aria-live="polite">
         <div class="slides-progress-row">

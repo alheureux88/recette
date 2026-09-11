@@ -15,7 +15,7 @@ from recipes.features.shopping.services import (
     create_shopping_list,
     get_shopping_departments,
 )
-from recipes.shared.db import get_conn, init_db, upsert_recipe
+from recipes.shared.db import get_conn, get_recipe, init_db, upsert_recipe
 
 
 @pytest.fixture(autouse=True)
@@ -343,25 +343,31 @@ def _insert_structured_recipe() -> int:
     )
 
 
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
+
+
 class TestPreferencesIntegration:
     def test_recipe_uses_units_preference_by_default(self, as_user):
         recipe_id = _insert_structured_recipe()
         save_preferences(1, {"units": "metric"})
-        resp = as_user.get(f"/recipe/{recipe_id}")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}")
         assert resp.status_code == 200
         assert 'value="metric" selected' in resp.text
 
     def test_recipe_explicit_units_win_over_preference(self, as_user):
         recipe_id = _insert_structured_recipe()
         save_preferences(1, {"units": "metric"})
-        resp = as_user.get(f"/recipe/{recipe_id}?units=imperial")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}?units=imperial")
         assert resp.status_code == 200
         assert 'value="imperial" selected' in resp.text
 
     def test_recipe_applies_print_preferences(self, as_user):
         recipe_id = _insert_structured_recipe()
         save_preferences(1, {"print_images": True, "print_tags": True})
-        resp = as_user.get(f"/recipe/{recipe_id}")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}")
         assert resp.status_code == 200
         assert 'id="print-images" checked' in resp.text
         assert 'id="print-tags" checked' in resp.text
@@ -371,7 +377,7 @@ class TestPreferencesIntegration:
     def test_recipe_applies_print_step_ingredients_preference(self, as_user):
         recipe_id = _insert_structured_recipe()
         save_preferences(1, {"print_step_ingredients": True})
-        resp = as_user.get(f"/recipe/{recipe_id}")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}")
         assert resp.status_code == 200
         assert 'id="print-step-ingredients" checked' in resp.text
 
@@ -411,14 +417,14 @@ class TestPreferencesIntegration:
 
     def test_recipe_toggle_checked_by_default(self, as_user):
         recipe_id = _insert_structured_recipe()
-        resp = as_user.get(f"/recipe/{recipe_id}")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}")
         assert resp.status_code == 200
         assert 'id="toggle-step-ingredients" checked' in resp.text
 
     def test_recipe_toggle_unchecked_when_preference_off(self, as_user):
         recipe_id = _insert_structured_recipe()
         save_preferences(1, {"show_step_ingredients": False})
-        resp = as_user.get(f"/recipe/{recipe_id}")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}")
         assert resp.status_code == 200
         assert 'id="toggle-step-ingredients"' in resp.text
         assert 'id="toggle-step-ingredients" checked' not in resp.text
@@ -437,11 +443,11 @@ class TestPreferencesIntegration:
                 },
             }
         )
-        resp = as_user.get(f"/recipe/{recipe_id}/cook")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}/cook")
         assert resp.status_code == 200
         assert 'id="toggle-cook-step-ingredients" checked' in resp.text
         save_preferences(1, {"show_step_ingredients": False})
-        resp = as_user.get(f"/recipe/{recipe_id}/cook")
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}/cook")
         assert 'id="toggle-cook-step-ingredients"' in resp.text
         assert 'id="toggle-cook-step-ingredients" checked' not in resp.text
 

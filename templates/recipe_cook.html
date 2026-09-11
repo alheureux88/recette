@@ -22,7 +22,7 @@
      data-timer-remove="{{ _('cook.timer_remove') }}"
      data-timer-label="{{ _('cook.timer_label') }}"
      data-vapid-public-key="{{ vapid_public_key }}">
-    {{ cook_bar('/recipe/' ~ recipe.id, _('cook.back'), _('cook.back_aria'), recipe.title, 'cook-reset', _('cook.reset')) }}
+    {{ cook_bar('/recipe/' ~ recipe.slug, _('cook.back'), _('cook.back_aria'), recipe.title, 'cook-reset', _('cook.reset')) }}
 
     <div class="cook-progress" id="cook-progress" aria-live="polite"></div>
     <div class="cook-wake-status" id="cook-wake-status" role="status" aria-live="polite" hidden></div>

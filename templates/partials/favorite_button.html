@@ -1,6 +1,6 @@
 <button
     class="fav-btn {% if is_favorite %}is-favorite{% endif %}"
-    hx-post="/favorites/{{ recipe_id }}"
+    hx-post="/favorites/{{ slug }}"
     hx-swap="outerHTML"
     title="{{ _('favorites.remove') if is_favorite else _('favorites.add') }}"
 >

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from recipes.shared.db import init_db, upsert_recipe
+from recipes.shared.db import get_recipe, init_db, upsert_recipe
 
 TIMER_RECIPE = {
     "title": "Soupe minuteur partagé",
@@ -38,6 +38,12 @@ def _page(resp) -> str:
     return html.unescape(resp.text)
 
 
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
+
+
 def _timer_recipe_id() -> int:
     return upsert_recipe(TIMER_RECIPE)
 
@@ -55,7 +61,7 @@ class TestSharedTimerScript:
     )
     def test_pages_use_shared_timer_script(self, client, url):
         recipe_id = _timer_recipe_id()
-        page = _page(client.get(url.format(id=recipe_id)))
+        page = _page(client.get(url.format(id=_slug(recipe_id))))
         assert "/static/js/timers.js" in page
         assert "cook-timer-icon" in page
         # Plus de moteur minuteur dupliqué en ligne.
@@ -86,7 +92,7 @@ class TestSharedWakeLockScript:
             page = _page(client.get(url.format(id=list_id)))
         else:
             recipe_id = _timer_recipe_id()
-            page = _page(client.get(url.format(id=recipe_id)))
+            page = _page(client.get(url.format(id=_slug(recipe_id))))
         assert "/static/js/wake_lock.js" in page
         assert "async function requestWakeLock" not in page
 
@@ -102,7 +108,7 @@ class TestSharedCookBar:
             page = _page(client.get(url.format(id=list_id)))
         else:
             recipe_id = _timer_recipe_id()
-            page = _page(client.get(url.format(id=recipe_id)))
+            page = _page(client.get(url.format(id=_slug(recipe_id))))
         assert "cook-bar" in page
         assert "cook-exit" in page
         assert "cook-title" in page

@@ -6,8 +6,8 @@
     <div class="print-toolbar">
         <a href="/" class="back">{{ _('recipe.back_to_list') }}</a>
         <div class="print-actions">
-            <a href="/recipe/{{ recipe.id }}/cook" class="btn-cook" id="btn-cook">{{ _('recipe.cook_mode') }}</a>
-            <a href="/recipe/{{ recipe.id }}/cook/slides" class="btn-cook" id="btn-cook-slides">{{ _('recipe.cook_slides_mode') }}</a>
+            <a href="/recipe/{{ recipe.slug }}/cook" class="btn-cook" id="btn-cook">{{ _('recipe.cook_mode') }}</a>
+            <a href="/recipe/{{ recipe.slug }}/cook/slides" class="btn-cook" id="btn-cook-slides">{{ _('recipe.cook_slides_mode') }}</a>
             <details class="print-options" id="print-options">
                 <summary>{{ _('recipe.print_options') }}</summary>
                 <div class="print-options-grid">
@@ -25,7 +25,7 @@
     <div class="recipe-header">
         <h1>{{ recipe.title }}</h1>
         {% if auth_enabled and user %}
-            {% with recipe_id=recipe.id, is_favorite=is_favorite %}
+            {% with slug=recipe.slug, is_favorite=is_favorite %}
                 {% include "partials/favorite_button.html" %}
             {% endwith %}
         {% endif %}
@@ -45,7 +45,7 @@
     {% if recipe.images %}
     <div class="recipe-images">
         {% for img in recipe.images %}
-        <img src="/images/{{ recipe.id }}/{{ img.filename }}" alt="{{ recipe.title }}" loading="lazy" class="recipe-image">
+        <img src="/images/{{ recipe.slug }}/{{ img.filename }}" alt="{{ recipe.title }}" loading="lazy" class="recipe-image">
         {% endfor %}
     </div>
     {% endif %}

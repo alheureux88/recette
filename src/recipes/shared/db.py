@@ -28,6 +28,7 @@ from typing import Any
 
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
 from recipes.shared.models import JsonDict
+from recipes.shared.slug import slugify
 
 # Constants used by multiple modules
 DEFAULT_ACCOUNT_ID = -1
@@ -173,6 +174,7 @@ def init_db() -> None:
         _create_tables(conn)
         _migrate_processed_files(conn)
         _migrate_recipes_visibility(conn)
+        _migrate_recipes_slug(conn)
         _create_fts(conn)
         _seed(conn)
 
@@ -181,6 +183,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS recipes (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug         TEXT UNIQUE,
             servings     REAL,
             source_url   TEXT,
             dropbox_url  TEXT,
@@ -376,6 +379,26 @@ def _migrate_recipes_visibility(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE recipes ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0")
     if "force_visible" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN force_visible INTEGER NOT NULL DEFAULT 0")
+
+
+def _migrate_recipes_slug(conn: sqlite3.Connection) -> None:
+    """Ajoute `slug` aux bases existantes et remplit les valeurs manquantes.
+
+    Les slugs existants sont conservés (stabilité des URL) ; seules les
+    lignes sans slug en reçoivent un, dérivé du titre français.
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
+    if "slug" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN slug TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_slug ON recipes(slug)")
+    for row in conn.execute("SELECT id FROM recipes WHERE slug IS NULL OR slug = ''").fetchall():
+        recipe_id = int(row["id"])
+        title_row = conn.execute(
+            "SELECT title FROM recipe_translations WHERE recipe_id = ? AND lang = 'fr'",
+            (recipe_id,),
+        ).fetchone()
+        base = slugify(str(title_row["title"]) if title_row and title_row["title"] else "")
+        _assign_unique_slug(conn, recipe_id, base)
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -641,7 +664,57 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
 
         _upsert_translation(_conn, recipe_id, "fr", payload_fr)
         _upsert_translation(_conn, recipe_id, "en", payload_en)
+        _ensure_recipe_slug(
+            _conn,
+            recipe_id,
+            base_title=str(payload_fr.get("title") or payload_en.get("title") or ""),
+            keep_existing=bool(existing),
+        )
         return recipe_id
+
+
+def _ensure_recipe_slug(
+    conn: sqlite3.Connection, recipe_id: int, base_title: str, keep_existing: bool
+) -> str:
+    """Attribue un slug unique à la recette.
+
+    Le slug existant est conservé (stabilité des URL) sauf à la création.
+    """
+    if keep_existing:
+        row = conn.execute("SELECT slug FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if row is not None and row["slug"]:
+            return str(row["slug"])
+    return _assign_unique_slug(conn, recipe_id, slugify(base_title))
+
+
+def _assign_unique_slug(conn: sqlite3.Connection, recipe_id: int, base: str) -> str:
+    """Écrit un slug unique (`base`, `base-2`, …) en excluant la recette elle-même."""
+    slug = base
+    suffix = 2
+    while True:
+        row = conn.execute("SELECT id FROM recipes WHERE slug = ?", (slug,)).fetchone()
+        if row is None or int(row["id"]) == recipe_id:
+            break
+        slug = f"{base}-{suffix}"
+        suffix += 1
+    conn.execute("UPDATE recipes SET slug = ? WHERE id = ?", (slug, recipe_id))
+    return slug
+
+
+def get_recipe_id_by_slug(slug: str, conn: sqlite3.Connection | None = None) -> int | None:
+    """Retourne l'ID de la recette pour un slug, ou None si inconnu."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT id FROM recipes WHERE slug = ?", (slug,)).fetchone()
+        return int(row["id"]) if row is not None else None
+
+
+def get_recipe_slug(recipe_id: int, conn: sqlite3.Connection | None = None) -> str | None:
+    """Retourne le slug d'une recette, ou None si absente."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT slug FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if row is None or not row["slug"]:
+            return None
+        return str(row["slug"])
 
 
 def _extract_translation_payload(

@@ -7,12 +7,18 @@ from recipes.features.shopping.services import (
     add_shopping_list_item,
     create_shopping_list,
 )
-from recipes.shared.db import init_db, upsert_recipe
+from recipes.shared.db import get_recipe, init_db, upsert_recipe
 
 
 @pytest.fixture(autouse=True)
 def setup(temp_db):
     init_db()
+
+
+def _slug(recipe_id: int) -> str:
+    recipe = get_recipe(recipe_id)
+    assert recipe is not None
+    return str(recipe["slug"])
 
 
 def _create_owned_list(client: TestClient, name: str = "Test List") -> int:
@@ -183,7 +189,7 @@ class TestShoppingAccessControl:
                 "file_hash": "modal1",
             }
         )
-        resp = client.get(f"/recipe/{recipe_id}")
+        resp = client.get(f"/recipe/{_slug(recipe_id)}")
         assert resp.status_code == 200
         assert "Own Modal" in resp.text
         assert str(victim["name"]) not in resp.text
