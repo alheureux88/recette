@@ -28,11 +28,13 @@ from recipes.features.admin.services import (
     remove_failed_file,
 )
 from recipes.shared.db import (
+    get_processed_dropbox_hash,
     get_processed_hash,
     get_setting,
     init_db,
     is_manually_edited,
     mark_processed,
+    reconcile_account_files,
     save_recipe_images,
     sync_recipe_tags,
     upsert_recipe,
@@ -393,6 +395,22 @@ def _save_images(recipe_id: int, filename: str, content: bytes) -> None:
     log.info("  Saved %s image(s) for recipe #%s", len(saved_filenames), recipe_id)
 
 
+def entry_dropbox_hash(entry: dropbox.files.FileMetadata) -> str | None:
+    """Identifiant de version fourni par Dropbox, sans télécharger.
+
+    `content_hash` change uniquement si le contenu change ; à défaut on
+    replie sur `rev`. Retourne None si aucun identifiant textuel dispo
+    (mocks, vieilles entrées).
+    """
+    content_hash = getattr(entry, "content_hash", None)
+    if isinstance(content_hash, str) and content_hash:
+        return content_hash
+    rev = getattr(entry, "rev", None)
+    if isinstance(rev, str) and rev:
+        return rev
+    return None
+
+
 def process_file(
     dbx: dropbox.Dropbox,
     entry: dropbox.files.FileMetadata,
@@ -405,12 +423,22 @@ def process_file(
     paths on different Dropbox accounts don't collide in the database.
     `connection_id` records which configured account the recipe came from
     (None = the default .env account).
+
+    Le téléchargement est sauté si le rev / content_hash Dropbox est
+    identique à celui stocké — aucun download pour les fichiers inchangés.
     """
     path = f"{path_prefix}{entry.path_lower}"
 
     if is_blacklisted(path):
         log.info("  Skipping (blacklisted): %s", path)
         return
+
+    dropbox_hash = entry_dropbox_hash(entry)
+    if dropbox_hash is not None:
+        stored_dropbox_hash = get_processed_dropbox_hash(path)
+        if stored_dropbox_hash == dropbox_hash:
+            log.info("  Skipping (unchanged): %s", path)
+            return
 
     log.info("Downloading: %s", path)
     content = download_file(dbx, entry.path_lower)
@@ -419,6 +447,11 @@ def process_file(
     existing_hash = get_processed_hash(path)
     if existing_hash == content_hash:
         log.info("  Skipping (unchanged): %s", path)
+        # Opportuniste : mémorise le rev pour les prochains polls
+        # sans re-télécharger.
+        if dropbox_hash is not None:
+            with _DB_LOCK:
+                mark_processed(path, content_hash, dropbox_hash=dropbox_hash)
         return
 
     if is_manually_edited(path):
@@ -472,7 +505,7 @@ def process_file(
                 {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)},
             )
         _save_images(recipe_id, entry.name, content)
-        mark_processed(path, content_hash)
+        mark_processed(path, content_hash, dropbox_hash=dropbox_hash)
         remove_failed_file(path)
 
     log.info(
@@ -491,7 +524,12 @@ def _poll_account(
     file_filter: str = "",
     path_prefix: str = "",
     connection_id: int | None = None,
-) -> None:
+) -> set[str] | None:
+    """Scanne un compte et retourne les `source_file` présents, ou None en erreur.
+
+    Retourner None (et non un ensemble vide) évite de marquer à tort
+    toutes les recettes comme disparues quand le listage a échoué.
+    """
     log.info("[%s] Checking Dropbox folder: '%s'", label, folder or "/")
     try:
         files = list_recipe_files(dbx, folder, file_filter)
@@ -499,10 +537,10 @@ def _poll_account(
     except AuthError:
         log.exception("[%s] Dropbox authentication error", label)
         log.info("Token may have expired. Please refresh your Dropbox credentials.")
-        return
+        return None
     except ApiError:
         log.exception("[%s] Dropbox API error", label)
-        return
+        return None
 
     for entry in unsupported:
         ext = Path(entry.name).suffix.lower()
@@ -531,9 +569,11 @@ def _poll_account(
                 )
                 log.info("Token may have expired. Please refresh your Dropbox credentials.")
                 executor.shutdown(wait=False, cancel_futures=True)
-                return
+                return None
             except Exception:
                 log.exception("Unexpected error processing %s", entry.name)
+
+    return {f"{path_prefix}{entry.path_lower}" for entry in files}
 
 
 def run() -> None:
@@ -581,7 +621,26 @@ def run() -> None:
         return
 
     for label, dbx, folder, file_filter, prefix, account_id in accounts:
-        _poll_account(dbx, label or "default", folder, file_filter, prefix, account_id)
+        present = _poll_account(dbx, label or "default", folder, file_filter, prefix, account_id)
+        if present is None:
+            continue
+        if file_filter:
+            # Listage partiel (filtre actif) : impossible de savoir ce qui
+            # a vraiment disparu, on ne touche à rien.
+            log.info(
+                "[%s] File filter active — skipping missing-file reconciliation.",
+                label or "default",
+            )
+            continue
+        with _DB_LOCK:
+            missing, reappeared = reconcile_account_files(account_id, present)
+        if missing or reappeared:
+            log.info(
+                "[%s] Reconciliation: %s recipe(s) hidden (source gone), %s reappeared.",
+                label or "default",
+                missing,
+                reappeared,
+            )
 
     log.info("Done.")
 

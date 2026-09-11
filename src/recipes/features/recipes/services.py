@@ -60,6 +60,7 @@ def get_favorite_recipes(
             JOIN recipes r ON f.recipe_id = r.id
             LEFT JOIN categories c ON r.category_id = c.id
             WHERE f.user_id = ?
+              AND (r.source_missing = 0 OR r.force_visible = 1)
             ORDER BY f.created_at DESC
             """,
             (user_id,),

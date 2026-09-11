@@ -47,8 +47,10 @@ from recipes.shared.db import (
     get_all_categories,
     get_db,
     get_existing_tags_for_prompt,
+    get_orphaned_recipes,
     get_recipe,
     get_tag_families,
+    set_recipe_force_visible,
     sync_recipe_tags,
     update_recipe_category,
     update_recipe_manual,
@@ -90,6 +92,7 @@ def _admin_table_context(request: Request, conn: sqlite3.Connection) -> JsonDict
         recipes=get_all_recipes_admin(lang=lang, conn=conn),
         blacklisted=get_blacklisted_files(conn=conn, lang=lang),
         failed=get_failed_files(conn=conn, lang=lang),
+        orphans=get_orphaned_recipes(lang=lang, conn=conn),
         all_categories=get_all_categories(only_used=False, lang=lang, conn=conn),
         all_tags=get_existing_tags_for_prompt(lang=lang, conn=conn),
         all_tag_families=get_tag_families(lang=lang, conn=conn),
@@ -121,6 +124,8 @@ def _recipe_row(recipe: JsonDict) -> JsonDict:
             for t in tags
         ],
         "manually_edited": bool(recipe.get("manually_edited")),
+        "source_missing": bool(recipe.get("source_missing")),
+        "force_visible": bool(recipe.get("force_visible")),
         "favorite_count": int(str(recipe["favorite_count"])) if recipe.get("favorite_count") else 0,
     }
 
@@ -339,6 +344,20 @@ async def admin_files_data(
             }
             for item in get_failed_files(conn=conn, lang=lang)
         ],
+        "orphans": [_orphan_row(item) for item in get_orphaned_recipes(lang=lang, conn=conn)],
+    }
+
+
+def _orphan_row(item: JsonDict) -> JsonDict:
+    """Flatten an orphaned recipe for the admin orphans table."""
+    provenance = item.get("provenance")
+    prov_name = provenance.get("name") if isinstance(provenance, dict) else None
+    return {
+        "id": int(str(item["id"])),
+        "title": str(item["title"]),
+        "path": str(item["source_file"]),
+        "provenance": str(prov_name or ""),
+        "visible": bool(item.get("force_visible")),
     }
 
 
@@ -747,7 +766,7 @@ async def admin_edit_form(
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, lang=lang, conn=conn)
+    recipe = get_recipe(recipe_id, lang=lang, conn=conn, include_hidden=True)
     if not recipe:
         raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
     return templates.TemplateResponse(
@@ -772,7 +791,7 @@ async def admin_edit_save(
     from recipes.shared.web import _resolve_request_lang, templates
 
     lang = _resolve_request_lang(request)
-    recipe = get_recipe(recipe_id, conn=conn)
+    recipe = get_recipe(recipe_id, conn=conn, include_hidden=True)
     if not recipe:
         raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
 
@@ -865,6 +884,46 @@ async def admin_retry_failed(
     from recipes.shared.web import templates
 
     remove_failed_file(path, conn=conn)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_table.html",
+        context=_admin_table_context(request, conn),
+    )
+
+
+@router.post("/orphans/{recipe_id}/show")
+async def admin_orphan_show(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    """Force l'affichage d'une recette dont la source a disparu."""
+    from recipes.shared.web import _resolve_request_lang, templates
+
+    lang = _resolve_request_lang(request)
+    if not set_recipe_force_visible(recipe_id, True, conn=conn):
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/admin_table.html",
+        context=_admin_table_context(request, conn),
+    )
+
+
+@router.post("/orphans/{recipe_id}/hide")
+async def admin_orphan_hide(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    """Annule l'affichage forcé d'une recette orpheline."""
+    from recipes.shared.web import _resolve_request_lang, templates
+
+    lang = _resolve_request_lang(request)
+    if not set_recipe_force_visible(recipe_id, False, conn=conn):
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
     return templates.TemplateResponse(
         request=request,
         name="partials/admin_table.html",

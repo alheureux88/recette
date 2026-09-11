@@ -196,6 +196,114 @@ class TestListRecipeFiles:
         mock_dbx.files_list_folder_continue.assert_called_once_with("cursor123")
 
 
+class TestPollAccountReconciliation:
+    @pytest.fixture
+    def setup_db(self, temp_db):
+        init_db()
+
+    def _entry(self, name, path_lower):
+        import dropbox.files
+
+        entry = MagicMock(spec=dropbox.files.FileMetadata)
+        entry.name = name
+        entry.path_lower = path_lower
+        return entry
+
+    def test_returns_present_paths(self, setup_db):
+        from recipes.shared.poller import _poll_account
+
+        mock_dbx = MagicMock()
+        mock_result = MagicMock()
+        mock_result.has_more = False
+        mock_result.entries = [self._entry("a.txt", "/a.txt")]
+        mock_dbx.files_list_folder.return_value = mock_result
+
+        with patch("recipes.shared.poller.process_file"):
+            present = _poll_account(mock_dbx, "default", "", "", "account:1:")
+
+        assert present == {"account:1:/a.txt"}
+
+    def test_returns_none_on_api_error(self, setup_db):
+        from dropbox.exceptions import ApiError
+
+        from recipes.shared.poller import _poll_account
+
+        mock_dbx = MagicMock()
+        mock_dbx.files_list_folder.side_effect = ApiError(
+            request_id="req1", error=None, user_message_text="e", user_message_locale="en"
+        )
+
+        with patch("recipes.shared.poller.process_file") as mock_process:
+            assert _poll_account(mock_dbx, "default", "", "") is None
+            mock_process.assert_not_called()
+
+    def test_run_marks_missing_files(self, setup_db, monkeypatch):
+        import recipes.shared.poller as poller_module
+        from recipes.shared.db import get_recipe, upsert_recipe
+
+        recipe_id = upsert_recipe(
+            {
+                "title": "Gone",
+                "description": "d",
+                "ingredients": [],
+                "steps": [],
+                "category": None,
+                "tags": {},
+                "source_file": "/gone.txt",
+                "file_hash": "h",
+            }
+        )
+        monkeypatch.setattr(poller_module, "has_env_dropbox_credentials", lambda: True)
+        monkeypatch.setattr(poller_module, "_get_dropbox_client", lambda: MagicMock())
+        monkeypatch.setattr(poller_module, "get_dropbox_connections", lambda *a, **k: [])
+        monkeypatch.setattr(poller_module, "_poll_account", lambda *a, **k: set())
+
+        poller_module.run()
+
+        assert get_recipe(recipe_id) is None
+        assert get_recipe(recipe_id, include_hidden=True)["source_missing"] == 1
+
+    def test_run_skips_reconcile_with_file_filter(self, setup_db, monkeypatch):
+        import recipes.shared.poller as poller_module
+        from recipes.features.admin.services import add_dropbox_connection
+        from recipes.shared.db import get_recipe, upsert_recipe
+
+        conn_id = add_dropbox_connection(name="F", refresh_token="t", file_filter="BOEUF*")
+        assert conn_id is not None
+        recipe_id = upsert_recipe(
+            {
+                "title": "Filtered",
+                "description": "d",
+                "ingredients": [],
+                "steps": [],
+                "category": None,
+                "tags": {},
+                "source_file": f"account:{conn_id}:/f.txt",
+                "file_hash": "h",
+                "connection_id": conn_id,
+            }
+        )
+        monkeypatch.setattr(poller_module, "has_env_dropbox_credentials", lambda: False)
+        monkeypatch.setattr(
+            poller_module,
+            "get_dropbox_connections",
+            lambda *a, **k: [
+                {"id": conn_id, "name": "F", "active": True, "folder": "", "file_filter": "BOEUF*"}
+            ],
+        )
+        monkeypatch.setattr(
+            poller_module,
+            "get_dropbox_connection_credentials",
+            lambda *a, **k: {"id": conn_id, "refresh_token": "t"},
+        )
+        monkeypatch.setattr(poller_module, "get_connection_client", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(poller_module, "_poll_account", lambda *a, **k: set())
+
+        poller_module.run()
+
+        assert get_recipe(recipe_id)["source_missing"] == 0
+
+
 class TestGetOrCreateSharedLink:
     def test_reuses_existing_link(self):
         from recipes.shared.poller import get_or_create_shared_link
@@ -259,11 +367,110 @@ class TestProcessFile:
         mock_entry = MagicMock()
         mock_entry.name = "test.txt"
         mock_entry.path_lower = "/recipes/test.txt"
+        # Pas de rev/content_hash textuel -> repli sur le hash du contenu.
+        mock_entry.content_hash = None
+        mock_entry.rev = None
 
         with patch("recipes.shared.poller.extract_text") as mock_extract:
             process_file(mock_dbx, mock_entry)
 
         mock_extract.assert_not_called()
+
+    def test_skips_without_download_when_rev_matches(self, setup_db):
+        from recipes.shared.db import mark_processed
+        from recipes.shared.poller import file_hash, process_file
+
+        mark_processed("/recipes/test.txt", file_hash(b"old"), dropbox_hash="rev-1")
+
+        mock_dbx = MagicMock()
+        mock_entry = MagicMock()
+        mock_entry.name = "test.txt"
+        mock_entry.path_lower = "/recipes/test.txt"
+        mock_entry.content_hash = None
+        mock_entry.rev = "rev-1"
+
+        with patch("recipes.shared.poller.extract_text") as mock_extract:
+            process_file(mock_dbx, mock_entry)
+
+        mock_dbx.files_download.assert_not_called()
+        mock_extract.assert_not_called()
+
+    def test_downloads_when_rev_changed(self, setup_db):
+        from recipes.shared.db import mark_processed
+        from recipes.shared.poller import process_file
+
+        mark_processed("/recipes/test.txt", "old-hash", dropbox_hash="rev-1")
+
+        content = b"Recette de tarte aux pommes"
+        mock_dbx = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = content
+        mock_dbx.files_download.return_value = (None, mock_response)
+        mock_dbx.sharing_list_shared_links.return_value = MagicMock(links=[])
+        mock_link_result = MagicMock()
+        mock_link_result.url = "https://dropbox.com/shared"
+        mock_dbx.sharing_create_shared_link_with_settings.return_value = mock_link_result
+
+        mock_entry = MagicMock()
+        mock_entry.name = "DESSERT Tarte aux pommes.txt"
+        mock_entry.path_lower = "/recipes/test.txt"
+        mock_entry.content_hash = "hash-v2"
+        mock_entry.rev = "rev-2"
+        mock_entry.client_modified = None
+
+        with (
+            patch("recipes.shared.poller.extract_text", return_value="Tarte aux pommes"),
+            patch(
+                "recipes.shared.poller.tag_recipe",
+                return_value={
+                    "lang_fr": {
+                        "title": "Tarte aux pommes",
+                        "description": "Delicious tart",
+                        "ingredients": ["apples"],
+                        "instructions": "Bake",
+                    },
+                    "lang_en": {
+                        "title": "Apple tart",
+                        "description": "Delicious tart",
+                        "ingredients": ["apples"],
+                        "instructions": "Bake",
+                    },
+                    "category": "dessert",
+                    "tags": {"origin": ["francais"]},
+                    "source_url": None,
+                },
+            ),
+        ):
+            process_file(mock_dbx, mock_entry)
+
+        mock_dbx.files_download.assert_called_once()
+
+    def test_stores_rev_after_content_hash_match(self, setup_db):
+        from recipes.shared.db import (
+            get_processed_dropbox_hash,
+            mark_processed,
+        )
+        from recipes.shared.poller import file_hash, process_file
+
+        content = b"recipe content"
+        mark_processed("/recipes/test.txt", file_hash(content))
+
+        mock_dbx = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = content
+        mock_dbx.files_download.return_value = (None, mock_response)
+
+        mock_entry = MagicMock()
+        mock_entry.name = "test.txt"
+        mock_entry.path_lower = "/recipes/test.txt"
+        mock_entry.content_hash = "hash-v2"
+        mock_entry.rev = "rev-2"
+
+        with patch("recipes.shared.poller.extract_text") as mock_extract:
+            process_file(mock_dbx, mock_entry)
+
+        mock_extract.assert_not_called()
+        assert get_processed_dropbox_hash("/recipes/test.txt") == "hash-v2"
 
     def test_processes_new_file(self, setup_db):
         from recipes.shared.poller import process_file

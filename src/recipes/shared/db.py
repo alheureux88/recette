@@ -171,6 +171,8 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 def init_db() -> None:
     with get_conn() as conn:
         _create_tables(conn)
+        _migrate_processed_files(conn)
+        _migrate_recipes_visibility(conn)
         _create_fts(conn)
         _seed(conn)
 
@@ -188,6 +190,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             connection_id INTEGER REFERENCES dropbox_connections(id),
             category_id  INTEGER REFERENCES categories(id),
             file_modified_at DATETIME,
+            source_missing INTEGER NOT NULL DEFAULT 0,
+            force_visible INTEGER NOT NULL DEFAULT 0,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -237,6 +241,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS processed_files (
             path         TEXT PRIMARY KEY,
             file_hash    TEXT NOT NULL,
+            dropbox_hash TEXT,
             processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -355,6 +360,22 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+
+def _migrate_processed_files(conn: sqlite3.Connection) -> None:
+    """Ajoute `dropbox_hash` aux bases existantes (sans re-parse)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(processed_files)").fetchall()}
+    if "dropbox_hash" not in cols:
+        conn.execute("ALTER TABLE processed_files ADD COLUMN dropbox_hash TEXT")
+
+
+def _migrate_recipes_visibility(conn: sqlite3.Connection) -> None:
+    """Ajoute `source_missing` / `force_visible` aux bases existantes."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()}
+    if "source_missing" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0")
+    if "force_visible" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN force_visible INTEGER NOT NULL DEFAULT 0")
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -581,7 +602,7 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                 """
                 UPDATE recipes SET
                     servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
-                    file_modified_at=?, connection_id=?,
+                    file_modified_at=?, connection_id=?, source_missing=0,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
                 """,
@@ -601,8 +622,8 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                 """
                 INSERT INTO recipes
                     (servings, category_id, source_url, dropbox_url, source_file,
-                     file_hash, file_modified_at, connection_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     file_hash, file_modified_at, connection_id, source_missing)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
                 """,
                 (
                     servings,
@@ -895,10 +916,25 @@ def _resolve_tag_ids(
 
 
 def get_recipe(
-    recipe_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+    recipe_id: int,
+    lang: str = DEFAULT_LANGUAGE,
+    conn: sqlite3.Connection | None = None,
+    include_hidden: bool = False,
 ) -> JsonDict | None:
+    """Retourne une recette, ou None si absente ou masquée.
+
+    Les recettes dont le fichier source a disparu de Dropbox
+    (`source_missing`) sont exclues sauf `include_hidden` (admin)
+    ou `force_visible` (affichage forcé depuis l'admin).
+    """
     with get_conn() if conn is None else nullcontext(conn) as _conn:
-        row = _conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if include_hidden:
+            row = _conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        else:
+            row = _conn.execute(
+                "SELECT * FROM recipes WHERE id = ? AND (source_missing = 0 OR force_visible = 1)",
+                (recipe_id,),
+            ).fetchone()
         if row is None:
             return None
 
@@ -1071,7 +1107,8 @@ def search_recipes(
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         conditions: list[str] = [
             "NOT EXISTS "
-            "(SELECT 1 FROM dropbox_connections dc WHERE dc.id = r.connection_id AND dc.visible = 0)"
+            "(SELECT 1 FROM dropbox_connections dc WHERE dc.id = r.connection_id AND dc.visible = 0)",
+            "(r.source_missing = 0 OR r.force_visible = 1)",
         ]
         if not is_default_account_visible(conn=_conn):
             conditions.append("r.connection_id IS NOT NULL")
@@ -1272,15 +1309,36 @@ def get_tag_families(
     return [_localize_family(r, lang) for r in rows]
 
 
-def mark_processed(path: str, file_hash: str, conn: sqlite3.Connection | None = None) -> None:
+def mark_processed(
+    path: str,
+    file_hash: str,
+    dropbox_hash: str | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    """Mémorise un fichier traité.
+
+    `dropbox_hash` (rev / content_hash Dropbox) permet de sauter le
+    téléchargement au prochain poll ; `None` conserve la valeur stockée.
+    """
     with get_conn() if conn is None else nullcontext(conn) as _conn:
-        _conn.execute(
-            """
-            INSERT INTO processed_files (path, file_hash) VALUES (?, ?)
-            ON CONFLICT(path) DO UPDATE SET file_hash=excluded.file_hash, processed_at=CURRENT_TIMESTAMP
-            """,
-            (path, file_hash),
-        )
+        if dropbox_hash is None:
+            _conn.execute(
+                """
+                INSERT INTO processed_files (path, file_hash) VALUES (?, ?)
+                ON CONFLICT(path) DO UPDATE SET file_hash=excluded.file_hash,
+                    processed_at=CURRENT_TIMESTAMP
+                """,
+                (path, file_hash),
+            )
+        else:
+            _conn.execute(
+                """
+                INSERT INTO processed_files (path, file_hash, dropbox_hash) VALUES (?, ?, ?)
+                ON CONFLICT(path) DO UPDATE SET file_hash=excluded.file_hash,
+                    dropbox_hash=excluded.dropbox_hash, processed_at=CURRENT_TIMESTAMP
+                """,
+                (path, file_hash, dropbox_hash),
+            )
 
 
 def get_processed_hash(path: str, conn: sqlite3.Connection | None = None) -> str | None:
@@ -1289,6 +1347,104 @@ def get_processed_hash(path: str, conn: sqlite3.Connection | None = None) -> str
             "SELECT file_hash FROM processed_files WHERE path = ?", (path,)
         ).fetchone()
         return row["file_hash"] if row else None
+
+
+def get_processed_dropbox_hash(path: str, conn: sqlite3.Connection | None = None) -> str | None:
+    """Retourne le rev / content_hash Dropbox stocké, ou None si inconnu."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        try:
+            row = _conn.execute(
+                "SELECT dropbox_hash FROM processed_files WHERE path = ?", (path,)
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # Base antérieure à la migration (colonne absente).
+            return None
+        if not row:
+            return None
+        value = row["dropbox_hash"]
+        return str(value) if value is not None else None
+
+
+def reconcile_account_files(
+    connection_id: int | None,
+    present_paths: set[str],
+    conn: sqlite3.Connection | None = None,
+) -> tuple[int, int]:
+    """Marque les recettes dont le fichier source a disparu / réapparu.
+
+    `present_paths` contient les `source_file` vus sur Dropbox pour ce
+    compte (`connection_id`, None = compte par défaut). Retourne
+    (nouveaux_manquants, réapparus).
+    """
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        if connection_id is None:
+            scope = "connection_id IS NULL"
+            scope_params: tuple[object, ...] = ()
+        else:
+            scope = "connection_id = ?"
+            scope_params = (connection_id,)
+        if present_paths:
+            placeholders = ", ".join("?" for _ in present_paths)
+            missing_cur = _conn.execute(
+                f"UPDATE recipes SET source_missing = 1, updated_at = CURRENT_TIMESTAMP"
+                f" WHERE {scope} AND source_missing = 0 AND source_file NOT IN ({placeholders})",
+                (*scope_params, *sorted(present_paths)),
+            )
+            present_cur = _conn.execute(
+                f"UPDATE recipes SET source_missing = 0, updated_at = CURRENT_TIMESTAMP"
+                f" WHERE {scope} AND source_missing = 1 AND source_file IN ({placeholders})",
+                (*scope_params, *sorted(present_paths)),
+            )
+        else:
+            missing_cur = _conn.execute(
+                f"UPDATE recipes SET source_missing = 1, updated_at = CURRENT_TIMESTAMP"
+                f" WHERE {scope} AND source_missing = 0",
+                scope_params,
+            )
+            present_cur = None
+        missing = missing_cur.rowcount if missing_cur.rowcount is not None else 0
+        reappeared = present_cur.rowcount if present_cur and present_cur.rowcount is not None else 0
+        return missing, reappeared
+
+
+def get_orphaned_recipes(
+    lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+) -> list[JsonDict]:
+    """Recettes dont le fichier source a disparu de Dropbox (admin)."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
+            """
+            SELECT r.id, r.source_file, r.force_visible,
+                   pc.id AS provenance_id, pc.name AS provenance_name
+            FROM recipes r
+            LEFT JOIN dropbox_connections pc ON pc.id = r.connection_id
+            WHERE r.source_missing = 1
+            ORDER BY r.updated_at DESC
+            """
+        ).fetchall()
+        results: list[JsonDict] = []
+        for row in rows:
+            translation = _load_translation(_conn, int(row["id"]), lang)
+            d: JsonDict = dict(row)
+            d["title"] = translation["title"]
+            if row["provenance_id"] is not None:
+                d["provenance"] = {"id": row["provenance_id"], "name": row["provenance_name"]}
+            else:
+                d["provenance"] = {"id": None, "name": gettext("account.default", lang)}
+            results.append(d)
+        return results
+
+
+def set_recipe_force_visible(
+    recipe_id: int, visible: bool, conn: sqlite3.Connection | None = None
+) -> bool:
+    """Force l'affichage d'une recette orpheline (ou l'annule)."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        cur = _conn.execute(
+            "UPDATE recipes SET force_visible = ? WHERE id = ?",
+            (1 if visible else 0, recipe_id),
+        )
+        return cur.rowcount > 0
 
 
 def save_recipe_images(

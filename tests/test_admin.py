@@ -192,6 +192,51 @@ class TestAdminRoutes:
         assert is_blacklisted("/recipes/poulet.docx")
 
 
+class TestOrphans:
+    def test_files_json_lists_orphans(self, as_admin):
+        from recipes.shared.db import reconcile_account_files
+
+        recipe_id = _insert_sample()
+        assert as_admin.get("/admin/files.json").json()["orphans"] == []
+        reconcile_account_files(None, set())
+        orphans = as_admin.get("/admin/files.json").json()["orphans"]
+        assert [o["id"] for o in orphans] == [recipe_id]
+        assert orphans[0]["visible"] is False
+
+    def test_show_hide_endpoints(self, as_admin):
+        from recipes.shared.db import get_recipe, reconcile_account_files
+
+        recipe_id = _insert_sample()
+        reconcile_account_files(None, set())
+        assert get_recipe(recipe_id) is None
+
+        resp = as_admin.post(f"/admin/orphans/{recipe_id}/show")
+        assert resp.status_code == 200
+        assert get_recipe(recipe_id) is not None
+        assert as_admin.get("/admin/files.json").json()["orphans"][0]["visible"] is True
+
+        resp = as_admin.post(f"/admin/orphans/{recipe_id}/hide")
+        assert resp.status_code == 200
+        assert get_recipe(recipe_id) is None
+
+    def test_show_nonexistent_returns_404(self, as_admin):
+        assert as_admin.post("/admin/orphans/9999/show").status_code == 404
+        assert as_admin.post("/admin/orphans/9999/hide").status_code == 404
+
+    def test_orphans_require_admin(self, as_user):
+        recipe_id = _insert_sample()
+        assert as_user.post(f"/admin/orphans/{recipe_id}/show").status_code == 403
+        assert as_user.get("/admin/files.json").status_code == 403
+
+    def test_public_detail_hides_orphan(self, client):
+        from recipes.shared.db import reconcile_account_files
+
+        recipe_id = _insert_sample()
+        assert client.get(f"/recipe/{recipe_id}").status_code == 200
+        reconcile_account_files(None, set())
+        assert client.get(f"/recipe/{recipe_id}").status_code == 404
+
+
 class TestUpdateRecipeManual:
     def test_updates_fields_and_sets_manual_flag(self):
         recipe_id = _insert_sample()

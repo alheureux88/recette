@@ -329,6 +329,129 @@ def test_get_processed_hash_missing():
     assert get_processed_hash("/recipes/nonexistent.docx") is None
 
 
+def test_upsert_clears_source_missing():
+    from recipes.shared.db import get_recipe, reconcile_account_files
+
+    recipe_id = _insert_sample()
+    reconcile_account_files(None, set())
+    assert get_recipe(recipe_id, include_hidden=True)["source_missing"] == 1
+    upsert_recipe({**SAMPLE, "file_hash": "newhash"})
+    assert get_recipe(recipe_id)["source_missing"] == 0
+
+
+def test_search_excludes_missing_unless_forced():
+    from recipes.shared.db import reconcile_account_files, search_recipes, set_recipe_force_visible
+
+    recipe_id = _insert_sample()
+    assert len(search_recipes(query="Tarte")) == 1
+    reconcile_account_files(None, set())
+    assert search_recipes(query="Tarte") == []
+    set_recipe_force_visible(recipe_id, True)
+    assert len(search_recipes(query="Tarte")) == 1
+
+
+def test_get_recipe_hides_missing():
+    from recipes.shared.db import get_recipe, reconcile_account_files, set_recipe_force_visible
+
+    recipe_id = _insert_sample()
+    assert get_recipe(recipe_id) is not None
+    reconcile_account_files(None, set())
+    assert get_recipe(recipe_id) is None
+    assert get_recipe(recipe_id, include_hidden=True) is not None
+    set_recipe_force_visible(recipe_id, True)
+    assert get_recipe(recipe_id) is not None
+    assert set_recipe_force_visible(9999, True) is False
+
+
+def test_reconcile_account_files_scoped_per_account():
+    from recipes.features.admin.services import add_dropbox_connection
+    from recipes.shared.db import get_recipe, reconcile_account_files
+
+    conn_id = add_dropbox_connection(name="Extra", refresh_token="tok")
+    assert conn_id is not None
+    default_id = _insert_sample()
+    extra_id = _insert_sample(
+        {
+            **SAMPLE,
+            "title": "Extra",
+            "source_file": f"account:{conn_id}:/x.docx",
+            "file_hash": "h2",
+            "connection_id": conn_id,
+        }
+    )
+    missing, _ = reconcile_account_files(conn_id, set())
+    assert missing == 1
+    assert get_recipe(extra_id, include_hidden=True)["source_missing"] == 1
+    assert get_recipe(default_id)["source_missing"] == 0
+    missing, reappeared = reconcile_account_files(conn_id, {f"account:{conn_id}:/x.docx"})
+    assert (missing, reappeared) == (0, 1)
+    assert get_recipe(extra_id) is not None
+
+
+def test_get_orphaned_recipes():
+    from recipes.shared.db import get_orphaned_recipes, reconcile_account_files
+
+    assert get_orphaned_recipes() == []
+    recipe_id = _insert_sample()
+    reconcile_account_files(None, set())
+    orphans = get_orphaned_recipes()
+    assert [o["id"] for o in orphans] == [recipe_id]
+    assert orphans[0]["title"] == "Tarte Tatin"
+
+
+def test_recipes_visibility_migration(temp_db):
+    from recipes.shared.db import get_conn, init_db
+
+    init_db()
+    with get_conn() as conn:
+        conn.execute("ALTER TABLE recipes DROP COLUMN source_missing")
+        conn.execute("ALTER TABLE recipes DROP COLUMN force_visible")
+        conn.execute(
+            "INSERT INTO recipes (source_file, file_hash) VALUES (?, ?)",
+            ("/recipes/old.docx", "h"),
+        )
+    init_db()
+    with get_conn() as conn:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
+        assert {"source_missing", "force_visible"} <= cols
+
+
+def test_processed_file_dropbox_hash_tracking():
+    from recipes.shared.db import get_processed_dropbox_hash
+
+    mark_processed("/recipes/tarte2.docx", "hash1", dropbox_hash="rev-1")
+    assert get_processed_dropbox_hash("/recipes/tarte2.docx") == "rev-1"
+
+    # None conserve la valeur stockée.
+    mark_processed("/recipes/tarte2.docx", "hash2")
+    assert get_processed_dropbox_hash("/recipes/tarte2.docx") == "rev-1"
+
+    mark_processed("/recipes/tarte2.docx", "hash3", dropbox_hash="rev-2")
+    assert get_processed_dropbox_hash("/recipes/tarte2.docx") == "rev-2"
+
+
+def test_processed_file_migration_adds_column(temp_db):
+    from recipes.shared.db import get_conn, init_db
+
+    init_db()
+    with get_conn() as conn:
+        conn.execute("ALTER TABLE processed_files DROP COLUMN dropbox_hash")
+    # init_db doit recréer la colonne sans perdre les lignes.
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO processed_files (path, file_hash) VALUES (?, ?)",
+            ("/recipes/old.docx", "h"),
+        )
+    init_db()
+    with get_conn() as conn:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(processed_files)")}
+        assert "dropbox_hash" in cols
+        row = conn.execute(
+            "SELECT file_hash FROM processed_files WHERE path = ?", ("/recipes/old.docx",)
+        ).fetchone()
+        assert row["file_hash"] == "h"
+
+
 def test_upsert_with_structured_steps():
     """Test that structured steps with timers are stored and retrieved correctly."""
     recipe_data = {

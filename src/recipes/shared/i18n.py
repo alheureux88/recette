@@ -185,6 +185,22 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "admin.bulk_remove": {"fr": "Retirer", "en": "Remove"},
     "admin.blacklist_title": {"fr": "Fichiers blacklister", "en": "Blacklisted files"},
     "admin.failed_title": {"fr": "Fichiers en erreur", "en": "Failed files"},
+    "admin.orphans_title": {"fr": "Sources disparues", "en": "Missing sources"},
+    "admin.empty_orphans": {
+        "fr": "Aucune recette orpheline",
+        "en": "No orphaned recipes",
+    },
+    "admin.action_show": {"fr": "Montrer", "en": "Show"},
+    "admin.action_hide": {"fr": "Cacher", "en": "Hide"},
+    "admin.tab_visible": {"fr": "Visible", "en": "Visible"},
+    "admin.confirm_show": {
+        "fr": "Afficher cette recette malgre sa source disparue ?",
+        "en": "Show this recipe despite its missing source?",
+    },
+    "admin.confirm_hide": {
+        "fr": "Re-cacher cette recette du site ?",
+        "en": "Hide this recipe from the site again?",
+    },
     "admin.tab_recipe": {"fr": "Recette", "en": "Recipe"},
     "admin.tab_provenance": {"fr": "Provenance", "en": "Source"},
     "admin.tab_ingestion": {"fr": "Ingestion", "en": "Ingestion"},

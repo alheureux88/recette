@@ -55,9 +55,13 @@
 <h2 class="admin-section-title">{{ _('admin.failed_title') }}</h2>
 <div id="failed-table"></div>
 
+<h2 class="admin-section-title">{{ _('admin.orphans_title') }}</h2>
+<div id="orphans-table"></div>
+
 <script>
     window.recetteI18n = {
         tab_recipe: {{ _('admin.tab_recipe')|tojson }},
+        orphans_title: {{ _('admin.orphans_title')|tojson }},
         tab_provenance: {{ _('admin.tab_provenance')|tojson }},
         tab_ingestion: {{ _('admin.tab_ingestion')|tojson }},
         tab_file: {{ _('admin.tab_file')|tojson }},
@@ -68,6 +72,12 @@
         empty_recipes: {{ _('admin.empty_recipes')|tojson }},
         empty_blacklist: {{ _('admin.empty_blacklist')|tojson }},
         empty_failed: {{ _('admin.empty_failed')|tojson }},
+        empty_orphans: {{ _('admin.empty_orphans')|tojson }},
+        tab_visible: {{ _('admin.tab_visible')|tojson }},
+        action_show: {{ _('admin.action_show')|tojson }},
+        action_hide: {{ _('admin.action_hide')|tojson }},
+        confirm_show: {{ _('admin.confirm_show')|tojson }},
+        confirm_hide: {{ _('admin.confirm_hide')|tojson }},
         col_path: {{ _('admin.col_path')|tojson }},
         col_provenance: {{ _('admin.col_provenance')|tojson }},
         col_date: {{ _('admin.col_date')|tojson }},
@@ -156,6 +166,16 @@
     window.recetteRetryFailed = function (encodedPath) {
         if (!confirm(window.recetteI18n.confirm_retry)) return;
         htmx.ajax("POST", "/admin/retry-failed?path=" + encodedPath, "#admin-content");
+    };
+
+    window.recetteOrphanShow = function (id) {
+        if (!confirm(window.recetteI18n.confirm_show)) return;
+        htmx.ajax("POST", "/admin/orphans/" + id + "/show", "#admin-content");
+    };
+
+    window.recetteOrphanHide = function (id) {
+        if (!confirm(window.recetteI18n.confirm_hide)) return;
+        htmx.ajax("POST", "/admin/orphans/" + id + "/hide", "#admin-content");
     };
 
     window.recetteCellSaved = async function (cell) {
@@ -314,8 +334,12 @@
                     headerFilter: "input",
                     formatter: function (cell) {
                         var d = cell.getData();
+                        var badge = d.source_missing
+                            ? ' <span class="admin-badge admin-badge-anon">'
+                                + recetteEscape(window.recetteI18n.orphans_title) + "</span>"
+                            : "";
                         return '<a href="/recipe/' + d.id + '" target="_blank">'
-                            + recetteEscape(d.title) + "</a>";
+                            + recetteEscape(d.title) + "</a>" + badge;
                     },
                 },
                 {
@@ -430,6 +454,10 @@
             try { window.__recetteFailedTable.destroy(); } catch (e) { /* ignore */ }
             window.__recetteFailedTable = null;
         }
+        if (window.__recetteOrphansTable) {
+            try { window.__recetteOrphansTable.destroy(); } catch (e) { /* ignore */ }
+            window.__recetteOrphansTable = null;
+        }
 
         function pathFormatter(cell) {
             return '<span class="path-cell">' + recetteEscape(cell.getValue()) + "</span>";
@@ -525,6 +553,71 @@
                     },
                 },
             ]),
+        });
+
+        window.__recetteOrphansTable = new Tabulator(document.getElementById("orphans-table"), {
+            layout: "fitColumns",
+            placeholder: window.recetteI18n.empty_orphans,
+            index: "id",
+            ajaxURL: "/admin/files.json",
+            ajaxResponse: function (url, params, response) { return response.orphans; },
+            columns: [
+                {
+                    title: window.recetteI18n.tab_recipe,
+                    field: "title",
+                    minWidth: 170,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) {
+                        var d = cell.getData();
+                        return '<a href="/recipe/' + d.id + '" target="_blank">'
+                            + recetteEscape(d.title) + "</a>";
+                    },
+                },
+                {
+                    title: window.recetteI18n.col_path,
+                    field: "path",
+                    minWidth: 220,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: pathFormatter,
+                },
+                {
+                    title: window.recetteI18n.col_provenance,
+                    field: "provenance",
+                    width: 110,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: provenanceFormatter,
+                },
+                {
+                    title: window.recetteI18n.tab_visible,
+                    field: "visible",
+                    width: 85,
+                    hozAlign: "center",
+                    sorter: "boolean",
+                    formatter: "tickCross",
+                },
+                {
+                    title: "",
+                    headerSort: false,
+                    width: 260,
+                    formatter: function (cell) {
+                        var d = cell.getData();
+                        var toggle = d.visible
+                            ? '<button class="btn-restore" onclick="event.stopPropagation();'
+                                + 'recetteOrphanHide(' + d.id + ')">'
+                                + recetteEscape(window.recetteI18n.action_hide) + '</button>'
+                            : '<button class="btn-restore" onclick="event.stopPropagation();'
+                                + 'recetteOrphanShow(' + d.id + ')">'
+                                + recetteEscape(window.recetteI18n.action_show) + '</button>';
+                        return toggle
+                            + '<button class="btn-blacklist" onclick="event.stopPropagation();'
+                            + 'recetteAdminBlacklist(' + d.id + ')">'
+                            + recetteEscape(window.recetteI18n.action_blacklist) + '</button>';
+                    },
+                },
+            ],
         });
 
         document.querySelectorAll(".recipes-filters .filter-chip").forEach(function (chip) {
