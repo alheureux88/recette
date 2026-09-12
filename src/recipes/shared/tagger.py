@@ -16,6 +16,7 @@ from recipes.shared.db import (
     get_all_categories,
     get_existing_tags_for_prompt,
     get_setting,
+    normalize_category_name,
 )
 from recipes.shared.models import JsonDict
 from recipes.shared.units import parse_quantity
@@ -26,7 +27,7 @@ log = logging.getLogger(__name__)
 # (build_system_prompt), du parsing/normalisation (tag_recipe et helpers)
 # ou du modèle par défaut. Stockée par recette (recipes.tagger_version)
 # pour repérer les recettes à retagger depuis l'admin.
-TAGGER_VERSION = 1
+TAGGER_VERSION = 2
 
 _client: Any = None
 _client_lock = threading.Lock()
@@ -146,7 +147,8 @@ def build_system_prompt() -> str:
 
     lines.append("=== Catégories disponibles / Available categories ===")
     lines.append("")
-    cat_list = ", ".join(str(c["display_name"]) for c in categories)
+    lines.append("Pour la categorie, utilise UNIQUEMENT la cle technique (name).")
+    cat_list = ", ".join(f'"{c["name"]}" ({c["display_name"]})' for c in categories)
     lines.append(f"  {cat_list}")
     lines.append("")
 
@@ -175,7 +177,7 @@ def build_system_prompt() -> str:
             'Utilise les étiquettes existantes quand possible (utilise la clé, p.ex. "japonais", "braise").',
             "Tu peux créer de nouvelles étiquettes si aucune ne convient.",
             "Pour les étiquettes hiérarchiques (Origine), inclus toujours les étiquettes parentes.",
-            "Pour la catégorie, utilise le nom exact d'une des catégories disponibles.",
+            'Pour la catégorie, utilise UNIQUEMENT la clé technique "name" (p.ex. "entree", pas "Entrée" ni "Starter").',
             "",
             "=== IMPORTANT pour les étapes ===",
             "",
@@ -396,9 +398,7 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> JsonDict:
                     tags[family_key] = []
 
             category = data.get("category")
-            category = (
-                category.lower().strip().replace(" ", "-") if isinstance(category, str) else None
-            )
+            category = normalize_category_name(category) or None
 
             source_url = data.get("source_url")
             if source_url and not (isinstance(source_url, str) and source_url.startswith("http")):

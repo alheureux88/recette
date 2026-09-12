@@ -546,3 +546,33 @@ def test_manual_update_stores_source_and_date():
     assert row is not None
     assert row["source"] == "Bistro"
     assert row["date"] == "2001"
+
+
+def test_normalize_category_name_maps_display_names():
+    from recipes.shared.db import normalize_category_name
+
+    assert normalize_category_name("entree") == "entree"
+    assert normalize_category_name("Entrée") == "entree"
+    assert normalize_category_name("Starter") == "entree"
+    assert normalize_category_name("Main course") == "plat-principal"
+    assert normalize_category_name("Apéritif") == "aperitif"
+    assert normalize_category_name("Appetizer") == "aperitif"
+    assert normalize_category_name("") == ""
+    assert normalize_category_name(None) == ""
+
+
+def test_resolve_category_does_not_duplicate_display_names():
+    from recipes.shared.db import _resolve_category, get_all_categories, get_conn
+
+    with get_conn() as conn:
+        entree_id = _resolve_category(conn, "entree")
+        assert entree_id is not None
+        # Display names FR/EN resolvent vers la même ligne, sans INSERT.
+        assert _resolve_category(conn, "Entrée") == entree_id
+        assert _resolve_category(conn, "Starter") == entree_id
+        assert _resolve_category(conn, "starter") == entree_id
+        conn.commit()
+
+    names = [c["name"] for c in get_all_categories(only_used=False)]
+    assert names.count("entree") == 1
+    assert "starter" not in names

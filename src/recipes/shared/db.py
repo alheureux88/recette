@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sqlite3
+import unicodedata
 from collections.abc import Generator
 from contextlib import nullcontext
 from pathlib import Path
@@ -100,6 +101,76 @@ def _localize_category(row: sqlite3.Row, lang: str) -> JsonDict:
         "name": row["name"],
         "display_name": row[col],
     }
+
+
+# ---------------------------------------------------------------------------
+# Category name normalisation
+# ---------------------------------------------------------------------------
+
+# Formes normalisees (minuscules, sans accents, espaces -> "-") vers le nom
+# technique canonique. Couvre les display names FR/EN et les variantes que
+# le LLM peut renvoyer ("Starter", "Entrée", "Main course", ...).
+CATEGORY_ALIASES: dict[str, str] = {
+    "entree": "entree",
+    "entrees": "entree",
+    "starter": "entree",
+    "starters": "entree",
+    "plat-principal": "plat-principal",
+    "plat-principaux": "plat-principal",
+    "main-course": "plat-principal",
+    "main-courses": "plat-principal",
+    "main-dish": "plat-principal",
+    "main": "plat-principal",
+    "salade": "salade",
+    "salades": "salade",
+    "salad": "salade",
+    "salads": "salade",
+    "soupe": "soupe",
+    "soupes": "soupe",
+    "soup": "soupe",
+    "soups": "soupe",
+    "sauce": "sauce",
+    "sauces": "sauce",
+    "dessert": "dessert",
+    "desserts": "dessert",
+    "accompagnement": "accompagnement",
+    "accompagnements": "accompagnement",
+    "side-dish": "accompagnement",
+    "side-dishes": "accompagnement",
+    "side": "accompagnement",
+    "sides": "accompagnement",
+    "collation": "collation",
+    "collations": "collation",
+    "snack": "collation",
+    "snacks": "collation",
+    "aperitif": "aperitif",
+    "aperitifs": "aperitif",
+    "apero": "aperitif",
+    "appetizer": "aperitif",
+    "appetizers": "aperitif",
+}
+
+
+def normalize_category_name(raw: object) -> str:
+    """Normalise un nom de categorie vers son nom technique canonique.
+
+    Minuscules, suppression des accents, espaces/underscores -> "-".
+    Les display names FR/EN connus sont replies vers la cle technique
+    (ex. "Starter" -> "entree", "Entrée" -> "entree").
+    Retourne "" si rien d'exploitable.
+    """
+    if not isinstance(raw, str):
+        return ""
+    text = raw.strip().lower()
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    text = text.replace("_", "-").replace(" ", "-")
+    text = re.sub(r"[^a-z0-9-]", "", text)
+    text = re.sub(r"-{2,}", "-", text).strip("-")
+    if not text:
+        return ""
+    return CATEGORY_ALIASES.get(text, text)
 
 
 def _localize_recipe_translation(row: sqlite3.Row | None) -> JsonDict:
@@ -392,11 +463,29 @@ def _resolve_tag(conn: sqlite3.Connection, family_id: int, name: str) -> int | N
 def _resolve_category(conn: sqlite3.Connection, name: str | None) -> int | None:
     if not name:
         return None
-    row = conn.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
+    normalized = normalize_category_name(name)
+    if not normalized:
+        return None
+    row = conn.execute("SELECT id FROM categories WHERE name = ?", (normalized,)).fetchone()
     if row:
         return int(row["id"])
 
-    display_name = name.replace("-", " ").title()
+    # Le LLM (ou une saisie manuelle) peut renvoyer un display name FR/EN
+    # ("Entrée", "Starter") au lieu de la clé technique ("entree") :
+    # on compare les formes normalisées pour éviter les doublons.
+    for existing in conn.execute(
+        "SELECT id, name, display_name_fr, display_name_en FROM categories"
+    ).fetchall():
+        candidates = (
+            existing["name"],
+            existing["display_name_fr"],
+            existing["display_name_en"],
+        )
+        for candidate in candidates:
+            if candidate and normalize_category_name(candidate) == normalized:
+                return int(existing["id"])
+
+    display_name = normalized.replace("-", " ").title()
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) FROM categories").fetchone()[0]
     cur = conn.execute(
         """
@@ -404,7 +493,7 @@ def _resolve_category(conn: sqlite3.Connection, name: str | None) -> int | None:
             (name, display_name_fr, display_name_en, sort_order)
         VALUES (?, ?, ?, ?)
         """,
-        (name, display_name, display_name, max_order + 1),
+        (normalized, display_name, display_name, max_order + 1),
     )
     return int(cur.lastrowid) if cur.lastrowid else None
 
