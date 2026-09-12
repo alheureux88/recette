@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ collection.name }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<a href="/collections" class="back">{{ _('collections.back') }}</a>
+
+<div class="collection-detail-header">
+    <h1 class="page-title">{{ collection.name }}</h1>
+    {% if collection.is_site %}
+    <span class="admin-badge admin-badge-active">{{ _('collections.site_badge') }}</span>
+    {% endif %}
+    {% if is_shared_view %}
+    <span class="admin-badge admin-badge-anon">{{ _('collections.shared_badge') }}</span>
+    {% endif %}
+</div>
+
+{% if collection.description %}
+<p class="lead">{{ collection.description }}</p>
+{% endif %}
+
+{% if can_edit_collection and not is_shared_view %}
+<div class="collection-manage">
+    <details class="collection-rename">
+        <summary>{{ _('collections.rename') }}</summary>
+        <form id="collection-rename-form" class="collection-create-form">
+            <input type="text" id="collection-rename-name" class="collection-create-input" value="{{ collection.name }}" required maxlength="120">
+            <input type="text" id="collection-rename-desc" class="collection-create-input" value="{{ collection.description or '' }}" placeholder="{{ _('collections.description_placeholder') }}" maxlength="2000">
+            <button type="submit" class="collection-create-btn">{{ _('collections.save') }}</button>
+        </form>
+    </details>
+    <div class="collection-manage-actions">
+        <button type="button" id="collection-share-btn" class="collection-share-btn" data-token="{{ collection.share_token }}" title="{{ _('collections.share') }}">🔗 {{ _('collections.share') }}</button>
+        <button type="button" id="collection-delete-btn" class="collection-delete-btn" data-id="{{ collection.id }}">{{ _('collections.delete') }}</button>
+    </div>
+</div>
+{% endif %}
+
+<p class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', recipes|length) }}</p>
+
+<div id="recipe-grid">
+    {% include "partials/recipe_cards.html" %}
+</div>
+
+{% if can_edit_collection and not is_shared_view and recipes %}
+<script>
+(function () {
+    document.querySelectorAll('#recipe-grid .recipe-card-wrapper').forEach(function (wrapper) {
+        var link = wrapper.querySelector('a.recipe-card');
+        if (!link) return;
+        var slug = link.getAttribute('href').split('/').pop();
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'collection-remove-btn';
+        btn.dataset.slug = slug;
+        btn.title = '{{ _('collections.remove_recipe') }}';
+        btn.textContent = '×';
+        btn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            fetch('/api/recipes/' + encodeURIComponent(slug) + '/collections/{{ collection.id }}', {
+                method: 'POST'
+            }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return; }
+                if (!resp.ok) throw new Error('Failed');
+                window.location.reload();
+            }).catch(function () {
+                alert('{{ _('admin.alert_save_error') }}');
+            });
+        });
+        wrapper.appendChild(btn);
+    });
+})();
+</script>
+{% endif %}
+
+{% if can_edit_collection and not is_shared_view %}
+<script>
+(function () {
+    var renameForm = document.getElementById('collection-rename-form');
+    if (renameForm) {
+        renameForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            fetch('/api/collections/{{ collection.id }}', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: document.getElementById('collection-rename-name').value,
+                    description: document.getElementById('collection-rename-desc').value
+                })
+            }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return null; }
+                if (!resp.ok) throw new Error('Failed');
+                return resp.json();
+            }).then(function (data) {
+                if (data) window.location.href = '/collections/' + data.slug;
+            }).catch(function () {
+                alert('{{ _('admin.alert_save_error') }}');
+            });
+        });
+    }
+    var shareBtn = document.getElementById('collection-share-btn');
+    if (shareBtn) {
+        shareBtn.addEventListener('click', function () {
+            var url = window.location.origin + '/collections/partage/' + shareBtn.dataset.token;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function () {
+                    alert('{{ _('collections.share_link_copied') }}');
+                }, function () { window.prompt(url, url); });
+            } else {
+                window.prompt(url, url);
+            }
+        });
+    }
+    var deleteBtn = document.getElementById('collection-delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function () {
+            if (!confirm('{{ _('collections.confirm_delete') }}')) return;
+            fetch('/api/collections/' + deleteBtn.dataset.id, { method: 'DELETE' }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return; }
+                if (!resp.ok) throw new Error('Failed');
+                window.location.href = '/collections';
+            }).catch(function () {
+                alert('{{ _('admin.alert_save_error') }}');
+            });
+        });
+    }
+})();
+</script>
+{% endif %}
+
+{% endblock %}

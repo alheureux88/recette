@@ -201,6 +201,8 @@ async def index(
     favorite_ids: set[int] = set()
     if user:
         favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
+    from recipes.features.collections.services import list_featured_collections
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -213,6 +215,7 @@ async def index(
             active_tag_ids=tags,
             active_category_id=None,
             favorite_ids=favorite_ids,
+            featured_collections=list_featured_collections(conn=conn),
             **_provenance_context(request, conn),
         ),
     )

@@ -8,6 +8,9 @@
         <div class="print-actions">
             <a href="/recipe/{{ recipe.slug }}/cook" class="btn-cook" id="btn-cook">{{ _('recipe.cook_mode') }}</a>
             <a href="/recipe/{{ recipe.slug }}/cook/slides" class="btn-cook" id="btn-cook-slides">{{ _('recipe.cook_slides_mode') }}</a>
+            {% if auth_enabled and user %}
+            <button type="button" class="btn-cook" id="btn-collection-add">📚 {{ _('collections.add_to') }}</button>
+            {% endif %}
             <details class="print-options" id="print-options">
                 <summary>{{ _('recipe.print_options') }}</summary>
                 <div class="print-options-grid">
@@ -63,7 +66,7 @@
     </div>
     {% endif %}
 
-    {% if recipe.source_url or recipe.dropbox_url %}
+    {% if recipe.source_url or recipe.dropbox_url or recipe.source or recipe.date %}
     <div class="recipe-links">
         {% if recipe.source_url %}
         <a href="{{ recipe.source_url }}" target="_blank" rel="noopener" class="recipe-link">
@@ -74,6 +77,12 @@
         <a href="{{ recipe.dropbox_url }}" target="_blank" rel="noopener" class="recipe-link">
             <span class="link-icon">📄</span> {{ _('recipe.link_original_file') }}
         </a>
+        {% endif %}
+        {% if recipe.source %}
+        <span class="recipe-meta">{{ _('recipe.source_label') }} : {{ recipe.source }}</span>
+        {% endif %}
+        {% if recipe.date %}
+        <span class="recipe-meta">{{ _('recipe.date_label') }} : {{ recipe.date }}</span>
         {% endif %}
     </div>
     {% endif %}
@@ -122,6 +131,16 @@
         <div id="shopping-modal-body"></div>
     </div>
 </div>
+
+{% if auth_enabled and user %}
+<div id="collection-modal-backdrop" class="shopping-modal-backdrop" hidden></div>
+<div id="collection-modal" class="shopping-modal" hidden role="dialog" aria-modal="true">
+    <div class="shopping-modal-content">
+        <h2>{{ _('collections.add_to') }}</h2>
+        <div id="collection-modal-body"></div>
+    </div>
+</div>
+{% endif %}
 
 <script src="/static/js/timers.js"></script>
 <script>
@@ -375,6 +394,106 @@
         toggle.addEventListener('change', applyStepIngredients);
         applyStepIngredients();
     })();
+
+    {% if auth_enabled and user %}
+    (function () {
+        var recipeSlug = '{{ recipe.slug }}';
+        var modal = document.getElementById('collection-modal');
+        var backdrop = document.getElementById('collection-modal-backdrop');
+        var openBtn = document.getElementById('btn-collection-add');
+        if (!modal || !backdrop || !openBtn) return;
+
+        function openModal() {
+            modal.hidden = false;
+            backdrop.hidden = false;
+            loadCollections();
+        }
+        function closeModal() {
+            modal.hidden = true;
+            backdrop.hidden = true;
+        }
+        openBtn.addEventListener('click', openModal);
+        backdrop.addEventListener('click', closeModal);
+
+        function loadCollections() {
+            fetch('/api/recipes/' + encodeURIComponent(recipeSlug) + '/collections')
+                .then(function (resp) {
+                    if (resp.redirected) { window.location.href = resp.url; return null; }
+                    if (!resp.ok) throw new Error('Failed');
+                    return resp.json();
+                })
+                .then(function (collections) {
+                    if (collections) renderModal(collections);
+                })
+                .catch(function () {
+                    alert('{{ _('admin.alert_save_error') }}');
+                });
+        }
+
+        function renderModal(collections) {
+            var html = '<h3>{{ _('collections.select') }}</h3>';
+            html += '<div class="shopping-modal-lists">';
+            if (collections.length === 0) {
+                html += '<p class="empty">{{ _('collections.empty_mine') }}</p>';
+            }
+            collections.forEach(function (c) {
+                html += '<label class="shopping-modal-ing">';
+                html += '<input type="checkbox" class="collection-toggle" data-id="' + c.id + '"' + (c.in_collection ? ' checked' : '') + '>';
+                html += '<span>' + c.name + '</span>';
+                html += '</label>';
+            });
+            html += '</div>';
+            html += '<hr class="shopping-modal-divider">';
+            html += '<h3>{{ _('collections.or_create') }}</h3>';
+            html += '<div class="shopping-modal-new">';
+            html += '<input type="text" id="collection-new-name" placeholder="{{ _('collections.name_placeholder') }}" class="shopping-modal-input">';
+            html += '</div>';
+            html += '<div class="shopping-modal-actions">';
+            html += '<button type="button" id="collection-modal-cancel" class="shopping-modal-cancel">{{ _('collections.cancel') }}</button>';
+            html += '<button type="button" id="collection-modal-create" class="shopping-modal-submit">{{ _('collections.create') }}</button>';
+            html += '</div>';
+            document.getElementById('collection-modal-body').innerHTML = html;
+
+            document.getElementById('collection-modal-cancel').addEventListener('click', closeModal);
+            document.getElementById('collection-modal-create').addEventListener('click', function () {
+                var nameInput = document.getElementById('collection-new-name');
+                if (!nameInput.value.trim()) return;
+                fetch('/api/collections', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: nameInput.value.trim(), description: '' })
+                }).then(function (resp) {
+                    if (resp.redirected) { window.location.href = resp.url; return null; }
+                    if (!resp.ok) throw new Error('Failed');
+                    return resp.json();
+                }).then(function (created) {
+                    if (!created) return;
+                    return fetch('/api/recipes/' + encodeURIComponent(recipeSlug) + '/collections/' + created.id, { method: 'POST' });
+                }).then(function (resp) {
+                    if (!resp) return;
+                    if (resp.redirected) { window.location.href = resp.url; return; }
+                    if (!resp.ok) throw new Error('Failed');
+                    loadCollections();
+                }).catch(function () {
+                    alert('{{ _('admin.alert_save_error') }}');
+                });
+            });
+            document.querySelectorAll('.collection-toggle').forEach(function (cb) {
+                cb.addEventListener('change', function () {
+                    fetch('/api/recipes/' + encodeURIComponent(recipeSlug) + '/collections/' + cb.dataset.id, {
+                        method: 'POST'
+                    }).then(function (resp) {
+                        if (resp.redirected) { window.location.href = resp.url; return; }
+                        if (!resp.ok) throw new Error('Failed');
+                    }).catch(function () {
+                        cb.checked = !cb.checked;
+                        alert('{{ _('admin.alert_save_error') }}');
+                    });
+                });
+            });
+        }
+    })();
+    {% endif %}
 </script>
 
 {% endblock %}

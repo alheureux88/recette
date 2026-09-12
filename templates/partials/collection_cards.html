@@ -1,0 +1,27 @@
+{# Cartes de collections : carrousel (accueil) ou grille (page /collections).
+   Attend `collections` : chaque entrée a name, slug, description,
+   recipe_count, cover_recipe_slug, cover_image (image de la 1re recette). #}
+{% if collections %}
+<div class="collection-carousel" role="list">
+    {% for collection in collections %}
+    <a href="/collections/{{ collection.slug }}" class="collection-card" role="listitem">
+        {% if collection.cover_image and collection.cover_recipe_slug %}
+        <div class="collection-card-image">
+            <img src="/images/{{ collection.cover_recipe_slug }}/{{ collection.cover_image }}" alt="" loading="lazy">
+        </div>
+        {% else %}
+        <div class="collection-card-image collection-card-placeholder" aria-hidden="true">
+            <span>📚</span>
+        </div>
+        {% endif %}
+        <div class="collection-card-body">
+            <h3>{{ collection.name }}</h3>
+            {% if collection.description %}
+            <p class="collection-card-desc">{{ collection.description }}</p>
+            {% endif %}
+            <span class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', collection.recipe_count) }}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}

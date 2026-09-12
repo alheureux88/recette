@@ -77,3 +77,17 @@ class RecipeIngredientsToShopping(BaseModel):
     units: str | None = Field(
         default=None, description="Units system: original, metric, or imperial"
     )
+
+
+class CollectionCreate(BaseModel):
+    name: str = Field(description="Collection name")
+    description: str = Field(default="", description="Short description text")
+
+
+class CollectionUpdate(BaseModel):
+    name: str = Field(description="Collection name")
+    description: str = Field(default="", description="Short description text")
+
+
+class CollectionRecipeAdd(BaseModel):
+    recipe_id: int = Field(description="Recipe ID to add")

@@ -184,6 +184,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS recipes (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             slug         TEXT UNIQUE,
+            source       TEXT,
+            date         TEXT,
             servings     REAL,
             source_url   TEXT,
             dropbox_url  TEXT,
@@ -362,6 +364,35 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             sort_order    INTEGER NOT NULL DEFAULT 0,
             created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Collections de recettes : listes nommées avec texte descriptif.
+        -- owner_user_id NULL + is_site = 1 : collection du site (visible par tous).
+        -- owner renseigné + is_site = 0 : collection privée d'un usager,
+        -- partageable en lecture seule via share_token.
+        CREATE TABLE IF NOT EXISTS collections (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug          TEXT UNIQUE,
+            name          TEXT NOT NULL,
+            description   TEXT NOT NULL DEFAULT '',
+            owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            share_token   TEXT NOT NULL UNIQUE,
+            is_site       INTEGER NOT NULL DEFAULT 0,
+            is_featured   INTEGER NOT NULL DEFAULT 0,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS collection_recipes (
+            collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+            recipe_id     INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+            added_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (collection_id, recipe_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_collections_site
+            ON collections(is_site, is_featured);
+        CREATE INDEX IF NOT EXISTS idx_collection_recipes_recipe
+            ON collection_recipes(recipe_id);
     """)
 
 
@@ -595,6 +626,14 @@ def _localize_recipe_translation(row: sqlite3.Row | None) -> JsonDict:
 # ---------------------------------------------------------------------------
 
 
+def _clean_optional_text(value: object) -> str | None:
+    """Normalise un champ texte optionnel (source, date) : vide → None."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int:
     """Insert or update a recipe with bilingual translations.
 
@@ -626,6 +665,7 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                 UPDATE recipes SET
                     servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
                     file_modified_at=?, connection_id=?, source_missing=0,
+                    source=?, date=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
                 """,
@@ -637,6 +677,8 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                     data["file_hash"],
                     data.get("file_modified_at"),
                     connection_id,
+                    _clean_optional_text(data.get("source")),
+                    _clean_optional_text(data.get("date")),
                     data["source_file"],
                 ),
             )
@@ -645,8 +687,9 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                 """
                 INSERT INTO recipes
                     (servings, category_id, source_url, dropbox_url, source_file,
-                     file_hash, file_modified_at, connection_id, source_missing)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                      file_hash, file_modified_at, connection_id, source_missing,
+                      source, date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                 """,
                 (
                     servings,
@@ -657,6 +700,8 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                     data["file_hash"],
                     data.get("file_modified_at"),
                     connection_id,
+                    _clean_optional_text(data.get("source")),
+                    _clean_optional_text(data.get("date")),
                 ),
             )
             assert cur.lastrowid is not None
@@ -904,6 +949,7 @@ def update_recipe_manual(
             """
             UPDATE recipes SET
                 servings=?, category_id=?, source_url=?,
+                source=?, date=?,
                 manually_edited=1, updated_at=CURRENT_TIMESTAMP
             WHERE id=?
             """,
@@ -911,6 +957,8 @@ def update_recipe_manual(
                 servings,
                 category_id,
                 data.get("source_url"),
+                _clean_optional_text(data.get("source")),
+                _clean_optional_text(data.get("date")),
                 recipe_id,
             ),
         )

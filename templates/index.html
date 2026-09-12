@@ -8,6 +8,15 @@
     </p>
 </section>
 
+{% if featured_collections %}
+<section class="featured-collections" aria-label="{{ _('collections.featured_title') }}">
+    <h2 class="collection-section-title">{{ _('collections.featured_title') }}</h2>
+    {% with collections=featured_collections %}
+        {% include "partials/collection_cards.html" %}
+    {% endwith %}
+</section>
+{% endif %}
+
 <div class="search-bar">
     <input
         type="search"

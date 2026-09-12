@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ _('collections.title') }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<h1 class="page-title">{{ _('collections.title') }}</h1>
+
+<section aria-label="{{ _('collections.site_title') }}">
+    <h2 class="collection-section-title">{{ _('collections.site_title') }}</h2>
+    {% if site_collections %}
+        {% with collections=site_collections %}
+            {% include "partials/collection_cards.html" %}
+        {% endwith %}
+    {% else %}
+    <p class="empty">{{ _('collections.empty_site') }}</p>
+    {% endif %}
+</section>
+
+<section aria-label="{{ _('collections.mine_title') }}">
+    <h2 class="collection-section-title">{{ _('collections.mine_title') }}</h2>
+    {% if auth_enabled and user %}
+    <form id="collection-create-form" class="collection-create-form">
+        <input type="text" id="collection-create-name" class="collection-create-input" placeholder="{{ _('collections.name_placeholder') }}" required maxlength="120">
+        <input type="text" id="collection-create-desc" class="collection-create-input" placeholder="{{ _('collections.description_placeholder') }}" maxlength="2000">
+        <button type="submit" class="collection-create-btn">{{ _('collections.create') }}</button>
+    </form>
+    {% if my_collections %}
+    <div class="collection-mine-list">
+        {% for collection in my_collections %}
+        <div class="collection-mine-row">
+            <a href="/collections/{{ collection.slug }}" class="collection-mine-link">
+                <strong>{{ collection.name }}</strong>
+                <span class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', collection.recipe_count) }}</span>
+            </a>
+            <button type="button" class="collection-share-btn" data-token="{{ collection.share_token }}" title="{{ _('collections.share') }}">🔗</button>
+            <button type="button" class="collection-delete-btn" data-id="{{ collection.id }}" title="{{ _('collections.delete') }}">×</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">{{ _('collections.empty_mine') }}</p>
+    {% endif %}
+    {% else %}
+    <p class="empty">{{ _('collections.login_hint') }}</p>
+    {% endif %}
+</section>
+
+<script>
+(function () {
+    var createForm = document.getElementById('collection-create-form');
+    if (createForm) {
+        createForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var nameInput = document.getElementById('collection-create-name');
+            var descInput = document.getElementById('collection-create-desc');
+            fetch('/api/collections', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: nameInput.value, description: descInput.value })
+            }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return null; }
+                if (!resp.ok) throw new Error('Failed');
+                return resp.json();
+            }).then(function (data) {
+                if (data) window.location.href = '/collections/' + data.slug;
+            }).catch(function () {
+                alert('{{ _('admin.alert_save_error') }}');
+            });
+        });
+    }
+
+    document.querySelectorAll('.collection-share-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var url = window.location.origin + '/collections/partage/' + btn.dataset.token;
+            function done() { alert('{{ _('collections.share_link_copied') }}'); }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(done, function () {
+                    window.prompt(url, url);
+                });
+            } else {
+                window.prompt(url, url);
+            }
+        });
+    });
+
+    document.querySelectorAll('.collection-delete-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('{{ _('collections.confirm_delete') }}')) return;
+            fetch('/api/collections/' + btn.dataset.id, { method: 'DELETE' }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return; }
+                if (!resp.ok) throw new Error('Failed');
+                window.location.reload();
+            }).catch(function () {
+                alert('{{ _('admin.alert_save_error') }}');
+            });
+        });
+    });
+})();
+</script>
+
+{% endblock %}
