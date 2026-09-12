@@ -9,6 +9,7 @@ from recipes.features.collections.services import (
     create_collection,
     delete_collection,
     demote_to_user,
+    get_collection_by_id,
     get_collection_by_slug,
     get_collection_by_token,
     get_collection_recipes,
@@ -19,6 +20,7 @@ from recipes.features.collections.services import (
     list_user_collections,
     promote_to_site,
     remove_recipe_from_collection,
+    set_cover,
     set_featured,
     update_collection,
 )
@@ -224,6 +226,24 @@ class TestCollectionPages:
         resp = as_user.get(f"/collections/{collection['slug']}")
         assert resp.status_code == 200
         assert "Noël" in resp.text
+
+    def test_mine_list_shows_cover_thumbnail(self, as_user):
+        recipe_id = _insert_sample()
+        _add_image(recipe_id, "poulet.jpg")
+        collection = create_collection(1, "Noël")
+        add_recipe_to_collection(int(str(collection["id"])), recipe_id)
+        resp = as_user.get("/collections")
+        assert resp.status_code == 200
+        assert "collection-mine-thumb" in resp.text
+        assert "poulet.jpg" in resp.text
+
+    def test_mine_list_shows_placeholder_without_image(self, as_user):
+        recipe_id = _insert_sample()
+        collection = create_collection(1, "Noël")
+        add_recipe_to_collection(int(str(collection["id"])), recipe_id)
+        resp = as_user.get("/collections")
+        assert resp.status_code == 200
+        assert "collection-mine-thumb-placeholder" in resp.text
 
     def test_private_detail_hidden_from_stranger(self, as_other):
         collection = create_collection(1, "Noël")
@@ -488,3 +508,117 @@ class TestCollectionSearch:
         resp = as_user.get(f"/collections/{collection['slug']}/search", params={"q": "poulet"})
         assert resp.status_code == 200
         assert "Poulet Rôti" in resp.text
+
+
+def _add_image(recipe_id: int, filename: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO recipe_images (recipe_id, filename, sort_order) VALUES (?, ?, 0)",
+            (recipe_id, filename),
+        )
+
+
+class TestCollectionCover:
+    def _two_recipes_collection(self, site: bool = False) -> tuple[int, int, int]:
+        first = _insert_sample()
+        second = _insert_dessert()
+        _add_image(first, "poulet.jpg")
+        _add_image(second, "gateau.jpg")
+        collection = create_collection(1, "Noël")
+        collection_id = int(str(collection["id"]))
+        add_recipe_to_collection(collection_id, first)
+        add_recipe_to_collection(collection_id, second)
+        if site:
+            promote_to_site(collection_id)
+        return collection_id, first, second
+
+    def test_default_cover_is_first_recipe(self):
+        collection_id, first, _second = self._two_recipes_collection(site=True)
+        site = list_site_collections()
+        assert len(site) == 1
+        assert site[0]["cover_recipe_slug"] == _slug(first)
+
+    def test_set_cover_uses_chosen_recipe(self):
+        collection_id, _first, second = self._two_recipes_collection(site=True)
+        assert set_cover(collection_id, second)
+        site = list_site_collections()
+        assert site[0]["cover_recipe_slug"] == _slug(second)
+        assert site[0]["cover_image"] == "gateau.jpg"
+
+    def test_set_cover_rejects_non_member(self):
+        collection_id, _first, _second = self._two_recipes_collection(site=True)
+        outsider = _insert_outsider()
+        assert not set_cover(collection_id, outsider)
+        assert not set_cover(9999, outsider)
+
+    def test_set_cover_none_restores_automatic(self):
+        collection_id, first, second = self._two_recipes_collection(site=True)
+        assert set_cover(collection_id, second)
+        assert set_cover(collection_id, None)
+        site = list_site_collections()
+        assert site[0]["cover_recipe_slug"] == _slug(first)
+
+    def test_remove_cover_recipe_clears_pin(self):
+        collection_id, first, second = self._two_recipes_collection(site=True)
+        assert set_cover(collection_id, second)
+        remove_recipe_from_collection(collection_id, second)
+        row = get_collection_by_id(collection_id)
+        assert row is not None
+        assert row.get("cover_recipe_id") is None
+        site = list_site_collections()
+        assert site[0]["cover_recipe_slug"] == _slug(first)
+
+    def test_api_owner_can_set_cover(self, as_user):
+        collection_id, _first, second = self._two_recipes_collection()
+        resp = as_user.put(f"/api/collections/{collection_id}/cover", json={"recipe_id": second})
+        assert resp.status_code == 200
+        assert int(str(resp.json()["cover_recipe_id"])) == second
+
+    def test_api_owner_can_clear_cover(self, as_user):
+        collection_id, _first, second = self._two_recipes_collection()
+        as_user.put(f"/api/collections/{collection_id}/cover", json={"recipe_id": second})
+        resp = as_user.put(f"/api/collections/{collection_id}/cover", json={"recipe_id": None})
+        assert resp.status_code == 200
+        assert resp.json()["cover_recipe_id"] is None
+
+    def test_api_rejects_non_member_recipe(self, as_user):
+        collection_id, _first, _second = self._two_recipes_collection()
+        outsider = _insert_outsider()
+        resp = as_user.put(f"/api/collections/{collection_id}/cover", json={"recipe_id": outsider})
+        assert resp.status_code == 422
+
+    def test_api_stranger_cannot_set_cover(self, as_other):
+        collection_id, _first, second = self._two_recipes_collection(site=True)
+        # Site collections are admin-only for edits.
+        resp = as_other.put(f"/api/collections/{collection_id}/cover", json={"recipe_id": second})
+        assert resp.status_code == 404
+        # Private collection owned by user 1: stranger gets 404 too.
+        private = create_collection(1, "Privée")
+        private_id = int(str(private["id"]))
+        poulet = _insert_sample()
+        add_recipe_to_collection(private_id, poulet)
+        resp = as_other.put(f"/api/collections/{private_id}/cover", json={"recipe_id": poulet})
+        assert resp.status_code == 404
+
+    def test_api_admin_can_set_site_cover(self, as_admin):
+        collection_id, _first, second = self._two_recipes_collection(site=True)
+        resp = as_admin.put(f"/api/collections/{collection_id}/cover", json={"recipe_id": second})
+        assert resp.status_code == 200
+        assert int(str(resp.json()["cover_recipe_id"])) == second
+
+    def test_detail_page_shows_cover_picker_to_owner(self, as_user):
+        collection_id, _first, _second = self._two_recipes_collection()
+        collection = get_collection_by_id(collection_id)
+        assert collection is not None
+        resp = as_user.get(f"/collections/{collection['slug']}")
+        assert resp.status_code == 200
+        assert "collection-cover-select" in resp.text
+        assert "collection-cover-form" in resp.text
+
+    def test_detail_page_hides_cover_picker_from_stranger(self, as_other):
+        collection = create_collection(1, "Noël")
+        collection_id = int(str(collection["id"]))
+        poulet = _insert_sample()
+        add_recipe_to_collection(collection_id, poulet)
+        resp = as_other.get(f"/collections/{collection['slug']}")
+        assert resp.status_code == 404

@@ -21,13 +21,14 @@ from recipes.features.recipes.services import (
     remove_favorite,
 )
 from recipes.features.shopping.services import get_user_shopping_lists
-from recipes.shared.auth import get_user, require_user
+from recipes.shared.auth import get_user, is_admin, require_user
 from recipes.shared.db import (
     get_all_categories,
     get_all_tags_grouped,
     get_db,
     get_recipe,
     get_recipe_id_by_slug,
+    get_recipe_images,
     search_recipes,
 )
 from recipes.shared.duration import format_duration
@@ -346,6 +347,16 @@ async def recipe_detail(
                     }
                 )
 
+    all_images: list[JsonDict] = []
+    if is_admin(request):
+        primary_marked = False
+        for img in get_recipe_images(recipe_id, conn=conn, include_hidden=True):
+            marked = dict(img)
+            marked["is_primary"] = not primary_marked and not int(str(img.get("is_hidden", 0)))
+            if marked["is_primary"]:
+                primary_marked = True
+            all_images.append(marked)
+
     return templates.TemplateResponse(
         request=request,
         name="recipe.html",
@@ -360,6 +371,7 @@ async def recipe_detail(
             ingredients_json=json.dumps(ingredients_for_json, ensure_ascii=False),
             print_prefs=print_prefs_for_user(request, conn),
             show_step_ingredients=show_step_ingredients_for_user(request, conn),
+            all_images=all_images,
             **ingredient_ctx_early,
         ),
     )

@@ -25,6 +25,7 @@ from recipes.features.collections.services import (
     list_user_collections,
     promote_to_site,
     remove_recipe_from_collection,
+    set_cover,
     set_featured,
     update_collection,
 )
@@ -32,7 +33,13 @@ from recipes.features.recipes.services import get_user_favorite_ids
 from recipes.shared.auth import get_user, is_admin, require_admin, require_user
 from recipes.shared.db import get_db, get_recipe_id_by_slug
 from recipes.shared.i18n import gettext
-from recipes.shared.models import CollectionCreate, CollectionRecipeAdd, CollectionUpdate, JsonDict
+from recipes.shared.models import (
+    CollectionCoverUpdate,
+    CollectionCreate,
+    CollectionRecipeAdd,
+    CollectionUpdate,
+    JsonDict,
+)
 
 router = APIRouter(tags=["collections"])
 
@@ -344,6 +351,31 @@ async def api_update_collection(
     except ValueError:
         raise HTTPException(status_code=422, detail=gettext("error.name_required", lang)) from None
     if not updated:
+        raise HTTPException(status_code=404, detail=gettext("collections.not_found", lang))
+    result = get_collection_by_id(collection_id, conn=conn)
+    assert result is not None
+    return result
+
+
+@router.put("/api/collections/{collection_id}/cover")
+async def api_update_collection_cover(
+    payload: CollectionCoverUpdate,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    collection_id: int = Path(gt=0),
+    user: dict[str, Any] = Depends(require_user),
+) -> JsonDict:
+    """Pin the collection cover to a member recipe (null = automatic)."""
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
+    collection = _collection_or_404(collection_id, lang, conn)
+    _require_edit(request, collection, lang, conn)
+    if payload.recipe_id is not None and not is_recipe_in_collection(
+        collection_id, payload.recipe_id, conn=conn
+    ):
+        raise HTTPException(status_code=422, detail=gettext("collections.cover_not_member", lang))
+    if not set_cover(collection_id, payload.recipe_id, conn=conn):
         raise HTTPException(status_code=404, detail=gettext("collections.not_found", lang))
     result = get_collection_by_id(collection_id, conn=conn)
     assert result is not None

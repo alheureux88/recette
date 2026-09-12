@@ -53,6 +53,65 @@
     </div>
     {% endif %}
 
+    {% if is_admin and all_images %}
+    <details class="admin-images">
+        <summary class="admin-images-summary">{{ _('admin.images_title') }}</summary>
+        <p class="collection-card-count">{{ _('admin.images_hint') }}</p>
+        <div class="admin-images-grid">
+            {% for img in all_images %}
+            <figure class="admin-image-card{% if img.is_hidden %} is-hidden{% endif %}">
+                <img src="/images/{{ recipe.slug }}/{{ img.filename }}" alt="" loading="lazy">
+                <figcaption>
+                    {% if img.is_primary %}
+                    <span class="admin-badge admin-badge-done">{{ _('admin.images_primary') }}</span>
+                    {% endif %}
+                    {% if img.is_hidden %}
+                    <span class="admin-badge admin-badge-anon">{{ _('admin.images_hidden_badge') }}</span>
+                    {% endif %}
+                    <div class="admin-images-actions">
+                        {% if not img.is_primary %}
+                        <button type="button" class="admin-btn admin-btn-view" data-primary="{{ img.id }}">{{ _('admin.images_set_primary') }}</button>
+                        {% endif %}
+                        <button type="button" class="admin-btn admin-btn-view" data-visibility="{{ img.id }}" data-hidden="{% if img.is_hidden %}0{% else %}1{% endif %}">{% if img.is_hidden %}{{ _('admin.images_show') }}{% else %}{{ _('admin.images_hide') }}{% endif %}</button>
+                    </div>
+                </figcaption>
+            </figure>
+            {% endfor %}
+        </div>
+    </details>
+    <script>
+    (function () {
+        var STR_IMG_ERROR = {{ _('admin.alert_save_error')|tojson }};
+        function postImageAction(action, body) {
+            fetch('/admin/recipes/{{ recipe.id }}/images/' + action, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return; }
+                if (!resp.ok) throw new Error('Failed');
+                window.location.reload();
+            }).catch(function () {
+                alert(STR_IMG_ERROR);
+            });
+        }
+        document.querySelectorAll('[data-primary]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                postImageAction('primary', { image_id: parseInt(btn.dataset.primary, 10) });
+            });
+        });
+        document.querySelectorAll('[data-visibility]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                postImageAction('visibility', {
+                    image_id: parseInt(btn.dataset.visibility, 10),
+                    hidden: btn.dataset.hidden === '1'
+                });
+            });
+        });
+    })();
+    </script>
+    {% endif %}
+
     {% if recipe.tags %}
     <div class="detail-tags">
         {% for family_key, family in recipe.tags.items() %}

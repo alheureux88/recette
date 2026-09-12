@@ -28,8 +28,15 @@
         {% for collection in my_collections %}
         <div class="collection-mine-row">
             <a href="/collections/{{ collection.slug }}" class="collection-mine-link">
-                <strong>{{ collection.name }}</strong>
-                <span class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', collection.recipe_count) }}</span>
+                {% if collection.cover_image and collection.cover_recipe_slug %}
+                <span class="collection-mine-thumb"><img src="/images/{{ collection.cover_recipe_slug }}/{{ collection.cover_image }}" alt="" loading="lazy"></span>
+                {% else %}
+                <span class="collection-mine-thumb collection-mine-thumb-placeholder" aria-hidden="true">📚</span>
+                {% endif %}
+                <span class="collection-mine-text">
+                    <strong>{{ collection.name }}</strong>
+                    <span class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', collection.recipe_count) }}</span>
+                </span>
             </a>
             <button type="button" class="collection-share-btn" data-token="{{ collection.share_token }}" title="{{ _('collections.share') }}">🔗</button>
             <button type="button" class="collection-delete-btn" data-id="{{ collection.id }}" title="{{ _('collections.delete') }}">×</button>

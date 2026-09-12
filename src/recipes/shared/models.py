@@ -95,3 +95,18 @@ class CollectionUpdate(BaseModel):
 
 class CollectionRecipeAdd(BaseModel):
     recipe_id: int = Field(description="Recipe ID to add")
+
+
+class CollectionCoverUpdate(BaseModel):
+    recipe_id: int | None = Field(
+        default=None, description="Member recipe ID for the cover, null for automatic"
+    )
+
+
+class RecipeImagePrimaryUpdate(BaseModel):
+    image_id: int = Field(description="Image ID to use as the recipe's main photo")
+
+
+class RecipeImageVisibilityUpdate(BaseModel):
+    image_id: int = Field(description="Image ID to hide or unhide")
+    hidden: bool = Field(description="True to hide, False to show again")

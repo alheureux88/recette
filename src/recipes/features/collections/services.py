@@ -155,17 +155,44 @@ def list_all_collections(conn: sqlite3.Connection | None = None) -> list[JsonDic
 
 
 def _attach_covers(conn: sqlite3.Connection, collections: list[JsonDict]) -> list[JsonDict]:
-    """Attach a cover (first recipe's slug + image) to each collection.
+    """Attach a cover (chosen recipe's slug + image) to each collection.
 
-    V1 derives the cover from the first added recipe — no user upload.
+    The owner (or an admin) may pin `cover_recipe_id` ; otherwise the cover
+    falls back to the first added recipe — and if the pinned recipe has no
+    image, to the first recipe with one.
     """
     for collection in collections:
+        cover_id = collection.get("cover_recipe_id")
+        if cover_id is not None:
+            try:
+                cover_id_int = int(str(cover_id))
+            except (TypeError, ValueError):
+                cover_id_int = None
+            if cover_id_int is not None:
+                row = conn.execute(
+                    """
+                    SELECT r.slug AS recipe_slug, ri.filename AS image
+                    FROM collection_recipes cr
+                    JOIN recipes r ON r.id = cr.recipe_id
+                    LEFT JOIN recipe_images ri ON ri.recipe_id = r.id AND ri.is_hidden = 0
+                    WHERE cr.collection_id = ?
+                      AND cr.recipe_id = ?
+                      AND (r.source_missing = 0 OR r.force_visible = 1)
+                    ORDER BY ri.sort_order ASC
+                    LIMIT 1
+                    """,
+                    (int(str(collection["id"])), cover_id_int),
+                ).fetchone()
+                if row is not None and row["image"]:
+                    collection["cover_recipe_slug"] = row["recipe_slug"]
+                    collection["cover_image"] = row["image"]
+                    continue
         row = conn.execute(
             """
             SELECT r.slug AS recipe_slug, ri.filename AS image
             FROM collection_recipes cr
             JOIN recipes r ON r.id = cr.recipe_id
-            LEFT JOIN recipe_images ri ON ri.recipe_id = r.id
+            LEFT JOIN recipe_images ri ON ri.recipe_id = r.id AND ri.is_hidden = 0
             WHERE cr.collection_id = ?
               AND (r.source_missing = 0 OR r.force_visible = 1)
             ORDER BY cr.added_at ASC, ri.sort_order ASC
@@ -176,6 +203,35 @@ def _attach_covers(conn: sqlite3.Connection, collections: list[JsonDict]) -> lis
         collection["cover_recipe_slug"] = row["recipe_slug"] if row else None
         collection["cover_image"] = row["image"] if row and row["image"] else None
     return collections
+
+
+def set_cover(
+    collection_id: int,
+    recipe_id: int | None,
+    conn: sqlite3.Connection | None = None,
+) -> bool:
+    """Pin the collection cover to a member recipe (None = automatic).
+
+    Returns False if the collection is missing, or if `recipe_id` is not
+    a member of the collection.
+    """
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute("SELECT id FROM collections WHERE id = ?", (collection_id,)).fetchone()
+        if row is None:
+            return False
+        if recipe_id is not None:
+            member = _conn.execute(
+                "SELECT 1 FROM collection_recipes WHERE collection_id = ? AND recipe_id = ?",
+                (collection_id, recipe_id),
+            ).fetchone()
+            if member is None:
+                return False
+        _conn.execute(
+            "UPDATE collections SET cover_recipe_id = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (recipe_id, collection_id),
+        )
+        return True
 
 
 def update_collection(
@@ -243,6 +299,13 @@ def remove_recipe_from_collection(
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         _conn.execute(
             "DELETE FROM collection_recipes WHERE collection_id = ? AND recipe_id = ?",
+            (collection_id, recipe_id),
+        )
+        # Unpin the cover if it pointed at the removed recipe.
+        _conn.execute(
+            "UPDATE collections SET cover_recipe_id = NULL, "
+            "updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND cover_recipe_id = ?",
             (collection_id, recipe_id),
         )
         _conn.execute(

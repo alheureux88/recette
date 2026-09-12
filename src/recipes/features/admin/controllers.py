@@ -50,8 +50,11 @@ from recipes.shared.db import (
     get_existing_tags_for_prompt,
     get_orphaned_recipes,
     get_recipe,
+    get_recipe_images,
     get_tag_families,
+    set_primary_recipe_image,
     set_recipe_force_visible,
+    set_recipe_image_hidden,
     sync_recipe_tags,
     update_recipe_category,
     update_recipe_manual,
@@ -65,6 +68,8 @@ from recipes.shared.models import (
     InlineCategoryUpdate,
     InlineTagsUpdate,
     JsonDict,
+    RecipeImagePrimaryUpdate,
+    RecipeImageVisibilityUpdate,
 )
 from recipes.shared.poller import (
     DROPBOX_FOLDER,
@@ -377,6 +382,44 @@ async def admin_retag_bulk(
             log.warning("Bulk retag failed for recipe #%s: %s", rid, e)
             results.append({"id": int(rid), "ok": False, "error": str(e)})
     return {"ok": True, "updated": updated, "results": results}
+
+
+@router.post("/recipes/{recipe_id}/images/primary")
+async def admin_recipe_image_primary(
+    data: RecipeImagePrimaryUpdate,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> JsonDict:
+    """Choisit la photo principale d'une recette (première affichée partout)."""
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
+    if get_recipe(recipe_id, lang=lang, conn=conn, include_hidden=True) is None:
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
+    if not set_primary_recipe_image(recipe_id, data.image_id, conn=conn):
+        raise HTTPException(status_code=404, detail=gettext("admin.images_not_found", lang))
+    return {"ok": True, "images": get_recipe_images(recipe_id, conn=conn, include_hidden=True)}
+
+
+@router.post("/recipes/{recipe_id}/images/visibility")
+async def admin_recipe_image_visibility(
+    data: RecipeImageVisibilityUpdate,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> JsonDict:
+    """Cache ou ré-affiche une photo d'une recette (affichages publics)."""
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
+    if get_recipe(recipe_id, lang=lang, conn=conn, include_hidden=True) is None:
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
+    if not set_recipe_image_hidden(recipe_id, data.image_id, data.hidden, conn=conn):
+        raise HTTPException(status_code=404, detail=gettext("admin.images_not_found", lang))
+    return {"ok": True, "images": get_recipe_images(recipe_id, conn=conn, include_hidden=True)}
 
 
 @router.get("/files.json")

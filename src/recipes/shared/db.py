@@ -175,6 +175,8 @@ def init_db() -> None:
         _migrate_processed_files(conn)
         _migrate_recipes_visibility(conn)
         _migrate_recipes_slug(conn)
+        _migrate_collections_cover(conn)
+        _migrate_recipe_images_hidden(conn)
         _create_fts(conn)
         _seed(conn)
 
@@ -257,6 +259,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
             filename     TEXT NOT NULL,
             sort_order   INTEGER NOT NULL DEFAULT 0,
+            is_hidden    INTEGER NOT NULL DEFAULT 0,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -380,6 +383,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             share_token   TEXT NOT NULL UNIQUE,
             is_site       INTEGER NOT NULL DEFAULT 0,
             is_featured   INTEGER NOT NULL DEFAULT 0,
+            cover_recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
             created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -432,6 +436,20 @@ def _migrate_recipes_slug(conn: sqlite3.Connection) -> None:
         ).fetchone()
         base = slugify(str(title_row["title"]) if title_row and title_row["title"] else "")
         _assign_unique_slug(conn, recipe_id, base)
+
+
+def _migrate_collections_cover(conn: sqlite3.Connection) -> None:
+    """Ajoute `cover_recipe_id` aux bases existantes (photo de collection choisie)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(collections)").fetchall()}
+    if "cover_recipe_id" not in cols:
+        conn.execute("ALTER TABLE collections ADD COLUMN cover_recipe_id INTEGER")
+
+
+def _migrate_recipe_images_hidden(conn: sqlite3.Connection) -> None:
+    """Ajoute `is_hidden` aux bases existantes (photos masquées par l'admin)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(recipe_images)").fetchall()}
+    if "is_hidden" not in cols:
+        conn.execute("ALTER TABLE recipe_images ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
 
 
 def _create_fts(conn: sqlite3.Connection) -> None:
@@ -1583,22 +1601,94 @@ def set_recipe_force_visible(
 def save_recipe_images(
     recipe_id: int, image_filenames: list[str], conn: sqlite3.Connection | None = None
 ) -> None:
+    """Synchronise les images d'une recette avec celles du fichier source.
+
+    Les choix de l'admin sont préservés par nom de fichier : l'ordre
+    (`sort_order`, dont la photo principale en premier) et le masquage
+    (`is_hidden`) des fichiers toujours présents sont conservés ; les
+    nouveaux fichiers sont ajoutés à la fin, visibles.
+    """
+    seen: list[str] = []
+    for filename in image_filenames:
+        if filename not in seen:
+            seen.append(filename)
     with get_conn() if conn is None else nullcontext(conn) as _conn:
+        existing = {
+            str(row["filename"]): (int(str(row["sort_order"])), int(str(row["is_hidden"] or 0)))
+            for row in _conn.execute(
+                "SELECT filename, sort_order, is_hidden FROM recipe_images WHERE recipe_id = ?",
+                (recipe_id,),
+            ).fetchall()
+        }
         _conn.execute("DELETE FROM recipe_images WHERE recipe_id = ?", (recipe_id,))
-        for idx, filename in enumerate(image_filenames):
+        kept = sorted(
+            [name for name in seen if name in existing],
+            key=lambda name: existing[name][0],
+        )
+        ordered = kept + [name for name in seen if name not in existing]
+        for idx, filename in enumerate(ordered):
+            hidden = existing[filename][1] if filename in existing else 0
             _conn.execute(
-                "INSERT INTO recipe_images (recipe_id, filename, sort_order) VALUES (?, ?, ?)",
-                (recipe_id, filename, idx),
+                "INSERT INTO recipe_images (recipe_id, filename, sort_order, is_hidden)"
+                " VALUES (?, ?, ?, ?)",
+                (recipe_id, filename, idx, hidden),
             )
 
 
-def get_recipe_images(recipe_id: int, conn: sqlite3.Connection | None = None) -> list[JsonDict]:
+def get_recipe_images(
+    recipe_id: int,
+    conn: sqlite3.Connection | None = None,
+    include_hidden: bool = False,
+) -> list[JsonDict]:
+    """Retourne les images d'une recette, photo principale en premier.
+
+    Les images masquées par l'admin sont exclues sauf `include_hidden`.
+    """
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        query = "SELECT id, filename, sort_order, is_hidden FROM recipe_images WHERE recipe_id = ?"
+        if not include_hidden:
+            query += " AND is_hidden = 0"
+        rows = _conn.execute(query + " ORDER BY sort_order", (recipe_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def set_primary_recipe_image(
+    recipe_id: int, image_id: int, conn: sqlite3.Connection | None = None
+) -> bool:
+    """Fait de l'image la photo principale (première) de la recette.
+
+    Retourne False si l'image n'appartient pas à la recette.
+    """
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         rows = _conn.execute(
-            "SELECT id, filename, sort_order FROM recipe_images WHERE recipe_id = ? ORDER BY sort_order",
+            "SELECT id FROM recipe_images WHERE recipe_id = ? ORDER BY sort_order",
             (recipe_id,),
         ).fetchall()
-        return [dict(r) for r in rows]
+        ids = [int(str(row["id"])) for row in rows]
+        if image_id not in ids:
+            return False
+        ordered = [image_id] + [i for i in ids if i != image_id]
+        for idx, img_id in enumerate(ordered):
+            _conn.execute(
+                "UPDATE recipe_images SET sort_order = ? WHERE id = ?",
+                (idx, img_id),
+            )
+        return True
+
+
+def set_recipe_image_hidden(
+    recipe_id: int, image_id: int, hidden: bool, conn: sqlite3.Connection | None = None
+) -> bool:
+    """Cache ou ré-affiche une image de la recette (affichages publics).
+
+    Retourne False si l'image n'appartient pas à la recette.
+    """
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        cur = _conn.execute(
+            "UPDATE recipe_images SET is_hidden = ? WHERE id = ? AND recipe_id = ?",
+            (1 if hidden else 0, image_id, recipe_id),
+        )
+        return cur.rowcount > 0
 
 
 # ---------------------------------------------------------------------------

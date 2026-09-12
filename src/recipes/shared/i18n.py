@@ -205,6 +205,20 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "fr": "Erreur lors du retag.",
         "en": "Retag failed.",
     },
+    "admin.images_title": {"fr": "Photos de la recette", "en": "Recipe photos"},
+    "admin.images_hint": {
+        "fr": "La première photo visible est utilisée partout (cartes, collections).",
+        "en": "The first visible photo is used everywhere (cards, collections).",
+    },
+    "admin.images_primary": {"fr": "Photo principale", "en": "Main photo"},
+    "admin.images_hidden_badge": {"fr": "Cachée", "en": "Hidden"},
+    "admin.images_set_primary": {
+        "fr": "Utiliser comme photo principale",
+        "en": "Use as main photo",
+    },
+    "admin.images_hide": {"fr": "Cacher", "en": "Hide"},
+    "admin.images_show": {"fr": "Montrer", "en": "Show"},
+    "admin.images_not_found": {"fr": "Photo introuvable", "en": "Photo not found"},
     "admin.blacklist_title": {"fr": "Fichiers blacklister", "en": "Blacklisted files"},
     "admin.failed_title": {"fr": "Fichiers en erreur", "en": "Failed files"},
     "admin.orphans_title": {"fr": "Sources disparues", "en": "Missing sources"},
@@ -901,6 +915,19 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "en": "No recipes in this collection.",
     },
     "collections.back": {"fr": "← Toutes les collections", "en": "← All collections"},
+    "collections.cover_label": {
+        "fr": "Photo de la collection",
+        "en": "Collection cover photo",
+    },
+    "collections.cover_auto": {
+        "fr": "Automatique (première recette)",
+        "en": "Automatic (first recipe)",
+    },
+    "collections.cover_save": {"fr": "Choisir cette photo", "en": "Use this photo"},
+    "collections.cover_not_member": {
+        "fr": "Cette recette ne fait pas partie de la collection",
+        "en": "This recipe is not part of the collection",
+    },
     # --- Administration : collections ---
     "admin.collections_title": {
         "fr": "Administration des collections",
