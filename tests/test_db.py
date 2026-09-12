@@ -399,21 +399,19 @@ def test_get_orphaned_recipes():
     assert orphans[0]["title"] == "Tarte Tatin"
 
 
-def test_recipes_visibility_migration(temp_db):
-    from recipes.shared.db import get_conn, init_db
+def test_init_db_creates_final_columns(temp_db):
+    """La baseline yoyo contient d'emblée les colonnes historiquement migrées."""
+    from recipes.shared.db import get_conn
 
-    init_db()
     with get_conn() as conn:
-        conn.execute("ALTER TABLE recipes DROP COLUMN source_missing")
-        conn.execute("ALTER TABLE recipes DROP COLUMN force_visible")
-        conn.execute(
-            "INSERT INTO recipes (source_file, file_hash) VALUES (?, ?)",
-            ("/recipes/old.docx", "h"),
-        )
-    init_db()
-    with get_conn() as conn:
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
-        assert {"source_missing", "force_visible"} <= cols
+        recipe_cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
+        assert {"slug", "source_missing", "force_visible"} <= recipe_cols
+        processed_cols = {r["name"] for r in conn.execute("PRAGMA table_info(processed_files)")}
+        assert "dropbox_hash" in processed_cols
+        collections_cols = {r["name"] for r in conn.execute("PRAGMA table_info(collections)")}
+        assert "cover_recipe_id" in collections_cols
+        images_cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipe_images)")}
+        assert "is_hidden" in images_cols
 
 
 def test_processed_file_dropbox_hash_tracking():
@@ -430,13 +428,10 @@ def test_processed_file_dropbox_hash_tracking():
     assert get_processed_dropbox_hash("/recipes/tarte2.docx") == "rev-2"
 
 
-def test_processed_file_migration_adds_column(temp_db):
+def test_init_db_reapply_preserves_data(temp_db):
+    """Ré-appliquer init_db (migrations déjà jouées) ne perd pas les lignes."""
     from recipes.shared.db import get_conn, init_db
 
-    init_db()
-    with get_conn() as conn:
-        conn.execute("ALTER TABLE processed_files DROP COLUMN dropbox_hash")
-    # init_db doit recréer la colonne sans perdre les lignes.
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO processed_files (path, file_hash) VALUES (?, ?)",

@@ -27,8 +27,9 @@ RUN apt-get update && \
 # Copy installed venv from deps stage
 COPY --from=deps /app/.venv /app/.venv
 
-# Copy application source and assets
+# Copy application source and assets (migrations are inside src/recipes/)
 COPY pyproject.toml uv.lock* ./
+COPY yoyo.ini ./
 COPY src/       ./src/
 COPY static/    ./static/
 COPY templates/ ./templates/
