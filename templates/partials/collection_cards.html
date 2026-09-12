@@ -2,26 +2,65 @@
    Attend `collections` : chaque entrée a name, slug, description,
    recipe_count, cover_recipe_slug, cover_image (image de la 1re recette). #}
 {% if collections %}
-<div class="collection-carousel" role="list">
-    {% for collection in collections %}
-    <a href="/collections/{{ collection.slug }}" class="collection-card" role="listitem">
-        {% if collection.cover_image and collection.cover_recipe_slug %}
-        <div class="collection-card-image">
-            <img src="/images/{{ collection.cover_recipe_slug }}/{{ collection.cover_image }}" alt="" loading="lazy">
-        </div>
-        {% else %}
-        <div class="collection-card-image collection-card-placeholder" aria-hidden="true">
-            <span>📚</span>
-        </div>
-        {% endif %}
-        <div class="collection-card-body">
-            <h3>{{ collection.name }}</h3>
-            {% if collection.description %}
-            <p class="collection-card-desc">{{ collection.description }}</p>
+<div class="collection-carousel-wrap">
+    <button type="button" class="collection-carousel-btn collection-carousel-prev" aria-label="{{ _('collections.scroll_prev') }}">‹</button>
+    <div class="collection-carousel" role="list">
+        {% for collection in collections %}
+        <a href="/collections/{{ collection.slug }}" class="collection-card" role="listitem">
+            {% if collection.cover_image and collection.cover_recipe_slug %}
+            <div class="collection-card-image">
+                <img src="/images/{{ collection.cover_recipe_slug }}/{{ collection.cover_image }}" alt="" loading="lazy">
+            </div>
+            {% else %}
+            <div class="collection-card-image collection-card-placeholder" aria-hidden="true">
+                <span>📚</span>
+            </div>
             {% endif %}
-            <span class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', collection.recipe_count) }}</span>
-        </div>
-    </a>
-    {% endfor %}
+            <div class="collection-card-body">
+                <h3>{{ collection.name }}</h3>
+                {% if collection.description %}
+                <p class="collection-card-desc">{{ collection.description }}</p>
+                {% endif %}
+                <span class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', collection.recipe_count) }}</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    <button type="button" class="collection-carousel-btn collection-carousel-next" aria-label="{{ _('collections.scroll_next') }}">›</button>
 </div>
+<script>
+(function () {
+    document.querySelectorAll('.collection-carousel-wrap').forEach(function (wrap) {
+        if (wrap.dataset.bound) return;
+        wrap.dataset.bound = '1';
+        var track = wrap.querySelector('.collection-carousel');
+        var prev = wrap.querySelector('.collection-carousel-prev');
+        var next = wrap.querySelector('.collection-carousel-next');
+        if (!track || !prev || !next) return;
+
+        function step() {
+            return Math.max(track.clientWidth * 0.8, 200);
+        }
+        prev.addEventListener('click', function () {
+            track.scrollBy({ left: -step(), behavior: 'smooth' });
+        });
+        next.addEventListener('click', function () {
+            track.scrollBy({ left: step(), behavior: 'smooth' });
+        });
+
+        function update() {
+            var noOverflow = track.scrollWidth <= track.clientWidth + 1;
+            prev.hidden = noOverflow;
+            next.hidden = noOverflow;
+            if (!noOverflow) {
+                prev.disabled = track.scrollLeft <= 0;
+                next.disabled = track.scrollLeft >= track.scrollWidth - track.clientWidth - 1;
+            }
+        }
+        track.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
+    });
+})();
+</script>
 {% endif %}

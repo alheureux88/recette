@@ -1,0 +1,167 @@
+{# Panneau de filtres partagé (accueil + détail collection) : aside + logique JS.
+   Le bouton .filter-toggle, le backdrop et la grille .index-layout restent
+   dans la page hôte (contraintes de mise en page CSS).
+   Variables : all_tags, all_categories, active_tag_ids, active_category_id,
+   provenances, show_provenance, search_url (défaut : /search).
+   Le champ de recherche et la grille #recipe-grid restent dans la page hôte,
+   avec hx-get vers la même search_url. #}
+<aside class="filter-panel" id="filter-panel" aria-label="{{ _('home.filters_title') }}">
+    <div class="filter-panel-header">
+        <h2 class="filter-panel-title">{{ _('home.filters_title') }}</h2>
+        <button type="button" class="filter-close" id="filter-close" aria-label="{{ _('home.filters_close') }}">✕</button>
+    </div>
+
+    <div class="filter-group">
+        <h3 class="filter-title">{{ _('home.filter_category') }}</h3>
+        <div class="category-filters">
+            <label class="tag-pill {% if not active_category_id %}active{% endif %}">
+                <input
+                    type="radio"
+                    name="category"
+                    value=""
+                    {% if not active_category_id %}checked{% endif %}
+                    hx-get="{{ search_url|default('/search') }}"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags'], [name='account']"
+                >
+                {{ _('home.filter_all') }}
+            </label>
+            {% for cat in all_categories %}
+            <label class="tag-pill {% if active_category_id == cat.id %}active{% endif %}">
+                <input
+                    type="radio"
+                    name="category"
+                    value="{{ cat.id }}"
+                    {% if active_category_id == cat.id %}checked{% endif %}
+                    hx-get="{{ search_url|default('/search') }}"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags'], [name='account']"
+                >
+                {{ cat.display_name }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if show_provenance and provenances %}
+    <div class="filter-group">
+        <h3 class="filter-title">{{ _('home.filter_provenance') }}</h3>
+        <div class="category-filters">
+            <label class="tag-pill active">
+                <input
+                    type="radio"
+                    name="account"
+                    value=""
+                    checked
+                    hx-get="{{ search_url|default('/search') }}"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags'], [name='category']"
+                >
+                {{ _('home.filter_all') }}
+            </label>
+            {% for prov in provenances %}
+            <label class="tag-pill">
+                <input
+                    type="radio"
+                    name="account"
+                    value="{{ prov.id }}"
+                    hx-get="{{ search_url|default('/search') }}"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='tags'], [name='category']"
+                >
+                {{ prov.name }} ({{ prov.count }})
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% for family_key, family in all_tags.items() %}
+    <div class="filter-group">
+        <h3 class="filter-title">{{ family.display_name }}</h3>
+        <div class="tag-filters">
+            {% for tag in family.tags %}
+            <label class="tag-pill {% if tag.id in active_tag_ids %}active{% endif %}">
+                <input
+                    type="checkbox"
+                    name="tags"
+                    value="{{ tag.id }}"
+                    {% if tag.id in active_tag_ids %}checked{% endif %}
+                    hx-get="{{ search_url|default('/search') }}"
+                    hx-trigger="change"
+                    hx-target="#recipe-grid"
+                    hx-include="[name='q'], [name='category'], [name='tags']"
+                >
+                {{ tag.display_name }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</aside>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.tag-pill input').forEach(function(input) {
+        input.addEventListener('change', function() {
+            const label = this.closest('.tag-pill');
+            if (this.type === 'checkbox') {
+                label.classList.toggle('active', this.checked);
+            } else if (this.type === 'radio') {
+                document.querySelectorAll('.tag-pill input[type="radio"][name="' + this.name + '"]').forEach(function(radio) {
+                    radio.closest('.tag-pill').classList.remove('active');
+                });
+                label.classList.add('active');
+            }
+            updateFilterCount();
+        });
+    });
+
+    function updateFilterCount() {
+        var checked = document.querySelectorAll('#filter-panel .tag-pill input:checked');
+        var count = 0;
+        checked.forEach(function(input) {
+            if (input.value !== '' && input.value !== null) {
+                count += 1;
+            }
+        });
+        var badge = document.getElementById('filter-count');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = String(count);
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+
+    var toggle = document.getElementById('filter-toggle');
+    var panel = document.getElementById('filter-panel');
+    var closeBtn = document.getElementById('filter-close');
+    var backdrop = document.getElementById('filter-backdrop');
+
+    function openFilters() {
+        if (!panel) return;
+        panel.classList.add('open');
+        if (backdrop) backdrop.hidden = false;
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('filters-open');
+    }
+    function closeFilters() {
+        if (!panel) return;
+        panel.classList.remove('open');
+        if (backdrop) backdrop.hidden = true;
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('filters-open');
+    }
+    if (toggle) toggle.addEventListener('click', openFilters);
+    if (closeBtn) closeBtn.addEventListener('click', closeFilters);
+    if (backdrop) backdrop.addEventListener('click', closeFilters);
+
+    updateFilterCount();
+});
+</script>

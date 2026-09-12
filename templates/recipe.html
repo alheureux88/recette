@@ -136,7 +136,10 @@
 <div id="collection-modal-backdrop" class="shopping-modal-backdrop" hidden></div>
 <div id="collection-modal" class="shopping-modal" hidden role="dialog" aria-modal="true">
     <div class="shopping-modal-content">
-        <h2>{{ _('collections.add_to') }}</h2>
+        <div class="collection-modal-header">
+            <h2>{{ _('collections.add_to') }}</h2>
+            <button type="button" id="collection-modal-close" class="collection-modal-x" aria-label="{{ _('collections.close_modal') }}">✕</button>
+        </div>
         <div id="collection-modal-body"></div>
     </div>
 </div>
@@ -165,7 +168,7 @@
                     window.location.href = link.getAttribute('href') + '?' + qs;
                 }
             });
-        }
+        });
 
         var body = document.body;
         var checks = {
@@ -397,11 +400,31 @@
 
     {% if auth_enabled and user %}
     (function () {
-        var recipeSlug = '{{ recipe.slug }}';
+        var recipeSlug = {{ recipe.slug|tojson }};
         var modal = document.getElementById('collection-modal');
         var backdrop = document.getElementById('collection-modal-backdrop');
         var openBtn = document.getElementById('btn-collection-add');
+        var closeBtn = document.getElementById('collection-modal-close');
         if (!modal || !backdrop || !openBtn) return;
+
+        var STR = {
+            saveError: {{ _('admin.alert_save_error')|tojson }},
+            select: {{ _('collections.select')|tojson }},
+            emptyMine: {{ _('collections.empty_mine')|tojson }},
+            orCreate: {{ _('collections.or_create')|tojson }},
+            namePlaceholder: {{ _('collections.name_placeholder')|tojson }},
+            descPlaceholder: {{ _('collections.description_placeholder')|tojson }},
+            cancel: {{ _('collections.cancel')|tojson }},
+            create: {{ _('collections.create')|tojson }}
+        };
+
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
 
         function openModal() {
             modal.hidden = false;
@@ -414,6 +437,15 @@
         }
         openBtn.addEventListener('click', openModal);
         backdrop.addEventListener('click', closeModal);
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+            if ((e.key === 'Escape' || e.key === 'Esc') && modal.hidden === false) {
+                closeModal();
+            }
+        });
 
         function loadCollections() {
             fetch('/api/recipes/' + encodeURIComponent(recipeSlug) + '/collections')
@@ -426,42 +458,44 @@
                     if (collections) renderModal(collections);
                 })
                 .catch(function () {
-                    alert('{{ _('admin.alert_save_error') }}');
+                    alert(STR.saveError);
                 });
         }
 
         function renderModal(collections) {
-            var html = '<h3>{{ _('collections.select') }}</h3>';
+            var html = '<h3>' + escapeHtml(STR.select) + '</h3>';
             html += '<div class="shopping-modal-lists">';
             if (collections.length === 0) {
-                html += '<p class="empty">{{ _('collections.empty_mine') }}</p>';
+                html += '<p class="empty">' + escapeHtml(STR.emptyMine) + '</p>';
             }
             collections.forEach(function (c) {
                 html += '<label class="shopping-modal-ing">';
                 html += '<input type="checkbox" class="collection-toggle" data-id="' + c.id + '"' + (c.in_collection ? ' checked' : '') + '>';
-                html += '<span>' + c.name + '</span>';
+                html += '<span>' + escapeHtml(c.name) + '</span>';
                 html += '</label>';
             });
             html += '</div>';
             html += '<hr class="shopping-modal-divider">';
-            html += '<h3>{{ _('collections.or_create') }}</h3>';
+            html += '<h3>' + escapeHtml(STR.orCreate) + '</h3>';
             html += '<div class="shopping-modal-new">';
-            html += '<input type="text" id="collection-new-name" placeholder="{{ _('collections.name_placeholder') }}" class="shopping-modal-input">';
+            html += '<input type="text" id="collection-new-name" placeholder="' + escapeHtml(STR.namePlaceholder) + '" class="shopping-modal-input">';
+            html += '<input type="text" id="collection-new-desc" placeholder="' + escapeHtml(STR.descPlaceholder) + '" class="shopping-modal-input">';
             html += '</div>';
             html += '<div class="shopping-modal-actions">';
-            html += '<button type="button" id="collection-modal-cancel" class="shopping-modal-cancel">{{ _('collections.cancel') }}</button>';
-            html += '<button type="button" id="collection-modal-create" class="shopping-modal-submit">{{ _('collections.create') }}</button>';
+            html += '<button type="button" id="collection-modal-cancel" class="shopping-modal-cancel">' + escapeHtml(STR.cancel) + '</button>';
+            html += '<button type="button" id="collection-modal-create" class="shopping-modal-submit">' + escapeHtml(STR.create) + '</button>';
             html += '</div>';
             document.getElementById('collection-modal-body').innerHTML = html;
 
             document.getElementById('collection-modal-cancel').addEventListener('click', closeModal);
             document.getElementById('collection-modal-create').addEventListener('click', function () {
                 var nameInput = document.getElementById('collection-new-name');
+                var descInput = document.getElementById('collection-new-desc');
                 if (!nameInput.value.trim()) return;
                 fetch('/api/collections', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: nameInput.value.trim(), description: '' })
+                    body: JSON.stringify({ name: nameInput.value.trim(), description: descInput.value.trim() })
                 }).then(function (resp) {
                     if (resp.redirected) { window.location.href = resp.url; return null; }
                     if (!resp.ok) throw new Error('Failed');
@@ -473,9 +507,9 @@
                     if (!resp) return;
                     if (resp.redirected) { window.location.href = resp.url; return; }
                     if (!resp.ok) throw new Error('Failed');
-                    loadCollections();
+                    closeModal();
                 }).catch(function () {
-                    alert('{{ _('admin.alert_save_error') }}');
+                    alert(STR.saveError);
                 });
             });
             document.querySelectorAll('.collection-toggle').forEach(function (cb) {
@@ -487,7 +521,7 @@
                         if (!resp.ok) throw new Error('Failed');
                     }).catch(function () {
                         cb.checked = !cb.checked;
-                        alert('{{ _('admin.alert_save_error') }}');
+                        alert(STR.saveError);
                     });
                 });
             });

@@ -856,6 +856,8 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "fr": "Collections à découvrir",
         "en": "Featured collections",
     },
+    "collections.scroll_prev": {"fr": "Défiler vers la gauche", "en": "Scroll left"},
+    "collections.scroll_next": {"fr": "Défiler vers la droite", "en": "Scroll right"},
     "collections.add_to": {"fr": "Ajouter à une collection", "en": "Add to a collection"},
     "collections.select": {"fr": "Choisir des collections", "en": "Select collections"},
     "collections.or_create": {
@@ -864,6 +866,7 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "collections.save": {"fr": "Sauvegarder", "en": "Save"},
     "collections.cancel": {"fr": "Annuler", "en": "Cancel"},
+    "collections.close_modal": {"fr": "Fermer la fenêtre", "en": "Close dialog"},
     "collections.not_found": {"fr": "Collection introuvable", "en": "Collection not found"},
     "collections.shared_badge": {"fr": "Lien partagé", "en": "Shared link"},
     "collections.site_badge": {"fr": "Collection du site", "en": "Site collection"},

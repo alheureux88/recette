@@ -16,6 +16,7 @@ from recipes.features.collections.services import (
     get_collection_by_id,
     get_collection_by_slug,
     get_collection_by_token,
+    get_collection_recipe_ids,
     get_collection_recipes,
     get_collections_for_recipe,
     is_recipe_in_collection,
@@ -36,9 +37,39 @@ from recipes.shared.models import CollectionCreate, CollectionRecipeAdd, Collect
 router = APIRouter(tags=["collections"])
 
 
-def _user_id(request: Request) -> int | None:
-    user = get_user(request)
-    return int(str(user["id"])) if user else None
+def _effective_user_id(request: Request, conn: sqlite3.Connection) -> int | None:
+    """Return the viewer's numeric user ID, self-healing a stale session.
+
+    The session may hold an ID with no matching `users` row (e.g. the
+    database was recreated after login) : `owner_user_id` is a real
+    foreign key, so writing with a dangling ID raises IntegrityError.
+    Resolve via `subject` (stable OIDC identifier) and refresh the
+    session so subsequent requests are consistent.
+    """
+    from recipes.features.auth.services import get_or_create_user
+
+    session_user = get_user(request)
+    if session_user is None:
+        return None
+    subject = session_user.get("sub")
+    if not isinstance(subject, str) or not subject.strip():
+        raw_id = session_user.get("id")
+        try:
+            return int(str(raw_id))
+        except (TypeError, ValueError):
+            return None
+    email = session_user.get("email")
+    name = session_user.get("name")
+    fresh_id = get_or_create_user(
+        subject=subject.strip(),
+        email=str(email) if isinstance(email, str) else None,
+        name=str(name) if isinstance(name, str) else None,
+        conn=conn,
+    )
+    if session_user.get("id") != fresh_id:
+        session_user["id"] = fresh_id
+        request.session["user"] = session_user
+    return fresh_id
 
 
 def _recipe_id_or_404(slug_or_id: str, lang: str, conn: sqlite3.Connection) -> int:
@@ -56,13 +87,15 @@ def _collection_or_404(collection_id: int, lang: str, conn: sqlite3.Connection) 
     return collection
 
 
-def _require_edit(request: Request, collection: JsonDict, lang: str) -> None:
+def _require_edit(
+    request: Request, collection: JsonDict, lang: str, conn: sqlite3.Connection
+) -> None:
     """Raise 404 unless the current user may edit the collection.
 
     404 (instead of 403) avoids confirming the existence of other
     users' private collections by ID enumeration.
     """
-    if not can_edit(collection, _user_id(request), is_admin(request)):
+    if not can_edit(collection, _effective_user_id(request, conn), is_admin(request)):
         raise HTTPException(status_code=404, detail=gettext("collections.not_found", lang))
 
 
@@ -80,7 +113,7 @@ async def collections_page(
 
     site = list_site_collections(conn=conn)
     mine: list[JsonDict] = []
-    uid = _user_id(request)
+    uid = _effective_user_id(request, conn)
     if uid is not None:
         mine = list_user_collections(uid, conn=conn)
     return templates.TemplateResponse(
@@ -111,7 +144,7 @@ async def collection_shared_page(
         return render_not_found(
             request, variant="generic", detail=gettext("collections.not_found", lang)
         )
-    uid = _user_id(request)
+    uid = _effective_user_id(request, conn)
     if can_view(collection, uid, is_admin(request)):
         return RedirectResponse(url=f"/collections/{collection['slug']}", status_code=302)
     recipes = get_collection_recipes(int(str(collection["id"])), lang=lang, conn=conn)
@@ -150,7 +183,7 @@ async def collection_detail_page(
 
     lang = _resolve_request_lang(request)
     collection = get_collection_by_slug(slug, conn=conn)
-    uid = _user_id(request)
+    uid = _effective_user_id(request, conn)
     admin = is_admin(request)
     if collection is None or not can_view(collection, uid, admin):
         return render_not_found(
@@ -170,8 +203,84 @@ async def collection_detail_page(
             favorite_ids=favorite_ids,
             can_edit_collection=can_edit(collection, uid, admin),
             is_shared_view=False,
+            **_filter_context(conn, lang),
             **_provenance_context(request, conn),
         ),
+    )
+
+
+def _filter_context(conn: sqlite3.Connection, lang: str) -> JsonDict:
+    """Filter panel context (same facets as the homepage)."""
+    from recipes.shared.db import get_all_categories, get_all_tags_grouped
+
+    return {
+        "all_tags": get_all_tags_grouped(lang=lang, conn=conn),
+        "all_categories": get_all_categories(lang=lang, conn=conn),
+        "active_tag_ids": [],
+        "active_category_id": None,
+        "query": "",
+    }
+
+
+@router.get("/collections/{slug}/search", response_class=HTMLResponse)
+async def collection_search(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    slug: str = Path(),
+    q: str = Query(default=""),
+    tags: list[int] = Query(default=[]),
+    category: str | None = Query(default=None),
+    account: str | None = Query(default=None),
+) -> HTMLResponse:
+    """HTMX partial : homepage filters scoped to a collection's recipes."""
+    from recipes.shared.auth import OIDC_ENABLED
+    from recipes.shared.db import search_recipes
+    from recipes.shared.web import (
+        _parse_account_param,
+        _provenance_context,
+        _resolve_request_lang,
+        templates,
+    )
+
+    lang = _resolve_request_lang(request)
+    collection = get_collection_by_slug(slug, conn=conn)
+    uid = _effective_user_id(request, conn)
+    if collection is None or not can_view(collection, uid, is_admin(request)):
+        raise HTTPException(status_code=404, detail=gettext("collections.not_found", lang))
+    category_id: int | None = None
+    if category and category.strip():
+        try:
+            category_id = int(category)
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail=gettext("error.category_integer", lang)
+            ) from None
+    member_ids = set(get_collection_recipe_ids(int(str(collection["id"])), conn=conn))
+    recipes = [
+        recipe
+        for recipe in search_recipes(
+            query=q,
+            tag_ids=tags,
+            category_id=category_id,
+            connection_id=_parse_account_param(account),
+            lang=lang,
+            conn=conn,
+        )
+        if int(str(recipe["id"])) in member_ids
+    ]
+    favorite_ids: set[int] = set()
+    if uid is not None:
+        favorite_ids = get_user_favorite_ids(uid, conn=conn)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/recipe_cards.html",
+        context={
+            "recipes": recipes,
+            "favorite_ids": favorite_ids,
+            "user": get_user(request),
+            "auth_enabled": OIDC_ENABLED,
+            **_provenance_context(request, conn),
+        },
     )
 
 
@@ -188,7 +297,9 @@ async def api_collections_for_recipe(
     user: dict[str, Any] = Depends(require_user),
 ) -> list[JsonDict]:
     """Return the viewer's collections with membership flags for a recipe."""
-    return get_collections_for_recipe(int(str(user["id"])), recipe_id, conn=conn)
+    uid = _effective_user_id(request, conn)
+    assert uid is not None
+    return get_collections_for_recipe(uid, recipe_id, conn=conn)
 
 
 @router.post("/api/collections", status_code=201)
@@ -205,7 +316,9 @@ async def api_create_collection(
     if not payload.name.strip():
         raise HTTPException(status_code=422, detail=gettext("error.name_required", lang))
     try:
-        return create_collection(int(str(user["id"])), payload.name, payload.description, conn=conn)
+        uid = _effective_user_id(request, conn)
+        assert uid is not None
+        return create_collection(uid, payload.name, payload.description, conn=conn)
     except ValueError:
         raise HTTPException(status_code=422, detail=gettext("error.name_required", lang)) from None
 
@@ -223,7 +336,7 @@ async def api_update_collection(
 
     lang = _resolve_request_lang(request)
     collection = _collection_or_404(collection_id, lang, conn)
-    _require_edit(request, collection, lang)
+    _require_edit(request, collection, lang, conn)
     if not payload.name.strip():
         raise HTTPException(status_code=422, detail=gettext("error.name_required", lang))
     try:
@@ -249,7 +362,7 @@ async def api_delete_collection(
 
     lang = _resolve_request_lang(request)
     collection = _collection_or_404(collection_id, lang, conn)
-    _require_edit(request, collection, lang)
+    _require_edit(request, collection, lang, conn)
     delete_collection(collection_id, conn=conn)
     return {"deleted": True}
 
@@ -267,7 +380,7 @@ async def api_add_recipe(
 
     lang = _resolve_request_lang(request)
     collection = _collection_or_404(collection_id, lang, conn)
-    _require_edit(request, collection, lang)
+    _require_edit(request, collection, lang, conn)
     added = add_recipe_to_collection(collection_id, payload.recipe_id, conn=conn)
     if not added:
         raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
@@ -287,7 +400,7 @@ async def api_remove_recipe(
 
     lang = _resolve_request_lang(request)
     collection = _collection_or_404(collection_id, lang, conn)
-    _require_edit(request, collection, lang)
+    _require_edit(request, collection, lang, conn)
     remove_recipe_from_collection(collection_id, recipe_id, conn=conn)
     return {"removed": True}
 
@@ -304,7 +417,9 @@ async def api_recipe_membership(
 
     lang = _resolve_request_lang(request)
     recipe_id = _recipe_id_or_404(slug, lang, conn)
-    collections = get_collections_for_recipe(int(str(user["id"])), recipe_id, conn=conn)
+    uid = _effective_user_id(request, conn)
+    assert uid is not None
+    collections = get_collections_for_recipe(uid, recipe_id, conn=conn)
     return [
         {
             "id": c["id"],
@@ -330,7 +445,7 @@ async def api_toggle_recipe_membership(
     lang = _resolve_request_lang(request)
     recipe_id = _recipe_id_or_404(slug, lang, conn)
     collection = _collection_or_404(collection_id, lang, conn)
-    _require_edit(request, collection, lang)
+    _require_edit(request, collection, lang, conn)
     if is_recipe_in_collection(collection_id, recipe_id, conn=conn):
         remove_recipe_from_collection(collection_id, recipe_id, conn=conn)
         return {"in_collection": False}

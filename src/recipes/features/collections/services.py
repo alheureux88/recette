@@ -280,6 +280,18 @@ def get_collections_for_recipe(
         return results
 
 
+def get_collection_recipe_ids(
+    collection_id: int, conn: sqlite3.Connection | None = None
+) -> list[int]:
+    """Return the recipe IDs of a collection, in added order."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
+            "SELECT recipe_id FROM collection_recipes WHERE collection_id = ? ORDER BY added_at ASC",
+            (collection_id,),
+        ).fetchall()
+        return [int(str(row["recipe_id"])) for row in rows]
+
+
 def get_collection_recipes(
     collection_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
 ) -> list[JsonDict]:

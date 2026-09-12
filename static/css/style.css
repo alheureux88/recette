@@ -3472,6 +3472,42 @@ span.shopping-item-check.checked {
     overflow-x: auto;
     padding-bottom: 0.5rem;
     scroll-snap-type: x mandatory;
+    flex: 1;
+    min-width: 0;
+}
+.collection-carousel-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.collection-carousel-btn {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0 0.15rem;
+}
+.collection-carousel-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent-dk);
+}
+.collection-carousel-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.collection-carousel-btn[hidden] {
+    display: none;
+}
+@media (hover: none) {
+    .collection-carousel-btn {
+        display: none;
+    }
 }
 .collection-card {
     flex: 0 0 260px;
@@ -3676,6 +3712,34 @@ span.shopping-item-check.checked {
     height: auto;
     padding: 0.35rem 0.8rem;
     font-size: 0.85rem;
+}
+
+/* Collections : modale (bascule sur les classes .shopping-modal-*) */
+.collection-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.collection-modal-header h2 {
+    margin-bottom: 0;
+}
+.collection-modal-x {
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.collection-modal-x:hover {
+    color: var(--text);
+    border-color: var(--accent);
 }
 
 /* Bouton "Ajouter à une collection" (élément <button> du style .btn-cook) */

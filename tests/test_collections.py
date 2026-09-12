@@ -22,7 +22,13 @@ from recipes.features.collections.services import (
     set_featured,
     update_collection,
 )
-from recipes.shared.db import get_conn, get_recipe, init_db, upsert_recipe
+from recipes.shared.db import (
+    get_conn,
+    get_recipe,
+    init_db,
+    sync_recipe_tags,
+    upsert_recipe,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +66,12 @@ def as_user(client, monkeypatch):
 @pytest.fixture()
 def as_other(client, monkeypatch):
     return _make_user(client, monkeypatch, 2, [])
+
+
+@pytest.fixture()
+def as_ghost(client, monkeypatch):
+    """Session with a user ID that has no `users` row (stale login)."""
+    return _make_user(client, monkeypatch, 999, [])
 
 
 @pytest.fixture()
@@ -234,6 +246,8 @@ class TestCollectionPages:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "Noël" in resp.text
+        assert "collection-carousel-prev" in resp.text
+        assert "collection-carousel-next" in resp.text
 
     def test_homepage_hides_unfeatured(self, client):
         collection = create_collection(1, "Noël")
@@ -265,6 +279,7 @@ class TestCollectionApi:
         recipe_id = _insert_sample()
         created = as_user.post("/api/collections", json={"name": "Noël", "description": "Fêtes"})
         assert created.status_code == 201
+        assert created.json()["description"] == "Fêtes"
         collection_id = created.json()["id"]
 
         membership = as_user.get(f"/api/recipes/{_slug(recipe_id)}/collections")
@@ -281,6 +296,29 @@ class TestCollectionApi:
     def test_create_requires_name(self, as_user):
         resp = as_user.post("/api/collections", json={"name": "  "})
         assert resp.status_code == 422
+
+    def test_stale_session_self_heals(self, as_ghost):
+        """A session ID with no `users` row must not 500 on create (FK)."""
+        created = as_ghost.post("/api/collections", json={"name": "Noël"})
+        assert created.status_code == 201
+        slug = created.json()["slug"]
+        assert as_ghost.get(f"/collections/{slug}").status_code == 200
+
+    def test_recipe_modal_js_is_valid(self, as_user):
+        """No raw apostrophe inside the modal JS (would kill the <script>)."""
+        recipe_id = _insert_sample()
+        resp = as_user.get(f"/recipe/{_slug(recipe_id)}")
+        assert resp.status_code == 200
+        assert "escapeHtml(STR.emptyMine)" in resp.text
+        assert "'<p class=\"empty\">' + '" not in resp.text
+        # Apostrophe unicode-échappée par tojson : pas de SyntaxError navigateur.
+        assert "n\\u0027avez pas encore" in resp.text
+        # La modale permet de saisir le petit texte à la création.
+        assert "collection-new-desc" in resp.text
+        # Plusieurs façons de quitter : ✕, clic hors modale, Échap.
+        assert "collection-modal-close" in resp.text
+        assert "e.target === modal" in resp.text
+        assert "'Escape'" in resp.text
 
     def test_stranger_cannot_modify(self, as_other):
         collection = create_collection(1, "Noël")
@@ -344,3 +382,109 @@ class TestCollectionAdmin:
         delete = as_admin.post(f"/admin/collections/{collection_id}/delete", follow_redirects=False)
         assert delete.status_code == 303
         assert get_collection_by_slug("noel") is None
+
+
+# ---------------------------------------------------------------------------
+# Scoped search + filters
+# ---------------------------------------------------------------------------
+
+
+def _insert_dessert():
+    return upsert_recipe(
+        {
+            "title": "Gâteau Chocolat",
+            "description": "Dessert festif",
+            "category": "dessert",
+            "source_file": "/recipes/gateau.docx",
+            "file_hash": "bbb222",
+            "file_modified_at": "2024-06-15T10:30:00",
+        }
+    )
+
+
+def _insert_outsider():
+    return upsert_recipe(
+        {
+            "title": "Poulet Curry",
+            "description": "Épicé",
+            "source_file": "/recipes/curry.docx",
+            "file_hash": "ccc333",
+            "file_modified_at": "2024-06-15T10:30:00",
+        }
+    )
+
+
+def _dessert_category_id() -> int:
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM categories WHERE name = 'dessert'").fetchone()
+        assert row is not None
+        return int(row["id"])
+
+
+class TestCollectionSearch:
+    def _site_collection(self):
+        poulet = _insert_sample()
+        gateau = _insert_dessert()
+        _insert_outsider()
+        sync_recipe_tags(poulet, {"origin": ["francais"]})
+        collection = create_collection(1, "Noël")
+        collection_id = int(str(collection["id"]))
+        add_recipe_to_collection(collection_id, poulet)
+        add_recipe_to_collection(collection_id, gateau)
+        promote_to_site(collection_id)
+        return str(collection["slug"])
+
+    def test_detail_page_has_filter_hooks(self, client):
+        slug = self._site_collection()
+        resp = client.get(f"/collections/{slug}")
+        assert resp.status_code == 200
+        assert 'id="filter-panel"' in resp.text
+        assert f"/collections/{slug}/search" in resp.text
+
+    def test_search_scoped_to_members(self, client):
+        slug = self._site_collection()
+        resp = client.get(f"/collections/{slug}/search", params={"q": "poulet"})
+        assert resp.status_code == 200
+        assert "Poulet Rôti" in resp.text
+        # Membre aussi, mais ne matche pas la recherche.
+        assert "Gâteau Chocolat" not in resp.text
+        # Matche la recherche mais n'est pas membre.
+        assert "Poulet Curry" not in resp.text
+
+    def test_category_filter(self, client):
+        slug = self._site_collection()
+        resp = client.get(
+            f"/collections/{slug}/search", params={"category": str(_dessert_category_id())}
+        )
+        assert resp.status_code == 200
+        assert "Gâteau Chocolat" in resp.text
+        assert "Poulet Rôti" not in resp.text
+
+    def test_tag_filter(self, client):
+        slug = self._site_collection()
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT t.id FROM tags t JOIN tag_families tf ON t.family_id = tf.id "
+                "WHERE tf.name = 'origin' AND t.name = 'francais'"
+            ).fetchone()
+            assert row is not None
+            tag_id = int(row["id"])
+        resp = client.get(f"/collections/{slug}/search", params={"tags": str(tag_id)})
+        assert resp.status_code == 200
+        assert "Poulet Rôti" in resp.text
+        assert "Gâteau Chocolat" not in resp.text
+
+    def test_search_private_hidden_from_stranger(self, as_other):
+        poulet = _insert_sample()
+        collection = create_collection(1, "Noël")
+        add_recipe_to_collection(int(str(collection["id"])), poulet)
+        resp = as_other.get(f"/collections/{collection['slug']}/search")
+        assert resp.status_code == 404
+
+    def test_search_private_visible_to_owner(self, as_user):
+        poulet = _insert_sample()
+        collection = create_collection(1, "Noël")
+        add_recipe_to_collection(int(str(collection["id"])), poulet)
+        resp = as_user.get(f"/collections/{collection['slug']}/search", params={"q": "poulet"})
+        assert resp.status_code == 200
+        assert "Poulet Rôti" in resp.text

@@ -46,6 +46,11 @@
 
 <script>
 (function () {
+    var STR = {
+        saveError: {{ _('admin.alert_save_error')|tojson }},
+        shareCopied: {{ _('collections.share_link_copied')|tojson }},
+        confirmDelete: {{ _('collections.confirm_delete')|tojson }}
+    };
     var createForm = document.getElementById('collection-create-form');
     if (createForm) {
         createForm.addEventListener('submit', function (e) {
@@ -63,7 +68,7 @@
             }).then(function (data) {
                 if (data) window.location.href = '/collections/' + data.slug;
             }).catch(function () {
-                alert('{{ _('admin.alert_save_error') }}');
+                alert(STR.saveError);
             });
         });
     }
@@ -71,7 +76,7 @@
     document.querySelectorAll('.collection-share-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var url = window.location.origin + '/collections/partage/' + btn.dataset.token;
-            function done() { alert('{{ _('collections.share_link_copied') }}'); }
+            function done() { alert(STR.shareCopied); }
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(url).then(done, function () {
                     window.prompt(url, url);
@@ -84,13 +89,13 @@
 
     document.querySelectorAll('.collection-delete-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (!confirm('{{ _('collections.confirm_delete') }}')) return;
+            if (!confirm(STR.confirmDelete)) return;
             fetch('/api/collections/' + btn.dataset.id, { method: 'DELETE' }).then(function (resp) {
                 if (resp.redirected) { window.location.href = resp.url; return; }
                 if (!resp.ok) throw new Error('Failed');
                 window.location.reload();
             }).catch(function () {
-                alert('{{ _('admin.alert_save_error') }}');
+                alert(STR.saveError);
             });
         });
     });

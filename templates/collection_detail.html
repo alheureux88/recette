@@ -37,13 +37,51 @@
 
 <p class="collection-card-count">{{ ngettext('collections.recipes_count_one', 'collections.recipes_count_other', recipes|length) }}</p>
 
+{% if not is_shared_view %}
+<div class="search-bar">
+    <input
+        type="search"
+        name="q"
+        placeholder="{{ _('home.search_placeholder') }}"
+        value=""
+        hx-get="/collections/{{ collection.slug }}/search"
+        hx-trigger="input changed delay:300ms, search"
+        hx-target="#recipe-grid"
+        hx-include="[name='tags'], [name='category'], [name='account']"
+        autocomplete="off"
+    >
+</div>
+
+<button type="button" class="filter-toggle" id="filter-toggle" aria-expanded="false" aria-controls="filter-panel">
+    <span class="filter-toggle-icon" aria-hidden="true">⚙</span>
+    <span>{{ _('home.filters_button') }}</span>
+    <span class="filter-count" id="filter-count" hidden>0</span>
+</button>
+
+<div class="index-layout">
+    {% with search_url="/collections/" ~ collection.slug ~ "/search" %}
+        {% include "partials/recipe_filter_panel.html" %}
+    {% endwith %}
+
+    <div class="recipe-results">
+        <div id="recipe-grid">
+            {% include "partials/recipe_cards.html" %}
+        </div>
+    </div>
+</div>
+
+<div class="filter-backdrop" id="filter-backdrop" hidden></div>
+{% else %}
 <div id="recipe-grid">
     {% include "partials/recipe_cards.html" %}
 </div>
+{% endif %}
 
 {% if can_edit_collection and not is_shared_view and recipes %}
 <script>
 (function () {
+    var STR_REMOVE = {{ _('collections.remove_recipe')|tojson }};
+    var STR_ERROR = {{ _('admin.alert_save_error')|tojson }};
     document.querySelectorAll('#recipe-grid .recipe-card-wrapper').forEach(function (wrapper) {
         var link = wrapper.querySelector('a.recipe-card');
         if (!link) return;
@@ -52,7 +90,7 @@
         btn.type = 'button';
         btn.className = 'collection-remove-btn';
         btn.dataset.slug = slug;
-        btn.title = '{{ _('collections.remove_recipe') }}';
+        btn.title = STR_REMOVE;
         btn.textContent = '×';
         btn.addEventListener('click', function (ev) {
             ev.preventDefault();
@@ -64,7 +102,7 @@
                 if (!resp.ok) throw new Error('Failed');
                 window.location.reload();
             }).catch(function () {
-                alert('{{ _('admin.alert_save_error') }}');
+                alert(STR_ERROR);
             });
         });
         wrapper.appendChild(btn);
@@ -76,6 +114,11 @@
 {% if can_edit_collection and not is_shared_view %}
 <script>
 (function () {
+    var STR = {
+        saveError: {{ _('admin.alert_save_error')|tojson }},
+        shareCopied: {{ _('collections.share_link_copied')|tojson }},
+        confirmDelete: {{ _('collections.confirm_delete')|tojson }}
+    };
     var renameForm = document.getElementById('collection-rename-form');
     if (renameForm) {
         renameForm.addEventListener('submit', function (e) {
@@ -94,7 +137,7 @@
             }).then(function (data) {
                 if (data) window.location.href = '/collections/' + data.slug;
             }).catch(function () {
-                alert('{{ _('admin.alert_save_error') }}');
+                alert(STR.saveError);
             });
         });
     }
@@ -104,7 +147,7 @@
             var url = window.location.origin + '/collections/partage/' + shareBtn.dataset.token;
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(url).then(function () {
-                    alert('{{ _('collections.share_link_copied') }}');
+                    alert(STR.shareCopied);
                 }, function () { window.prompt(url, url); });
             } else {
                 window.prompt(url, url);
@@ -114,13 +157,13 @@
     var deleteBtn = document.getElementById('collection-delete-btn');
     if (deleteBtn) {
         deleteBtn.addEventListener('click', function () {
-            if (!confirm('{{ _('collections.confirm_delete') }}')) return;
+            if (!confirm(STR.confirmDelete)) return;
             fetch('/api/collections/' + deleteBtn.dataset.id, { method: 'DELETE' }).then(function (resp) {
                 if (resp.redirected) { window.location.href = resp.url; return; }
                 if (!resp.ok) throw new Error('Failed');
                 window.location.href = '/collections';
             }).catch(function () {
-                alert('{{ _('admin.alert_save_error') }}');
+                alert(STR.saveError);
             });
         });
     }
