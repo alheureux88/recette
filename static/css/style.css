@@ -1626,6 +1626,19 @@ main.admin-main {
     z-index: 1000;
 }
 
+/* Tooltips Tabulator (survol des en-têtes) : le CSS Tabulator impose un
+   fond blanc sans couleur de texte — le texte clair hérité du body est
+   illisible en mode sombre. Variables de thème pour les deux modes. */
+.tabulator-popup-container:has(> .tabulator-tooltip) {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+}
+.tabulator-tooltip {
+    background: var(--surface);
+    color: var(--text);
+}
+
 /* Tag inline editor popup */
 .tag-editor {
     position: absolute;

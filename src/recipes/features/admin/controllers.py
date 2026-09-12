@@ -34,6 +34,7 @@ from recipes.features.recipes.services import (
     bulk_update_category,
     bulk_update_tags,
     get_all_recipes_admin,
+    retag_recipe,
 )
 from recipes.features.shopping.services import (
     delete_shopping_list,
@@ -59,6 +60,7 @@ from recipes.shared.db import (
 from recipes.shared.i18n import gettext
 from recipes.shared.models import (
     BulkCategoryUpdate,
+    BulkRetagUpdate,
     BulkTagsUpdate,
     InlineCategoryUpdate,
     InlineTagsUpdate,
@@ -101,14 +103,21 @@ def _admin_table_context(request: Request, conn: sqlite3.Connection) -> JsonDict
 
 def _recipe_row(recipe: JsonDict) -> JsonDict:
     """Flatten a recipe for the admin table (Tabulator)."""
+    from recipes.shared.tagger import TAGGER_VERSION
+
     raw_category = recipe.get("category")
     category = raw_category if isinstance(raw_category, dict) else None
     raw_tags = recipe.get("tags")
     tags = [t for t in raw_tags if isinstance(t, dict)] if isinstance(raw_tags, list) else []
+    raw_version = recipe.get("tagger_version")
+    tagger_version = int(str(raw_version)) if raw_version is not None else None
     return {
         "id": int(str(recipe["id"])),
         "slug": str(recipe.get("slug") or recipe["id"]),
         "title": str(recipe["title"]),
+        "source_url": str(recipe.get("source_url") or ""),
+        "source": str(recipe.get("source") or ""),
+        "date": str(recipe.get("date") or ""),
         "provenance": str(recipe["provenance"]) if recipe.get("provenance") else "",
         "created_at": str(recipe["created_at"]) if recipe.get("created_at") else "",
         "file_modified_at": str(recipe["file_modified_at"])
@@ -128,6 +137,9 @@ def _recipe_row(recipe: JsonDict) -> JsonDict:
         "source_missing": bool(recipe.get("source_missing")),
         "force_visible": bool(recipe.get("force_visible")),
         "favorite_count": int(str(recipe["favorite_count"])) if recipe.get("favorite_count") else 0,
+        "tagger_version": tagger_version,
+        "tagger_model": str(recipe.get("tagger_model") or ""),
+        "tagger_outdated": tagger_version is None or tagger_version != TAGGER_VERSION,
     }
 
 
@@ -307,6 +319,7 @@ async def admin_recipes_data(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> JsonDict:
     """Data for the admin table: recipes, categories, and tags."""
+    from recipes.shared.tagger import TAGGER_VERSION
     from recipes.shared.web import _resolve_request_lang
 
     lang = _resolve_request_lang(request)
@@ -314,7 +327,56 @@ async def admin_recipes_data(
         "recipes": [_recipe_row(r) for r in get_all_recipes_admin(lang=lang, conn=conn)],
         "categories": get_all_categories(only_used=False, lang=lang, conn=conn),
         "tags": get_existing_tags_for_prompt(lang=lang, conn=conn),
+        "tagger_version": TAGGER_VERSION,
     }
+
+
+@router.post("/retag/{recipe_id}")
+async def admin_retag_recipe(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    recipe_id: int = Path(gt=0),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> JsonDict:
+    """Relance le tagger actuel sur une recette (re-download Dropbox)."""
+    from recipes.shared.tagger import TAGGER_VERSION
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
+    try:
+        result = retag_recipe(recipe_id, conn=conn)
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang)) from None
+        log.exception("Retag failed for recipe #%s", recipe_id)
+        raise HTTPException(status_code=502, detail=str(e)) from None
+    except Exception as e:
+        log.exception("Retag failed for recipe #%s", recipe_id)
+        raise HTTPException(status_code=502, detail=str(e)) from None
+    # Marque le flag dans la réponse pour le rafraîchissement optimiste.
+    raw_version = result.get("tagger_version")
+    result["tagger_outdated"] = raw_version is None or int(str(raw_version)) != TAGGER_VERSION
+    return {"ok": True, **result}
+
+
+@router.post("/retag-bulk")
+async def admin_retag_bulk(
+    data: BulkRetagUpdate,
+    conn: sqlite3.Connection = Depends(get_db),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> JsonDict:
+    """Retag en masse : relance le tagger sur chaque recette listée."""
+    results: list[JsonDict] = []
+    updated = 0
+    for rid in data.ids:
+        try:
+            result = retag_recipe(int(rid), conn=conn)
+            updated += 1
+            results.append({"id": int(rid), "ok": True, **result})
+        except Exception as e:
+            log.warning("Bulk retag failed for recipe #%s: %s", rid, e)
+            results.append({"id": int(rid), "ok": False, "error": str(e)})
+    return {"ok": True, "updated": updated, "results": results}
 
 
 @router.get("/files.json")
@@ -823,6 +885,8 @@ async def admin_edit_save(
         "servings": parse_quantity(form.get("servings")),
         "category": str(form.get("category") or "").strip() or None,
         "source_url": str(form.get("source_url") or "").strip() or None,
+        "source": str(form.get("source") or "").strip() or None,
+        "date": str(form.get("date") or "").strip() or None,
     }
 
     if not update_recipe_manual(recipe_id, data, conn=conn):

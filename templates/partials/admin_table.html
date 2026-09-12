@@ -3,6 +3,10 @@
         <button type="button" class="filter-chip active" data-filter-key="">{{ _('admin.filter_all') }}</button>
         <button type="button" class="filter-chip" data-filter-key="no_tags">{{ _('admin.filter_no_tags') }}</button>
         <button type="button" class="filter-chip" data-filter-key="no_category">{{ _('admin.filter_no_category') }}</button>
+        <button type="button" class="filter-chip" data-filter-key="no_url">{{ _('admin.filter_no_url') }}</button>
+        <button type="button" class="filter-chip" data-filter-key="no_source">{{ _('admin.filter_no_source') }}</button>
+        <button type="button" class="filter-chip" data-filter-key="no_date">{{ _('admin.filter_no_date') }}</button>
+        <button type="button" class="filter-chip" data-filter-key="outdated_tagger">{{ _('admin.filter_outdated_tagger') }}</button>
         {% for fam in all_tag_families %}
         <button type="button" class="filter-chip" data-filter-key="no_family:{{ fam.name }}">{{ _('admin.filter_no_family', family=fam.display_name) }}</button>
         {% endfor %}
@@ -45,6 +49,7 @@
             </select>
         </label>
         <button type="button" class="btn-cancel" onclick="recetteBulkTags('remove')">{{ _('admin.bulk_remove') }}</button>
+        <button type="button" class="btn-retry" onclick="recetteBulkRetag()">{{ _('admin.bulk_retag') }}</button>
     </div>
 </div>
 <div id="recipes-table"></div>
@@ -61,6 +66,8 @@
 <script>
     window.recetteI18n = {
         tab_recipe: {{ _('admin.tab_recipe')|tojson }},
+        tab_source: {{ _('admin.tab_source')|tojson }},
+        tab_date: {{ _('admin.tab_date')|tojson }},
         orphans_title: {{ _('admin.orphans_title')|tojson }},
         tab_provenance: {{ _('admin.tab_provenance')|tojson }},
         tab_ingestion: {{ _('admin.tab_ingestion')|tojson }},
@@ -68,6 +75,10 @@
         tab_category: {{ _('admin.tab_category')|tojson }},
         tab_tags: {{ _('admin.tab_tags')|tojson }},
         tab_manual: {{ _('admin.tab_manual')|tojson }},
+        tab_tagger: {{ _('admin.tab_tagger')|tojson }},
+        tagger_outdated: {{ _('admin.tagger_outdated')|tojson }},
+        action_retag: {{ _('admin.action_retag')|tojson }},
+        confirm_retag: {{ _('admin.confirm_retag')|tojson }},
         tab_favorites: {{ _('admin.tab_favorites')|tojson }},
         empty_recipes: {{ _('admin.empty_recipes')|tojson }},
         empty_blacklist: {{ _('admin.empty_blacklist')|tojson }},
@@ -90,6 +101,8 @@
         confirm_unblacklist: {{ _('admin.confirm_unblacklist')|tojson }},
         confirm_retry: {{ _('admin.confirm_retry')|tojson }},
         confirm_select_first: {{ _('admin.confirm_select_first')|tojson }},
+        confirm_bulk_retag: {{ _('admin.confirm_bulk_retag')|tojson }},
+        alert_retag_error: {{ _('admin.alert_retag_error')|tojson }},
         confirm_pick_tag: {{ _('admin.confirm_pick_tag')|tojson }},
         bulk_add_action: {{ _('admin.bulk_add_action')|tojson }},
         bulk_remove_action: {{ _('admin.bulk_remove_action')|tojson }},
@@ -128,11 +141,19 @@
             table.setFilter(function (data) { return !data.tags || data.tags.length === 0; });
         } else if (key === "no_category") {
             table.setFilter(function (data) { return !data.category_name; });
+        } else if (key === "no_url") {
+            table.setFilter(function (data) { return !data.source_url; });
+        } else if (key === "no_source") {
+            table.setFilter(function (data) { return !data.source; });
+        } else if (key === "no_date") {
+            table.setFilter(function (data) { return !data.date; });
         } else if (key && key.indexOf("no_family:") === 0) {
             var fam = key.slice("no_family:".length);
             table.setFilter(function (data) {
                 return !(data.tags || []).some(function (t) { return t.family === fam; });
             });
+        } else if (key === "outdated_tagger") {
+            table.setFilter(function (data) { return !!data.tagger_outdated; });
         } else {
             table.clearFilter();
         }
@@ -176,6 +197,34 @@
     window.recetteOrphanHide = function (id) {
         if (!confirm(window.recetteI18n.confirm_hide)) return;
         htmx.ajax("POST", "/admin/orphans/" + id + "/hide", "#admin-content");
+    };
+
+    window.recetteRetag = async function (id) {
+        if (!confirm(window.recetteI18n.confirm_retag)) return;
+        try {
+            await recettePostJson("/admin/retag/" + id, {});
+        } catch (e) {
+            alert(window.recetteI18n.alert_retag_error);
+            return;
+        }
+        recetteRefreshTable();
+    };
+
+    window.recetteBulkRetag = async function () {
+        var table = window.__recetteTable;
+        if (!table) return;
+        var ids = table.getSelectedData().map(function (r) { return r.id; });
+        if (!ids.length) { alert(window.recetteI18n.confirm_select_first); return; }
+        var msg = window.recetteI18n.confirm_bulk_retag.replace('{n}', ids.length);
+        if (!confirm(msg)) return;
+        try {
+            await recettePostJson("/admin/retag-bulk", { ids: ids });
+        } catch (e) {
+            alert(window.recetteI18n.alert_retag_error);
+            return;
+        }
+        table.deselectRow();
+        recetteRefreshTable();
     };
 
     window.recetteCellSaved = async function (cell) {
@@ -307,6 +356,7 @@
 
         var table = new Tabulator(el, {
             layout: "fitColumns",
+            columnDefaults: { headerTooltip: true },
             placeholder: window.recetteI18n.empty_recipes,
             selectableRows: true,
             index: "id",
@@ -341,6 +391,22 @@
                         return '<a href="/recipe/' + d.slug + '" target="_blank">'
                             + recetteEscape(d.title) + "</a>" + badge;
                     },
+                },
+                {
+                    title: window.recetteI18n.tab_source,
+                    field: "source",
+                    width: 130,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) { return recetteEscape(cell.getValue()) || "—"; },
+                },
+                {
+                    title: window.recetteI18n.tab_date,
+                    field: "date",
+                    width: 90,
+                    sorter: "string",
+                    headerFilter: "input",
+                    formatter: function (cell) { return recetteEscape(cell.getValue()) || "—"; },
                 },
                 {
                     title: window.recetteI18n.tab_provenance,
@@ -406,6 +472,27 @@
                     cellEdited: function (cell) { recetteCellSaved(cell); },
                 },
                 {
+                    title: window.recetteI18n.tab_tagger,
+                    field: "tagger_version",
+                    width: 130,
+                    sorter: "number",
+                    headerFilter: "number",
+                    formatter: function (cell) {
+                        var d = cell.getData();
+                        var label = (d.tagger_version != null) ? "v" + d.tagger_version : "—";
+                        var html = recetteEscape(label);
+                        if (d.tagger_model) {
+                            html += ' <span class="card-provenance">'
+                                + recetteEscape(d.tagger_model) + "</span>";
+                        }
+                        if (d.tagger_outdated) {
+                            html += ' <span class="admin-badge admin-badge-anon">'
+                                + recetteEscape(window.recetteI18n.tagger_outdated) + "</span>";
+                        }
+                        return html;
+                    },
+                },
+                {
                     title: window.recetteI18n.tab_manual,
                     field: "manually_edited",
                     width: 85,
@@ -426,12 +513,15 @@
                 {
                     title: "",
                     headerSort: false,
-                    width: 190,
+                    width: 270,
                     formatter: function (cell) {
                         var d = cell.getData();
                         return '<button class="btn-edit" onclick="event.stopPropagation();'
                             + 'recetteAdminEdit(' + d.id + ')">'
                             + recetteEscape(window.recetteI18n.action_edit) + '</button>'
+                            + '<button class="btn-retry" onclick="event.stopPropagation();'
+                            + 'recetteRetag(' + d.id + ')">'
+                            + recetteEscape(window.recetteI18n.action_retag) + '</button>'
                             + '<button class="btn-blacklist" onclick="event.stopPropagation();'
                             + 'recetteAdminBlacklist(' + d.id + ')">'
                             + recetteEscape(window.recetteI18n.action_blacklist) + '</button>';
@@ -490,6 +580,7 @@
             document.getElementById("blacklist-table"),
             {
                 layout: "fitColumns",
+                columnDefaults: { headerTooltip: true },
                 placeholder: window.recetteI18n.empty_blacklist,
                 index: "path",
                 initialSort: [{ column: "date", dir: "desc" }],
@@ -519,6 +610,7 @@
 
         window.__recetteFailedTable = new Tabulator(document.getElementById("failed-table"), {
             layout: "fitColumns",
+            columnDefaults: { headerTooltip: true },
             placeholder: window.recetteI18n.empty_failed,
             index: "path",
             initialSort: [{ column: "date", dir: "desc" }],
@@ -557,6 +649,7 @@
 
         window.__recetteOrphansTable = new Tabulator(document.getElementById("orphans-table"), {
             layout: "fitColumns",
+            columnDefaults: { headerTooltip: true },
             placeholder: window.recetteI18n.empty_orphans,
             index: "id",
             ajaxURL: "/admin/files.json",

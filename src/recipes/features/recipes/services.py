@@ -1,7 +1,9 @@
 """Recipes feature — database service for recipe-related operations."""
 
+import hashlib
 import sqlite3
 from contextlib import nullcontext
+from pathlib import Path
 
 from recipes.shared.db import (
     _load_translation,
@@ -216,3 +218,85 @@ def bulk_update_tags(
             _conn.execute("UPDATE recipes SET manually_edited = 1 WHERE id = ?", (rid,))
             count += 1
         return count
+
+
+def retag_recipe(recipe_id: int, conn: sqlite3.Connection | None = None) -> JsonDict:
+    """Retag une recette en re-téléchargeant son fichier source Dropbox.
+
+    Relance le tagger actuel (prompt + modèle configuré) sur le texte
+    d'origine, puis écrase la recette — y compris si elle était marquée
+    `manually_edited` (le retag explicite resynchronise avec la source,
+    donc le flag est remis à 0).
+
+    Lève `ValueError` si la recette est introuvable et propage les erreurs
+    Dropbox / parsing / LLM à l'appelant.
+    """
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
+            "SELECT id, source_file, connection_id, dropbox_url FROM recipes WHERE id = ?",
+            (recipe_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Recipe #{recipe_id} not found")
+        source_file = str(row["source_file"])
+        raw_connection = row["connection_id"]
+        connection_id = int(str(raw_connection)) if raw_connection is not None else None
+        dropbox_url = str(row["dropbox_url"]) if row["dropbox_url"] else None
+
+    # Imports tardifs : poller dépend de admin.services, on évite un cycle.
+    from recipes.shared.parsers import extract_text
+    from recipes.shared.tagger import tag_recipe
+
+    if connection_id is None:
+        from recipes.shared.poller import _get_dropbox_client, download_file
+        from recipes.shared.poller import extract_title_from_filename as _title_from
+
+        dbx = _get_dropbox_client()
+        dropbox_path = source_file
+    else:
+        from recipes.features.admin.services import get_dropbox_connection_credentials
+        from recipes.shared.poller import download_file, get_connection_client
+        from recipes.shared.poller import extract_title_from_filename as _title_from
+
+        creds = get_dropbox_connection_credentials(connection_id, conn=conn)
+        if creds is None:
+            raise ValueError(f"Dropbox connection #{connection_id} not found")
+        dbx = get_connection_client(creds)
+        prefix = f"account:{connection_id}:"
+        dropbox_path = source_file[len(prefix) :] if source_file.startswith(prefix) else source_file
+
+    filename = Path(dropbox_path).name
+    content = download_file(dbx, dropbox_path)
+    raw_text = extract_text(filename, content)
+    if not raw_text.strip():
+        raise ValueError(f"Empty text extracted from {filename}")
+    structured = tag_recipe(raw_text, default_title=_title_from(filename))
+    structured["source_file"] = source_file
+    structured["connection_id"] = connection_id
+    structured["file_hash"] = hashlib.sha256(content).hexdigest()
+    structured["dropbox_url"] = dropbox_url
+
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        from recipes.shared.db import sync_recipe_tags, upsert_recipe
+
+        new_id = upsert_recipe(structured, conn=_conn)
+        tags = structured.get("tags", {})
+        if isinstance(tags, dict):
+            sync_recipe_tags(
+                new_id,
+                {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)},
+                conn=_conn,
+            )
+        _conn.execute(
+            "UPDATE recipes SET manually_edited = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (new_id,),
+        )
+        updated = _conn.execute(
+            "SELECT id, tagger_version, tagger_model FROM recipes WHERE id = ?", (new_id,)
+        ).fetchone()
+        assert updated is not None
+        return {
+            "id": int(updated["id"]),
+            "tagger_version": updated["tagger_version"],
+            "tagger_model": updated["tagger_model"],
+        }

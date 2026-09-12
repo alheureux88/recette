@@ -59,6 +59,12 @@ class TestBuildSystemPrompt:
         assert "Catégories disponibles" in prompt
         assert "Available categories" in prompt
 
+    def test_contains_source_and_date_fields(self):
+        prompt = build_system_prompt()
+        assert '"source_url"' in prompt
+        assert '"source"' in prompt
+        assert '"date"' in prompt
+
     def test_contains_bilingual_json_format_instructions(self):
         prompt = build_system_prompt()
         assert '"title_fr"' in prompt
@@ -151,6 +157,50 @@ class TestTagRecipe:
         assert result["lang_fr"]["ingredients"][1]["unit"] == "g"
         # And the English payload the English ones.
         assert result["lang_en"]["ingredients"][0]["food"] == "apples"
+
+    def test_source_and_date_passthrough_and_cleanup(self):
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Gratin",
+                "title_en": "Gratin",
+                "tags": {},
+                "source_url": "https://example.com/gratin",
+                "source": "  Tante Marie  ",
+                "date": "1998",
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
+
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert result["source_url"] == "https://example.com/gratin"
+        assert result["source"] == "Tante Marie"
+        assert result["date"] == "1998"
+
+    def test_source_and_date_empty_become_none(self):
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Gratin",
+                "title_en": "Gratin",
+                "tags": {},
+                "source_url": "not-a-url",
+                "source": "   ",
+                "date": 1998,
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
+
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert result["source_url"] is None
+        assert result["source"] is None
+        assert result["date"] is None
 
     def test_falls_back_to_single_language(self):
         """When the LLM returns the legacy single-language shape, both

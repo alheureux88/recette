@@ -22,6 +22,12 @@ from recipes.shared.units import parse_quantity
 
 log = logging.getLogger(__name__)
 
+# Version du tagger : INCRÉMENTER à chaque modification du prompt
+# (build_system_prompt), du parsing/normalisation (tag_recipe et helpers)
+# ou du modèle par défaut. Stockée par recette (recipes.tagger_version)
+# pour repérer les recettes à retagger depuis l'admin.
+TAGGER_VERSION = 1
+
 _client: Any = None
 _client_lock = threading.Lock()
 _session_id: str = str(uuid.uuid4())
@@ -254,9 +260,15 @@ def build_system_prompt() -> str:
             '    "cooking_method": ["braise"]',
             "  },",
             '  "source_url": "https://..." ou null',
+            '  "source": "nom de la personne ou du site, sans URL, ou null",',
+            '  "date": "année ou date de publication, ou null",',
             "}",
             "",
             "Pour source_url : si le texte contient une URL vers un site de recettes, extrais-la. Sinon, retourne null.",
+            "Pour source : si le texte mentionne l'auteur ou le site d'origine (nom de personne,",
+            "blog, livre, magazine — sans URL). Souvent un nom seul a la fin de la recette, extrais ce nom. Sinon, retourne null.",
+            "Pour date : si le texte mentionne une année ou une date de publication, extrais-la",
+            '(souvent une simple année comme "1998"). Sinon, retourne null.',
             "",
             "Retourne UNIQUEMENT du JSON valide. Pas de markdown, pas d'explication, pas de blocs de code.",
         ]
@@ -277,7 +289,11 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> JsonDict:
             "tags": {"family": [names]},
             "category": "plat-principal" | None,
             "source_url": "https://..." | None,
+            "source": "nom d'auteur/site" | None,
+            "date": "année/date" | None,
             "servings": 4 | None,
+            "tagger_version": TAGGER_VERSION,
+            "tagger_model": "gpt-4o-mini",
         }
     """
     system_prompt = build_system_prompt()
@@ -388,13 +404,23 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> JsonDict:
             if source_url and not (isinstance(source_url, str) and source_url.startswith("http")):
                 source_url = None
 
+            def _clean_text(value: object) -> str | None:
+                if not isinstance(value, str):
+                    return None
+                stripped = value.strip()
+                return stripped or None
+
             return {
                 "lang_fr": payload_fr,
                 "lang_en": payload_en,
                 "tags": tags,
                 "category": category,
                 "source_url": source_url,
+                "source": _clean_text(data.get("source")),
+                "date": _clean_text(data.get("date")),
                 "servings": _parse_servings(data.get("servings")),
+                "tagger_version": TAGGER_VERSION,
+                "tagger_model": model,
             }
 
         except Exception as e:

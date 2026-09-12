@@ -517,3 +517,37 @@ def test_upsert_with_missing_steps():
     recipe = get_recipe(recipe_id)
     assert recipe is not None
     assert recipe["steps"] == []
+
+
+def test_upsert_stores_source_and_date():
+    recipe_id = _insert_sample({**SAMPLE, "source": "Tante Marie", "date": "1998"})
+    row = get_recipe(recipe_id)
+    assert row is not None
+    assert row["source"] == "Tante Marie"
+    assert row["date"] == "1998"
+
+
+def test_upsert_blanks_become_none():
+    recipe_id = _insert_sample({**SAMPLE, "source": "   ", "date": ""})
+    row = get_recipe(recipe_id)
+    assert row is not None
+    assert row["source"] is None
+    assert row["date"] is None
+
+
+def test_manual_update_stores_source_and_date():
+    from recipes.shared.db import update_recipe_manual
+
+    recipe_id = _insert_sample()
+    assert update_recipe_manual(
+        recipe_id,
+        {
+            "lang": {"title": "Tarte", "description": "", "steps": [], "ingredients": []},
+            "source": "Bistro",
+            "date": "2001",
+        },
+    )
+    row = get_recipe(recipe_id)
+    assert row is not None
+    assert row["source"] == "Bistro"
+    assert row["date"] == "2001"

@@ -631,3 +631,22 @@ def test_cook_slides_i18n_keys_have_fr_and_en():
     ):
         assert gettext(key, "fr") != key
         assert gettext(key, "en") != key
+
+
+def test_recipe_detail_shows_source_and_date(client):
+    recipe_id = upsert_recipe(
+        {
+            **SAMPLE,
+            "title": "Gratin de source",
+            "source_file": "/recipes/gratin_source.docx",
+            "file_hash": "src999",
+            "source": "Tante Marie",
+            "date": "1998",
+            "source_url": "https://example.com/gratin",
+        }
+    )
+    sync_recipe_tags(recipe_id, SAMPLE["tags"])
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
+    assert "Tante Marie" in page
+    assert "1998" in page
+    assert "https://example.com/gratin" in page

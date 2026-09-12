@@ -31,3 +31,12 @@ class TestCompactMobileHeader:
         assert "header {" in mobile
         assert "padding: 0.6rem 0.75rem" in mobile
         assert ".nav-user" in mobile
+
+
+class TestTabulatorTooltipTheme:
+    def test_tooltip_uses_theme_variables(self):
+        # Fond blanc + texte hérité du body = illisible en mode sombre.
+        assert ".tabulator-tooltip" in CSS
+        tooltip = CSS.split(".tabulator-tooltip", 1)[1]
+        assert "var(--surface)" in tooltip
+        assert "var(--text)" in tooltip

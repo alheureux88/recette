@@ -27,6 +27,14 @@
             <span>{{ _('admin.field_source_url') }}</span>
             <input type="url" name="source_url" value="{{ recipe.source_url or '' }}">
         </label>
+        <label class="field">
+            <span>{{ _('admin.field_source') }}</span>
+            <input type="text" name="source" value="{{ recipe.source or '' }}">
+        </label>
+        <label class="field">
+            <span>{{ _('admin.field_date') }}</span>
+            <input type="text" name="date" value="{{ recipe.date or '' }}">
+        </label>
     </div>
 
     <label class="field">

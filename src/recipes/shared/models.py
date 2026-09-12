@@ -27,6 +27,10 @@ class BulkTagsUpdate(BaseModel):
     remove: list[str] = Field(default=[], description='Tag keys to remove as "family:name"')
 
 
+class BulkRetagUpdate(BaseModel):
+    ids: list[int] = Field(description="Recipe IDs to retag")
+
+
 class PushSubscriptionRegister(BaseModel):
     endpoint: str = Field(description="Push subscription endpoint URL")
     subscription: dict[str, Any] = Field(description="Full push subscription object")

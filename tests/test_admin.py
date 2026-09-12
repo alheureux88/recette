@@ -484,6 +484,12 @@ class TestAdminQuickFilters:
         assert "Sans étiquettes" in resp.text
         assert "Sans catégorie" in resp.text
 
+    def test_tables_have_header_tooltips(self, as_admin):
+        """Les 4 tableaux Tabulator affichent le titre complet au survol."""
+        _insert_sample()
+        page = as_admin.get("/admin").text
+        assert page.count("headerTooltip") >= 4
+
 
 class TestRecipeAdminData:
     def test_recipes_json_payload(self, as_admin):
@@ -716,3 +722,45 @@ class TestFailedFiles:
         assert resp.status_code == 200
         failed = get_failed_files()
         assert len(failed) == 0
+
+
+class TestAdminSourceDate:
+    def test_recipes_json_includes_source_fields(self, as_admin):
+        recipe_id = _insert_sample()
+        resp = as_admin.get("/admin/recipes.json")
+        assert resp.status_code == 200
+        rows = {r["id"]: r for r in resp.json()["recipes"]}
+        assert rows[recipe_id]["source"] == ""
+        assert rows[recipe_id]["date"] == ""
+        assert rows[recipe_id]["source_url"] == ""
+
+    def test_edit_form_shows_source_fields(self, as_admin):
+        recipe_id = _insert_sample()
+        page = as_admin.get(f"/admin/edit/{recipe_id}").text
+        assert 'name="source"' in page
+        assert 'name="date"' in page
+
+    def test_edit_save_persists_source_and_date(self, as_admin):
+        recipe_id = _insert_sample()
+        resp = as_admin.post(
+            f"/admin/edit/{recipe_id}",
+            data={
+                "title": "Poulet",
+                "description": "",
+                "steps": "[]",
+                "servings": "",
+                "category": "",
+                "source_url": "",
+                "source": "Bistro",
+                "date": "2001",
+                "ing_min": [],
+                "ing_max": [],
+                "ing_unit": [],
+                "ing_food": [],
+            },
+        )
+        assert resp.status_code == 200
+        recipe = get_recipe(recipe_id)
+        assert recipe is not None
+        assert recipe["source"] == "Bistro"
+        assert recipe["date"] == "2001"

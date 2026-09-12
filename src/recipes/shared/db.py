@@ -197,6 +197,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             file_modified_at DATETIME,
             source_missing INTEGER NOT NULL DEFAULT 0,
             force_visible INTEGER NOT NULL DEFAULT 0,
+            tagger_version INTEGER,
+            tagger_model TEXT,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -657,6 +659,12 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
             servings = None
         raw_connection = data.get("connection_id")
         connection_id = int(str(raw_connection)) if raw_connection is not None else None
+        tagger_version = data.get("tagger_version")
+        if isinstance(tagger_version, bool) or not isinstance(tagger_version, int):
+            tagger_version = None
+        tagger_model = data.get("tagger_model")
+        if not isinstance(tagger_model, str) or not tagger_model.strip():
+            tagger_model = None
 
         if existing:
             recipe_id = int(existing["id"])
@@ -665,7 +673,7 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                 UPDATE recipes SET
                     servings=?, category_id=?, source_url=?, dropbox_url=?, file_hash=?,
                     file_modified_at=?, connection_id=?, source_missing=0,
-                    source=?, date=?,
+                    source=?, date=?, tagger_version=?, tagger_model=?,
                     updated_at=CURRENT_TIMESTAMP
                 WHERE source_file=?
                 """,
@@ -679,6 +687,8 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                     connection_id,
                     _clean_optional_text(data.get("source")),
                     _clean_optional_text(data.get("date")),
+                    tagger_version,
+                    tagger_model,
                     data["source_file"],
                 ),
             )
@@ -688,8 +698,8 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                 INSERT INTO recipes
                     (servings, category_id, source_url, dropbox_url, source_file,
                       file_hash, file_modified_at, connection_id, source_missing,
-                      source, date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                      source, date, tagger_version, tagger_model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
                 """,
                 (
                     servings,
@@ -702,6 +712,8 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
                     connection_id,
                     _clean_optional_text(data.get("source")),
                     _clean_optional_text(data.get("date")),
+                    tagger_version,
+                    tagger_model,
                 ),
             )
             assert cur.lastrowid is not None

@@ -188,6 +188,23 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "admin.bulk_add": {"fr": "Ajouter", "en": "Add"},
     "admin.bulk_remove": {"fr": "Retirer", "en": "Remove"},
+    "admin.bulk_retag": {"fr": "Retagger la sélection", "en": "Retag selection"},
+    "admin.filter_outdated_tagger": {"fr": "Tagger dépassé", "en": "Outdated tagger"},
+    "admin.tab_tagger": {"fr": "Tagger", "en": "Tagger"},
+    "admin.action_retag": {"fr": "Retagger", "en": "Retag"},
+    "admin.tagger_outdated": {"fr": "dépassé", "en": "outdated"},
+    "admin.confirm_retag": {
+        "fr": "Relancer le tagger sur cette recette ? Son contenu actuel sera écrasé.",
+        "en": "Re-run the tagger on this recipe? Its current content will be overwritten.",
+    },
+    "admin.confirm_bulk_retag": {
+        "fr": "Relancer le tagger sur {n} recette(s) ? Leur contenu actuel sera écrasé.",
+        "en": "Re-run the tagger on {n} recipe(s)? Their current content will be overwritten.",
+    },
+    "admin.alert_retag_error": {
+        "fr": "Erreur lors du retag.",
+        "en": "Retag failed.",
+    },
     "admin.blacklist_title": {"fr": "Fichiers blacklister", "en": "Blacklisted files"},
     "admin.failed_title": {"fr": "Fichiers en erreur", "en": "Failed files"},
     "admin.orphans_title": {"fr": "Sources disparues", "en": "Missing sources"},
