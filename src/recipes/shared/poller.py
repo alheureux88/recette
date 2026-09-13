@@ -499,7 +499,7 @@ def process_file(
     )
 
     with _DB_LOCK:
-        recipe_id = upsert_recipe(structured)
+        recipe_id = upsert_recipe(structured, create_category=False)
         tags = structured.get("tags", {})
         if isinstance(tags, dict):
             sync_recipe_tags(

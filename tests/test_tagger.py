@@ -303,6 +303,47 @@ class TestTagRecipe:
 
         assert result["category"] == "plat-principal"
 
+    def test_rejects_unknown_category(self):
+        """Le LLM ne peut pas inventer de catégorie : inconnue → None."""
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Test",
+                "title_en": "Test",
+                "category": "boisson-energie",
+                "tags": {},
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
+
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert result["category"] is None
+
+    def test_accepts_display_name_alias(self):
+        recipe_json = json.dumps(
+            {
+                "title_fr": "Test",
+                "title_en": "Test",
+                "category": "Starter",
+                "tags": {},
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = self._mock_openai_response(recipe_json)
+
+        with patch("recipes.shared.tagger._get_client", return_value=mock_client):
+            result = tag_recipe("text")
+
+        assert result["category"] == "entree"
+
+    def test_prompt_forbids_new_categories(self):
+        prompt = build_system_prompt()
+        assert "Ne cree JAMAIS de nouvelle categorie" in prompt
+
     def test_rejects_invalid_source_url(self):
         recipe_json = json.dumps(
             {

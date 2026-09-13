@@ -576,3 +576,43 @@ def test_resolve_category_does_not_duplicate_display_names():
     names = [c["name"] for c in get_all_categories(only_used=False)]
     assert names.count("entree") == 1
     assert "starter" not in names
+
+
+def test_resolve_category_no_create_blocks_llm_inventions():
+    from recipes.shared.db import _resolve_category, get_all_categories, get_conn
+
+    with get_conn() as conn:
+        assert _resolve_category(conn, "boisson-energie", create=False) is None
+        conn.commit()
+
+    assert "boisson-energie" not in [c["name"] for c in get_all_categories(only_used=False)]
+
+
+def test_upsert_no_create_category_ignores_unknown():
+    """Chemin LLM : catégorie inconnue → recette sans catégorie, sans INSERT."""
+    from recipes.shared.db import get_all_categories, get_recipe, upsert_recipe
+
+    rid = upsert_recipe(
+        {
+            **SAMPLE,
+            "category": "boisson-energie",
+            "source_file": "/r/llm-blocked.docx",
+            "file_hash": "blocked1",
+        },
+        create_category=False,
+    )
+    row = get_recipe(rid)
+    assert row is not None
+    assert row["category"] is None
+    assert "boisson-energie" not in [c["name"] for c in get_all_categories(only_used=False)]
+
+
+def test_resolve_category_create_allows_admin():
+    """Chemin admin (défaut) : création manuelle toujours possible."""
+    from recipes.shared.db import _resolve_category, get_all_categories, get_conn
+
+    with get_conn() as conn:
+        new_id = _resolve_category(conn, "creation-admin-ok")
+        assert new_id is not None
+        conn.commit()
+    assert "creation-admin-ok" in [c["name"] for c in get_all_categories(only_used=False)]

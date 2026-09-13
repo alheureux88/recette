@@ -199,13 +199,21 @@ def _clean_optional_text(value: object) -> str | None:
     return stripped or None
 
 
-def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int:
+def upsert_recipe(
+    data: JsonDict,
+    conn: sqlite3.Connection | None = None,
+    create_category: bool = True,
+) -> int:
     """Insert or update a recipe with bilingual translations.
 
     `data` must contain both `lang_fr` and `lang_en` payloads (or, for tests
     / manual editing, a single-language `lang` payload). A unified
     `tags` dict of `{family: [names]}` and a single `category` key (technical
     name) are also expected.
+
+    `create_category=False` bloque la création de nouvelles catégories :
+    une catégorie inconnue (ex. inventée par le LLM) est ignorée (None).
+    Les chemins admin gardent `True` (création manuelle autorisée).
     """
     payload_fr, payload_en = _extract_translation_payload(data)
 
@@ -215,7 +223,9 @@ def upsert_recipe(data: JsonDict, conn: sqlite3.Connection | None = None) -> int
         ).fetchone()
 
         category_id = _resolve_category(
-            _conn, str(data["category"]) if data.get("category") else None
+            _conn,
+            str(data["category"]) if data.get("category") else None,
+            create=create_category,
         )
         servings = data.get("servings")
         if isinstance(servings, bool) or not isinstance(servings, (int, float)):
@@ -460,7 +470,15 @@ def _resolve_tag(conn: sqlite3.Connection, family_id: int, name: str) -> int | N
     return int(row["id"]) if row else None
 
 
-def _resolve_category(conn: sqlite3.Connection, name: str | None) -> int | None:
+def _resolve_category(
+    conn: sqlite3.Connection, name: str | None, create: bool = True
+) -> int | None:
+    """Résout un nom de catégorie vers son id.
+
+    `create=False` : ne crée jamais de ligne, retourne None si inconnue
+    (chemins LLM : on ne veut pas que le LLM invente des catégories).
+    `create=True` (défaut) : crée la ligne si besoin (chemins admin).
+    """
     if not name:
         return None
     normalized = normalize_category_name(name)
@@ -485,6 +503,8 @@ def _resolve_category(conn: sqlite3.Connection, name: str | None) -> int | None:
             if candidate and normalize_category_name(candidate) == normalized:
                 return int(existing["id"])
 
+    if not create:
+        return None
     display_name = normalized.replace("-", " ").title()
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) FROM categories").fetchone()[0]
     cur = conn.execute(

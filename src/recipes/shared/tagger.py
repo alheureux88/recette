@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # (build_system_prompt), du parsing/normalisation (tag_recipe et helpers)
 # ou du modèle par défaut. Stockée par recette (recipes.tagger_version)
 # pour repérer les recettes à retagger depuis l'admin.
-TAGGER_VERSION = 2
+TAGGER_VERSION = 3
 
 _client: Any = None
 _client_lock = threading.Lock()
@@ -148,6 +148,7 @@ def build_system_prompt() -> str:
     lines.append("=== Catégories disponibles / Available categories ===")
     lines.append("")
     lines.append("Pour la categorie, utilise UNIQUEMENT la cle technique (name).")
+    lines.append("Ne cree JAMAIS de nouvelle categorie : si aucune ne convient, mets null.")
     cat_list = ", ".join(f'"{c["name"]}" ({c["display_name"]})' for c in categories)
     lines.append(f"  {cat_list}")
     lines.append("")
@@ -279,6 +280,21 @@ def build_system_prompt() -> str:
     return "\n".join(lines)
 
 
+def _is_known_category(name: str) -> bool:
+    """Vrai si `name` est une catégorie existante (whitelist anti-invention LLM).
+
+    En cas d'erreur DB transitoire, on laisse passer (fail-open) pour ne pas
+    perdre la donnée : le garde-fou `create_category=False` de `upsert_recipe`
+    bloque de toute façon la création en aval.
+    """
+    try:
+        known = {str(c["name"]) for c in get_all_categories(only_used=False)}
+    except Exception:
+        log.warning("Category whitelist unreadable, keeping %r", name)
+        return True
+    return name in known
+
+
 def tag_recipe(raw_text: str, default_title: str | None = None) -> JsonDict:
     """Send the raw recipe text to the LLM and return a normalized payload.
 
@@ -399,6 +415,9 @@ def tag_recipe(raw_text: str, default_title: str | None = None) -> JsonDict:
 
             category = data.get("category")
             category = normalize_category_name(category) or None
+            if category is not None and not _is_known_category(category):
+                log.warning("LLM returned unknown category %r: ignored", category)
+                category = None
 
             source_url = data.get("source_url")
             if source_url and not (isinstance(source_url, str) and source_url.startswith("http")):
