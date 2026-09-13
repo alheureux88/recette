@@ -31,6 +31,7 @@ from recipes.features.admin.services import (
     set_setting,
 )
 from recipes.features.recipes.services import (
+    RETAG_SCOPES,
     bulk_update_category,
     bulk_update_tags,
     get_all_recipes_admin,
@@ -70,6 +71,7 @@ from recipes.shared.models import (
     JsonDict,
     RecipeImagePrimaryUpdate,
     RecipeImageVisibilityUpdate,
+    RetagUpdate,
 )
 from recipes.shared.poller import (
     DROPBOX_FOLDER,
@@ -341,15 +343,22 @@ async def admin_retag_recipe(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
+    data: RetagUpdate | None = None,
     _user: dict[str, Any] = Depends(require_admin),
 ) -> JsonDict:
-    """Relance le tagger actuel sur une recette (re-download Dropbox)."""
+    """Relance le tagger actuel sur une recette (re-download Dropbox).
+
+    `scopes` limite les tranches réappliquées (content, tags, category,
+    meta) ; absent = retag complet.
+    """
     from recipes.shared.tagger import TAGGER_VERSION
     from recipes.shared.web import _resolve_request_lang
 
     lang = _resolve_request_lang(request)
+    scopes = data.scopes if data else None
+    _check_retag_scopes(scopes, lang)
     try:
-        result = retag_recipe(recipe_id, conn=conn)
+        result = retag_recipe(recipe_id, scopes=scopes, conn=conn)
     except ValueError as e:
         if "not found" in str(e).lower():
             raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang)) from None
@@ -364,18 +373,35 @@ async def admin_retag_recipe(
     return {"ok": True, **result}
 
 
+def _check_retag_scopes(scopes: list[str] | None, lang: str) -> None:
+    """422 si le subset demandé contient des tranches inconnues."""
+    if not scopes:
+        return
+    unknown = [s for s in scopes if s not in RETAG_SCOPES]
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=gettext("error.invalid_retag_scopes", lang, scopes=", ".join(unknown)),
+        )
+
+
 @router.post("/retag-bulk")
 async def admin_retag_bulk(
     data: BulkRetagUpdate,
+    request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> JsonDict:
     """Retag en masse : relance le tagger sur chaque recette listée."""
+    from recipes.shared.web import _resolve_request_lang
+
+    lang = _resolve_request_lang(request)
+    _check_retag_scopes(data.scopes, lang)
     results: list[JsonDict] = []
     updated = 0
     for rid in data.ids:
         try:
-            result = retag_recipe(int(rid), conn=conn)
+            result = retag_recipe(int(rid), scopes=data.scopes, conn=conn)
             updated += 1
             results.append({"id": int(rid), "ok": True, **result})
         except Exception as e:

@@ -29,6 +29,17 @@ class BulkTagsUpdate(BaseModel):
 
 class BulkRetagUpdate(BaseModel):
     ids: list[int] = Field(description="Recipe IDs to retag")
+    scopes: list[str] | None = Field(
+        default=None,
+        description="Subset à réappliquer : content, tags, category, meta. None = tout.",
+    )
+
+
+class RetagUpdate(BaseModel):
+    scopes: list[str] | None = Field(
+        default=None,
+        description="Subset à réappliquer : content, tags, category, meta. None = tout.",
+    )
 
 
 class PushSubscriptionRegister(BaseModel):

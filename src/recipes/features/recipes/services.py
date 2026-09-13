@@ -2,6 +2,7 @@
 
 import hashlib
 import sqlite3
+from collections.abc import Collection
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -220,17 +221,45 @@ def bulk_update_tags(
         return count
 
 
-def retag_recipe(recipe_id: int, conn: sqlite3.Connection | None = None) -> JsonDict:
+RETAG_SCOPES: tuple[str, ...] = ("content", "tags", "category", "meta")
+"""Tranches applicables séparément lors d'un retag.
+
+- `content` : traductions (titre, description, étapes, ingrédients FR/EN) + portions.
+- `tags` : étiquettes (familles/tags) resynchronisées depuis le LLM.
+- `category` : catégorie (whitelistée : le LLM ne peut pas en créer).
+- `meta` : provenance (source, URL source, date).
+"""
+
+
+def _normalize_retag_scopes(scopes: Collection[str] | None) -> set[str]:
+    """Valide le subset demandé ; `None` (ou vide) = retag complet."""
+    if not scopes:
+        return set(RETAG_SCOPES)
+    selected = set(scopes)
+    unknown = selected - set(RETAG_SCOPES)
+    if unknown:
+        raise ValueError(f"Unknown retag scope(s): {sorted(unknown)}")
+    return selected
+
+
+def retag_recipe(
+    recipe_id: int,
+    scopes: Collection[str] | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> JsonDict:
     """Retag une recette en re-téléchargeant son fichier source Dropbox.
 
     Relance le tagger actuel (prompt + modèle configuré) sur le texte
-    d'origine, puis écrase la recette — y compris si elle était marquée
-    `manually_edited` (le retag explicite resynchronise avec la source,
-    donc le flag est remis à 0).
+    d'origine. `scopes` limite les tranches réappliquées (`content`,
+    `tags`, `category`, `meta`) ; `None` (défaut) réapplique tout, comme
+    avant — y compris si la recette était marquée `manually_edited` (le
+    retag explicite resynchronise avec la source, donc le flag est remis
+    à 0 dans tous les cas).
 
-    Lève `ValueError` si la recette est introuvable et propage les erreurs
-    Dropbox / parsing / LLM à l'appelant.
+    Lève `ValueError` si la recette est introuvable (ou si un scope est
+    inconnu) et propage les erreurs Dropbox / parsing / LLM à l'appelant.
     """
+    selected = _normalize_retag_scopes(scopes)
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         row = _conn.execute(
             "SELECT id, source_file, connection_id, dropbox_url FROM recipes WHERE id = ?",
@@ -277,19 +306,81 @@ def retag_recipe(recipe_id: int, conn: sqlite3.Connection | None = None) -> Json
     structured["dropbox_url"] = dropbox_url
 
     with get_conn() if conn is None else nullcontext(conn) as _conn:
-        from recipes.shared.db import sync_recipe_tags, upsert_recipe
+        from recipes.shared.db import (
+            _clean_optional_text,
+            _extract_translation_payload,
+            _resolve_category,
+            _upsert_translation,
+            sync_recipe_tags,
+            upsert_recipe,
+        )
 
-        new_id = upsert_recipe(structured, conn=_conn)
-        tags = structured.get("tags", {})
-        if isinstance(tags, dict):
-            sync_recipe_tags(
-                new_id,
-                {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)},
-                conn=_conn,
-            )
+        if selected == set(RETAG_SCOPES):
+            new_id = upsert_recipe(structured, conn=_conn, create_category=False)
+            tags = structured.get("tags", {})
+            if isinstance(tags, dict):
+                sync_recipe_tags(
+                    new_id,
+                    {str(k): [str(t) for t in v] for k, v in tags.items() if isinstance(v, list)},
+                    conn=_conn,
+                )
+        else:
+            new_id = recipe_id
+            if "content" in selected:
+                payload_fr, payload_en = _extract_translation_payload(structured)
+                _upsert_translation(_conn, new_id, "fr", payload_fr)
+                _upsert_translation(_conn, new_id, "en", payload_en)
+                servings = structured.get("servings")
+                if isinstance(servings, bool) or not isinstance(servings, (int, float)):
+                    servings = None
+                _conn.execute(
+                    "UPDATE recipes SET servings = ? WHERE id = ?",
+                    (servings, new_id),
+                )
+            if "tags" in selected:
+                tags = structured.get("tags", {})
+                if isinstance(tags, dict):
+                    sync_recipe_tags(
+                        new_id,
+                        {
+                            str(k): [str(t) for t in v]
+                            for k, v in tags.items()
+                            if isinstance(v, list)
+                        },
+                        conn=_conn,
+                    )
+            if "category" in selected:
+                category = structured.get("category")
+                cat_id = _resolve_category(
+                    _conn,
+                    str(category) if category else None,
+                    create=False,
+                )
+                _conn.execute(
+                    "UPDATE recipes SET category_id = ? WHERE id = ?",
+                    (cat_id, new_id),
+                )
+            if "meta" in selected:
+                _conn.execute(
+                    "UPDATE recipes SET source = ?, date = ?, source_url = ? WHERE id = ?",
+                    (
+                        _clean_optional_text(structured.get("source")),
+                        _clean_optional_text(structured.get("date")),
+                        structured.get("source_url"),
+                        new_id,
+                    ),
+                )
         _conn.execute(
-            "UPDATE recipes SET manually_edited = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_id,),
+            """UPDATE recipes SET file_hash = ?, dropbox_url = ?, tagger_version = ?,
+                    tagger_model = ?, manually_edited = 0,
+                    updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (
+                str(structured["file_hash"]),
+                dropbox_url,
+                structured.get("tagger_version"),
+                structured.get("tagger_model"),
+                new_id,
+            ),
         )
         updated = _conn.execute(
             "SELECT id, tagger_version, tagger_model FROM recipes WHERE id = ?", (new_id,)
@@ -299,4 +390,5 @@ def retag_recipe(recipe_id: int, conn: sqlite3.Connection | None = None) -> Json
             "id": int(updated["id"]),
             "tagger_version": updated["tagger_version"],
             "tagger_model": updated["tagger_model"],
+            "scopes": sorted(selected),
         }

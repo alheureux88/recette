@@ -989,6 +989,10 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "error.invalid_order": {"fr": "Ordre invalide", "en": "Invalid order"},
     "error.invalid_theme": {"fr": "Thème invalide", "en": "Invalid theme"},
+    "error.invalid_retag_scopes": {
+        "fr": "Tranches de retag invalides : {scopes}",
+        "en": "Invalid retag scopes: {scopes}",
+    },
 }
 
 

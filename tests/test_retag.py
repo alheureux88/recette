@@ -159,6 +159,7 @@ class TestRetagService:
                 p.stop()
 
         assert result["tagger_version"] == TAGGER_VERSION
+        assert result["scopes"] == ["category", "content", "meta", "tags"]
         recipe = get_recipe(rid)
         assert recipe is not None
         assert recipe["manually_edited"] == 0
@@ -169,6 +170,85 @@ class TestRetagService:
 
         with pytest.raises(ValueError, match="not found"):
             retag_recipe(9999)
+
+    def test_retag_invalid_scope_raises(self):
+        from recipes.features.recipes.services import retag_recipe
+
+        rid = upsert_recipe({**SAMPLE})
+        with pytest.raises(ValueError, match="Unknown retag scope"):
+            retag_recipe(rid, scopes=["nope"])
+
+    def test_retag_tags_only_keeps_content_and_category(self):
+        from recipes.features.recipes.services import retag_recipe
+        from recipes.shared.db import sync_recipe_tags
+
+        rid = upsert_recipe({**SAMPLE, "category": "dessert"})
+        sync_recipe_tags(rid, {"protein": ["poulet"]})
+        patches = _mock_retag_stack()
+        for p in patches:
+            p.start()
+        try:
+            result = retag_recipe(rid, scopes=["tags"])
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["scopes"] == ["tags"]
+        recipe = get_recipe(rid)
+        assert recipe is not None
+        # Tags réappliqués depuis le LLM...
+        assert "boeuf" in {t["name"] for t in recipe["tags"].get("protein", {}).get("tags", [])}
+        # ...mais titre et catégorie d'origine conservés.
+        assert recipe["title"] == "Poulet Rôti"
+        assert recipe["category"] is not None
+        assert recipe["category"]["name"] == "dessert"
+
+    def test_retag_category_only_keeps_tags(self):
+        from recipes.features.recipes.services import retag_recipe
+        from recipes.shared.db import sync_recipe_tags
+
+        rid = upsert_recipe({**SAMPLE, "category": "dessert"})
+        sync_recipe_tags(rid, {"protein": ["poulet"]})
+        patches = _mock_retag_stack()
+        for p in patches:
+            p.start()
+        try:
+            result = retag_recipe(rid, scopes=["category"])
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["scopes"] == ["category"]
+        recipe = get_recipe(rid)
+        assert recipe is not None
+        # Le LLM dit "plat-principal" : seule la catégorie change.
+        assert recipe["category"] is not None
+        assert recipe["category"]["name"] == "plat-principal"
+        assert "poulet" in {t["name"] for t in recipe["tags"].get("protein", {}).get("tags", [])}
+        assert "boeuf" not in {t["name"] for t in recipe["tags"].get("protein", {}).get("tags", [])}
+
+    def test_retag_content_only_updates_texts(self):
+        from recipes.features.recipes.services import retag_recipe
+        from recipes.shared.db import sync_recipe_tags
+
+        rid = upsert_recipe({**SAMPLE, "category": "dessert"})
+        sync_recipe_tags(rid, {"protein": ["poulet"]})
+        patches = _mock_retag_stack()
+        for p in patches:
+            p.start()
+        try:
+            result = retag_recipe(rid, scopes=["content"])
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["scopes"] == ["content"]
+        recipe = get_recipe(rid)
+        assert recipe is not None
+        assert recipe["title"] == "Poulet Retaggé"
+        assert recipe["category"] is not None
+        assert recipe["category"]["name"] == "dessert"
+        assert "poulet" in {t["name"] for t in recipe["tags"].get("protein", {}).get("tags", [])}
 
 
 class TestRetagRoutes:
@@ -217,6 +297,51 @@ class TestRetagRoutes:
         assert by_id[r1]["ok"] is True
         assert by_id[r2]["ok"] is True
         assert by_id[9999]["ok"] is False
+
+    def test_retag_route_with_scopes(self, as_admin):
+        get_or_create_user("test", "test@example.com", "Test")
+        rid = upsert_recipe({**SAMPLE, "category": "dessert"})
+        patches = _mock_retag_stack()
+        for p in patches:
+            p.start()
+        try:
+            resp = as_admin.post(f"/admin/retag/{rid}", json={"scopes": ["tags"]})
+        finally:
+            for p in patches:
+                p.stop()
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["scopes"] == ["tags"]
+        recipe = get_recipe(rid)
+        assert recipe is not None
+        assert recipe["category"] is not None
+        assert recipe["category"]["name"] == "dessert"
+
+    def test_retag_route_invalid_scopes_422(self, as_admin):
+        get_or_create_user("test", "test@example.com", "Test")
+        rid = upsert_recipe({**SAMPLE})
+        resp = as_admin.post(f"/admin/retag/{rid}", json={"scopes": ["nope"]})
+        assert resp.status_code == 422
+
+    def test_bulk_retag_with_scopes(self, as_admin):
+        get_or_create_user("test", "test@example.com", "Test")
+        r1 = upsert_recipe({**SAMPLE, "category": "dessert"})
+        patches = _mock_retag_stack()
+        for p in patches:
+            p.start()
+        try:
+            resp = as_admin.post("/admin/retag-bulk", json={"ids": [r1], "scopes": ["tags"]})
+        finally:
+            for p in patches:
+                p.stop()
+        assert resp.status_code == 200
+        assert resp.json()["updated"] == 1
+
+    def test_bulk_retag_invalid_scopes_422(self, as_admin):
+        get_or_create_user("test", "test@example.com", "Test")
+        resp = as_admin.post("/admin/retag-bulk", json={"ids": [1], "scopes": ["nope"]})
+        assert resp.status_code == 422
 
     def test_bulk_retag_requires_admin(self, as_user):
         resp = as_user.post("/admin/retag-bulk", json={"ids": [1]})
