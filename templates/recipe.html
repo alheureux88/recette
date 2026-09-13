@@ -6,31 +6,23 @@
     <div class="print-toolbar">
         <a href="/" class="back">{{ _('recipe.back_to_list') }}</a>
         <div class="print-actions">
-            <a href="/recipe/{{ recipe.slug }}/cook" class="btn-cook" id="btn-cook">{{ _('recipe.cook_mode') }}</a>
-            <a href="/recipe/{{ recipe.slug }}/cook/slides" class="btn-cook" id="btn-cook-slides">{{ _('recipe.cook_slides_mode') }}</a>
-            {% if auth_enabled and user %}
-            <button type="button" class="btn-cook" id="btn-collection-add">📚 {{ _('collections.add_to') }}</button>
-            {% endif %}
-            <details class="print-options" id="print-options">
-                <summary>{{ _('recipe.print_options') }}</summary>
-                <div class="print-options-grid">
-                    <label><input type="checkbox" id="print-images"{% if print_prefs and print_prefs.print_images %} checked{% endif %}> {{ _('recipe.print_images') }}</label>
-                    <label><input type="checkbox" id="print-tags"{% if print_prefs and print_prefs.print_tags %} checked{% endif %}> {{ _('recipe.print_tags') }}</label>
-                    <label><input type="checkbox" id="print-description"{% if print_prefs and print_prefs.print_description %} checked{% endif %}> {{ _('recipe.print_description') }}</label>
-                    <label><input type="checkbox" id="print-links"{% if print_prefs and print_prefs.print_links %} checked{% endif %}> {{ _('recipe.print_links') }}</label>
-                    <label><input type="checkbox" id="print-step-ingredients"{% if print_prefs and print_prefs.print_step_ingredients %} checked{% endif %}> {{ _('recipe.print_step_ingredients') }}</label>
-                </div>
-            </details>
-            <button type="button" class="btn-print" onclick="recettePrint()">{{ _('recipe.print') }}</button>
+            <a href="/recipe/{{ recipe.slug }}/cook/slides" class="btn-cook" id="btn-cook-slides">👨‍🍳 {{ _('recipe.cook_mode') }}</a>
+            <button type="button" class="btn-print" id="btn-print">🖨️ {{ _('recipe.print') }}</button>
         </div>
     </div>
 
     <div class="recipe-header">
         <h1>{{ recipe.title }}</h1>
         {% if auth_enabled and user %}
+        <div class="recipe-actions">
             {% with slug=recipe.slug, is_favorite=is_favorite %}
                 {% include "partials/favorite_button.html" %}
             {% endwith %}
+            <button type="button" class="icon-action" id="btn-collection-add" title="{{ _('collections.add_to') }}" aria-label="{{ _('collections.add_to') }}">
+                <span class="icon-action-icon" aria-hidden="true">📚</span>
+                <span class="icon-action-label">{{ _('collections.add_to') }}</span>
+            </button>
+        </div>
         {% endif %}
     </div>
 
@@ -126,24 +118,20 @@
     {% endif %}
 
     {% if recipe.source_url or recipe.dropbox_url or recipe.source or recipe.date %}
-    <div class="recipe-links">
+    <p class="recipe-origin">
         {% if recipe.source_url %}
-        <a href="{{ recipe.source_url }}" target="_blank" rel="noopener" class="recipe-link">
-            <span class="link-icon">🌐</span> {{ _('recipe.link_original_site') }}
-        </a>
+        <a href="{{ recipe.source_url }}" target="_blank" rel="noopener" class="recipe-origin-link">🌐 {{ _('recipe.link_original_site') }}</a>
         {% endif %}
         {% if recipe.dropbox_url %}
-        <a href="{{ recipe.dropbox_url }}" target="_blank" rel="noopener" class="recipe-link">
-            <span class="link-icon">📄</span> {{ _('recipe.link_original_file') }}
-        </a>
+        <a href="{{ recipe.dropbox_url }}" target="_blank" rel="noopener" class="recipe-origin-link">📄 {{ _('recipe.link_original_file') }}</a>
         {% endif %}
         {% if recipe.source %}
-        <span class="recipe-meta">{{ _('recipe.source_label') }} : {{ recipe.source }}</span>
+        <span class="recipe-origin-item">{{ _('recipe.source_label') }} : {{ recipe.source }}</span>
         {% endif %}
         {% if recipe.date %}
-        <span class="recipe-meta">{{ _('recipe.date_label') }} : {{ recipe.date }}</span>
+        <span class="recipe-origin-item">{{ _('recipe.date_label') }} : {{ recipe.date }}</span>
         {% endif %}
-    </div>
+    </p>
     {% endif %}
 
     <div class="recipe-body">
@@ -183,6 +171,27 @@
     </div>
 </div>
 
+<div id="print-modal-backdrop" class="shopping-modal-backdrop" hidden></div>
+<div id="print-modal" class="shopping-modal" hidden role="dialog" aria-modal="true" aria-label="{{ _('recipe.print_options') }}">
+    <div class="shopping-modal-content">
+        <div class="collection-modal-header">
+            <h2>{{ _('recipe.print_options') }}</h2>
+            <button type="button" id="print-modal-close" class="collection-modal-x" aria-label="{{ _('collections.close_modal') }}">✕</button>
+        </div>
+        <div class="print-options-grid">
+            <label><input type="checkbox" id="print-images"{% if print_prefs and print_prefs.print_images %} checked{% endif %}> {{ _('recipe.print_images') }}</label>
+            <label><input type="checkbox" id="print-tags"{% if print_prefs and print_prefs.print_tags %} checked{% endif %}> {{ _('recipe.print_tags') }}</label>
+            <label><input type="checkbox" id="print-description"{% if print_prefs and print_prefs.print_description %} checked{% endif %}> {{ _('recipe.print_description') }}</label>
+            <label><input type="checkbox" id="print-links"{% if print_prefs and print_prefs.print_links %} checked{% endif %}> {{ _('recipe.print_links') }}</label>
+            <label><input type="checkbox" id="print-step-ingredients"{% if print_prefs and print_prefs.print_step_ingredients %} checked{% endif %}> {{ _('recipe.print_step_ingredients') }}</label>
+        </div>
+        <div class="shopping-modal-actions">
+            <button type="button" id="print-modal-cancel" class="shopping-modal-cancel">{{ _('shopping.cancel') }}</button>
+            <button type="button" id="print-modal-submit" class="shopping-modal-submit">🖨️ {{ _('recipe.print') }}</button>
+        </div>
+    </div>
+</div>
+
 <div id="shopping-modal-backdrop" class="shopping-modal-backdrop" hidden></div>
 <div id="shopping-modal" class="shopping-modal" hidden role="dialog" aria-modal="true">
     <div class="shopping-modal-content">
@@ -207,11 +216,9 @@
 <script src="/static/js/timers.js"></script>
 <script>
     (function () {
-        var cookLink = document.getElementById('btn-cook');
         var slidesLink = document.getElementById('btn-cook-slides');
-        [cookLink, slidesLink].forEach(function (link) {
-            if (!link) return;
-            link.addEventListener('click', function (e) {
+        if (slidesLink) {
+            slidesLink.addEventListener('click', function (e) {
                 var form = document.querySelector('.ingredient-controls');
                 if (!form) return;
                 var params = new URLSearchParams();
@@ -224,10 +231,10 @@
                 var qs = params.toString();
                 if (qs) {
                     e.preventDefault();
-                    window.location.href = link.getAttribute('href') + '?' + qs;
+                    window.location.href = slidesLink.getAttribute('href') + '?' + qs;
                 }
             });
-        });
+        }
 
         var body = document.body;
         var checks = {
@@ -259,6 +266,37 @@
             });
             window.print();
         };
+
+        // Modal d'impression : les options vivent derrière le bouton Imprimer.
+        var printModal = document.getElementById('print-modal');
+        var printBackdrop = document.getElementById('print-modal-backdrop');
+        var printOpenBtn = document.getElementById('btn-print');
+        function openPrintModal() {
+            if (!printModal || !printBackdrop) return;
+            printModal.hidden = false;
+            printBackdrop.hidden = false;
+        }
+        function closePrintModal() {
+            if (!printModal || !printBackdrop) return;
+            printModal.hidden = true;
+            printBackdrop.hidden = true;
+        }
+        if (printOpenBtn) printOpenBtn.addEventListener('click', openPrintModal);
+        if (printBackdrop) printBackdrop.addEventListener('click', closePrintModal);
+        var printCloseBtn = document.getElementById('print-modal-close');
+        if (printCloseBtn) printCloseBtn.addEventListener('click', closePrintModal);
+        var printCancelBtn = document.getElementById('print-modal-cancel');
+        if (printCancelBtn) printCancelBtn.addEventListener('click', closePrintModal);
+        var printSubmitBtn = document.getElementById('print-modal-submit');
+        if (printSubmitBtn) printSubmitBtn.addEventListener('click', function () {
+            closePrintModal();
+            window.recettePrint();
+        });
+        document.addEventListener('keydown', function (e) {
+            if ((e.key === 'Escape' || e.key === 'Esc') && printModal && printModal.hidden === false) {
+                closePrintModal();
+            }
+        });
 
         // Minuteurs : moteur partagé (voir /static/js/timers.js).
         var timerManager = window.RecetteTimers.createManager({

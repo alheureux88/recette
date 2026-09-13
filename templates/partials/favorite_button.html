@@ -1,8 +1,10 @@
 <button
-    class="fav-btn {% if is_favorite %}is-favorite{% endif %}"
+    class="fav-btn icon-action {% if is_favorite %}is-favorite{% endif %}"
     hx-post="/favorites/{{ slug }}"
     hx-swap="outerHTML"
     title="{{ _('favorites.remove') if is_favorite else _('favorites.add') }}"
+    aria-label="{{ _('favorites.remove') if is_favorite else _('favorites.add') }}"
 >
-    <span class="fav-icon">{% if is_favorite %}★{% else %}☆{% endif %}</span>
+    <span class="fav-icon icon-action-icon" aria-hidden="true">{% if is_favorite %}★{% else %}☆{% endif %}</span>
+    <span class="icon-action-label">{{ _('favorites.remove') if is_favorite else _('favorites.add') }}</span>
 </button>

@@ -613,6 +613,46 @@ def test_recipe_detail_links_to_slides_mode(client):
     assert "btn-cook-slides" in page
 
 
+def test_recipe_detail_single_cook_mode(client):
+    """Un seul bouton cuisine (mobile) sur la page recette, pas de mode classique."""
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
+    assert "btn-cook-slides" in page
+    assert 'id="btn-cook"' not in page
+
+
+def test_recipe_detail_print_options_behind_modal(client):
+    """Les options d'impression vivent dans un modal derrière le bouton Imprimer."""
+    recipe_id = _insert_recipe_with_step_ingredients()
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
+    assert 'id="btn-print"' in page
+    assert 'id="print-modal"' in page
+    assert 'id="print-modal-submit"' in page
+    assert 'id="print-options"' not in page
+
+
+def test_recipe_detail_origin_line(client):
+    """Source/date/liens externes affichés en ligne discrète, sans pastilles."""
+    recipe_id = upsert_recipe(
+        {
+            **SAMPLE,
+            "title": "Gratin origine discrète",
+            "source_file": "/recipes/gratin_origine.docx",
+            "file_hash": "org777",
+            "source": "Tante Marie",
+            "date": "1998",
+            "source_url": "https://example.com/gratin-origine",
+        }
+    )
+    sync_recipe_tags(recipe_id, SAMPLE["tags"])
+    page = _page(client.get(f"/recipe/{_slug(recipe_id)}"))
+    assert "recipe-origin" in page
+    assert "Tante Marie" in page
+    assert "1998" in page
+    assert "https://example.com/gratin-origine" in page
+    assert "recipe-meta" not in page
+
+
 def test_cook_slides_i18n_keys_have_fr_and_en():
     from recipes.shared.i18n import gettext
 

@@ -282,6 +282,15 @@ class TestCollectionPages:
         assert resp.status_code == 200
         assert "btn-collection-add" in resp.text
 
+    def test_recipe_page_button_is_icon_next_to_title(self, as_user):
+        recipe_id = _insert_sample()
+        page = as_user.get(f"/recipe/{_slug(recipe_id)}").text
+        assert "recipe-actions" in page
+        assert "icon-action" in page
+        # Le bouton vit dans le header à côté du titre, plus dans la barre d'outils.
+        assert page.index("recipe-actions") < page.index("recipe-body")
+        assert "icon-action-label" in page
+
     def test_recipe_page_no_button_anonymous(self, client):
         recipe_id = _insert_sample()
         resp = client.get(f"/recipe/{_slug(recipe_id)}")
