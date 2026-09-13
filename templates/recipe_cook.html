@@ -81,8 +81,8 @@
     {% endif %}
 </div>
 
-<script src="/static/js/wake_lock.js"></script>
-<script src="/static/js/timers.js"></script>
+<script src="{{ asset_url('js/wake_lock.js') }}"></script>
+<script src="{{ asset_url('js/timers.js') }}"></script>
 <script>
     (function () {
         var page = document.querySelector('.cook-page');

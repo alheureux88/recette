@@ -1,4 +1,4 @@
-const CACHE = "recettes-v2";
+const CACHE = "recettes-v3";
 const SHELL = ["/", "/static/css/style.css", "/static/favicon.ico", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

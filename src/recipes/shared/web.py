@@ -9,6 +9,7 @@ from contextvars import ContextVar
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
+from recipes.shared.assets import CSS_VERSION, asset_url
 from recipes.shared.auth import (
     OIDC_ENABLED,
     get_user,
@@ -59,6 +60,10 @@ templates.env.globals["_"] = _translate
 templates.env.globals["ngettext"] = _ntranslate
 templates.env.globals["supported_languages"] = SUPPORTED_LANGUAGES
 templates.env.globals["default_language"] = DEFAULT_LANGUAGE
+# Cache-busting : hash calculé une fois au startup (shared.assets),
+# exposé en global pour éviter de le passer à chaque TemplateResponse.
+templates.env.globals["css_v"] = CSS_VERSION
+templates.env.globals["asset_url"] = asset_url
 
 
 def _base_context(request: Request, **extra: object) -> JsonDict:

@@ -153,6 +153,9 @@ async def pwa_headers(request: Request, call_next: Any) -> Response:
         response.headers["Cache-Control"] = "no-cache"
     elif path == "/static/manifest.webmanifest":
         response.headers["Cache-Control"] = "no-cache"
+    elif path.startswith("/static/") and "v=" in str(request.query_params):
+        # Asset versionné par hash (?v=…) : contenu immuable, cache long.
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
 
