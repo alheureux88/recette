@@ -44,8 +44,7 @@
                 <img src="/static/favicon-64x64.png" alt="" class="site-logo" width="32" height="32">
                 <span>Recettes <em>Merizzi</em></span>
             </a>
-            <nav class="header-nav">
-                <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ _('nav.toggle_theme') }}"></button>
+            <nav class="header-nav" id="header-nav" aria-label="{{ _('nav.menu') }}">
                 {% for code in available_languages %}
                     {% if code != lang %}
                     <a href="/lang/{{ code }}"
@@ -82,6 +81,10 @@
                     {% endif %}
                 {% endif %}
             </nav>
+            <div class="header-actions">
+                <button type="button" class="theme-toggle" id="theme-toggle" aria-label="{{ _('nav.toggle_theme') }}"></button>
+                <button type="button" class="nav-burger" id="nav-burger" aria-label="{{ _('nav.menu') }}" aria-expanded="false" aria-controls="header-nav">☰</button>
+            </div>
         </div>
     </header>
     <main class="{% block main_class %}{% endblock %}">
@@ -118,6 +121,40 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ theme: next })
                     }).catch(function () {});
+                }
+            });
+        })();
+        (function () {
+            var burger = document.getElementById('nav-burger');
+            var nav = document.getElementById('header-nav');
+            if (!burger || !nav) return;
+            var labelMenu = "{{ _('nav.menu') }}";
+            var labelClose = "{{ _('nav.close_menu') }}";
+            function setOpen(open) {
+                nav.classList.toggle('open', open);
+                burger.classList.toggle('open', open);
+                burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+                burger.setAttribute('aria-label', open ? labelClose : labelMenu);
+                burger.textContent = open ? '✕' : '☰';
+            }
+            burger.addEventListener('click', function (e) {
+                e.stopPropagation();
+                setOpen(!nav.classList.contains('open'));
+            });
+            document.addEventListener('click', function (e) {
+                if (nav.classList.contains('open') && !nav.contains(e.target) && e.target !== burger && !burger.contains(e.target)) {
+                    setOpen(false);
+                }
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && nav.classList.contains('open')) {
+                    setOpen(false);
+                    burger.focus();
+                }
+            });
+            nav.addEventListener('click', function (e) {
+                if (e.target.closest('a')) {
+                    setOpen(false);
                 }
             });
         })();

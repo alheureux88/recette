@@ -217,6 +217,39 @@ header {
     background: var(--border);
 }
 
+/* Actions persistantes du header (thème + burger) + bouton hamburger.
+ * Le burger est masqué sur desktop ; en mobile il ouvre la nav
+ * repliée en panneau vertical (voir media query plus bas).
+ */
+.header-nav {
+    margin-left: auto;
+}
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.75rem;
+    flex-shrink: 0;
+}
+.nav-burger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.2rem;
+    line-height: 1;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.nav-burger:hover {
+    background: var(--surface);
+}
+
 /* Anti-scroll horizontal + header compact mobile.
  * Le header n'avait aucune règle responsive : sur ~360px, le titre
  * + la nav (thème, langue, listes, favoris, nom d'utilisateur)
@@ -258,6 +291,7 @@ img {
     }
     .header-inner {
         gap: 0.5rem;
+        position: relative;
     }
     .site-title {
         font-size: 1.02rem;
@@ -277,20 +311,11 @@ img {
         height: 26px;
         flex-shrink: 0;
     }
-    .header-nav {
-        gap: 0.35rem;
-        font-size: 0.8rem;
+    .header-actions {
         margin-left: auto;
-        flex-shrink: 0;
-    }
-    .nav-link {
-        padding: 0.3rem 0.55rem;
     }
     .theme-toggle {
         padding: 0.25rem 0.4rem;
-    }
-    .nav-user {
-        max-width: 5.5rem;
     }
     .nav-user-toggle {
         padding: 0.3rem 0.4rem;
@@ -313,6 +338,80 @@ img {
     .cook-reset {
         padding: 0.4rem 0.7rem;
         font-size: 0.8rem;
+    }
+}
+
+/* Navigation hamburger (mobile + petite tablette).
+ * La nav sort du flux (panneau absolu) : le titre reste toujours
+ * visible et le nom d'utilisateur s'affiche en entier dans le menu.
+ */
+@media (max-width: 760px) {
+    .header-inner {
+        position: relative;
+    }
+    .nav-burger {
+        display: inline-flex;
+    }
+    .header-nav {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        min-width: 14rem;
+        max-width: min(20rem, calc(100vw - 1.5rem));
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.15rem;
+        margin-left: 0;
+        font-size: 0.95rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+        padding: 0.5rem;
+        z-index: 60;
+    }
+    .header-nav.open {
+        display: flex;
+    }
+    .header-nav .nav-link,
+    .header-nav .lang-switch {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 0.6rem 0.75rem;
+        border-radius: calc(var(--radius) - 2px);
+    }
+    .header-nav .nav-link:hover,
+    .header-nav .lang-switch:hover {
+        background: var(--border);
+    }
+    .header-nav .nav-user-menu {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .header-nav .nav-user-toggle {
+        width: 100%;
+        justify-content: space-between;
+        padding: 0.6rem 0.75rem;
+    }
+    .header-nav .nav-user {
+        max-width: none;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        color: var(--text);
+    }
+    .header-nav .nav-user-dropdown {
+        position: static;
+        box-shadow: none;
+        border: none;
+        border-top: 1px solid var(--border);
+        border-radius: 0;
+        margin-top: 0.15rem;
+        padding-top: 0.35rem;
+    }
+    .header-nav .nav-user-dropdown::before {
+        display: none;
     }
 }
 

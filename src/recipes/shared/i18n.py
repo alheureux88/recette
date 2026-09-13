@@ -54,6 +54,8 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     },
     "nav.logout": {"fr": "Déconnexion", "en": "Log out"},
     "nav.login": {"fr": "Connexion", "en": "Log in"},
+    "nav.menu": {"fr": "Menu", "en": "Menu"},
+    "nav.close_menu": {"fr": "Fermer le menu", "en": "Close menu"},
     # --- Page d'accueil ---
     "home.subtitle_one": {"fr": "1 recette à découvrir", "en": "1 recipe to discover"},
     "home.subtitle_other": {
