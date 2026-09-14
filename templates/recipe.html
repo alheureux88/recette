@@ -26,12 +26,26 @@
         {% endif %}
     </div>
 
-    {% if recipe.category %}
-    <span class="category-badge">{{ recipe.category.display_name }}</span>
-    {% endif %}
-    {% if show_provenance and recipe.provenance %}
-    <span class="category-badge provenance-badge">{{ recipe.provenance.name }}</span>
-    {% endif %}
+    <div class="recipe-head-row">
+        <div class="recipe-badges">
+            {% if recipe.category %}
+            <span class="category-badge">{{ recipe.category.display_name }}</span>
+            {% endif %}
+            {% if show_provenance and recipe.provenance %}
+            <span class="category-badge provenance-badge">{{ recipe.provenance.name }}</span>
+            {% endif %}
+        </div>
+
+        {% if auth_enabled and user %}
+            {% with slug=recipe.slug, user_rating=user_rating, rating_average=rating_average, rating_count=rating_count %}
+                {% include "partials/rating_widget.html" %}
+            {% endwith %}
+        {% elif rating_count and rating_count > 0 %}
+            <p class="rating-summary rating-summary-readonly">
+                {{ ngettext('ratings.average_one', 'ratings.average_other', rating_count, avg=('%.1f' % rating_average)) }}
+            </p>
+        {% endif %}
+    </div>
 
     {% if recipe.description %}
     <p class="lead">{{ recipe.description }}</p>
@@ -623,6 +637,57 @@
                 });
             });
         }
+    })();
+
+    (function () {
+        // Notation 1-5 étoiles : délégation sur document (le widget est
+        // remplacé en outerHTML après chaque vote, la liaison survit).
+        var STR_RATING_ERROR = {{ _('admin.alert_save_error')|tojson }};
+        function refreshWidget(html) {
+            var old = document.getElementById('rating-widget');
+            if (!old) return;
+            var tpl = document.createElement('template');
+            tpl.innerHTML = html.trim();
+            var fresh = tpl.content.firstElementChild;
+            if (fresh) old.replaceWith(fresh);
+        }
+        function sendRating(value) {
+            fetch('/ratings/' + encodeURIComponent({{ recipe.slug|tojson }}), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rating: value })
+            }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return null; }
+                if (!resp.ok) throw new Error('Failed');
+                return resp.text();
+            }).then(function (html) {
+                if (html) refreshWidget(html);
+            }).catch(function () {
+                alert(STR_RATING_ERROR);
+            });
+        }
+        function clearRating() {
+            fetch('/ratings/' + encodeURIComponent({{ recipe.slug|tojson }}), {
+                method: 'DELETE'
+            }).then(function (resp) {
+                if (resp.redirected) { window.location.href = resp.url; return null; }
+                if (!resp.ok) throw new Error('Failed');
+                return resp.text();
+            }).then(function (html) {
+                if (html) refreshWidget(html);
+            }).catch(function () {
+                alert(STR_RATING_ERROR);
+            });
+        }
+        document.addEventListener('click', function (e) {
+            var star = e.target && e.target.closest ? e.target.closest('.rating-star') : null;
+            if (star && document.getElementById('rating-widget').contains(star)) {
+                sendRating(parseInt(star.dataset.value, 10));
+                return;
+            }
+            var clear = e.target && e.target.closest ? e.target.closest('#rating-clear') : null;
+            if (clear) clearRating();
+        });
     })();
     {% endif %}
 </script>

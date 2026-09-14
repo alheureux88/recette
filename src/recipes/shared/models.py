@@ -121,3 +121,7 @@ class RecipeImagePrimaryUpdate(BaseModel):
 class RecipeImageVisibilityUpdate(BaseModel):
     image_id: int = Field(description="Image ID to hide or unhide")
     hidden: bool = Field(description="True to hide, False to show again")
+
+
+class RatingCreate(BaseModel):
+    rating: int = Field(description="Star rating from 1 to 5", ge=1, le=5)

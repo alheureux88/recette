@@ -825,6 +825,8 @@ def search_recipes(
     tag_ids: list[int] | None = None,
     category_id: int | None = None,
     connection_id: int | None = None,
+    min_rating: float | None = None,
+    max_rating: float | None = None,
     lang: str = DEFAULT_LANGUAGE,
     conn: sqlite3.Connection | None = None,
 ) -> list[JsonDict]:
@@ -833,10 +835,17 @@ def search_recipes(
     `connection_id` filtre par compte Dropbox d'origine ; la valeur sentinelle
     DEFAULT_ACCOUNT_ID sélectionne les recettes du compte par défaut (.env).
     Les recettes issues de connexions masquées sont toujours exclues.
+    `min_rating` / `max_rating` filtrent sur la note moyenne (1-5) : les
+    bornes neutres (`min` <= 1, `max` >= 5) sont ignorées, et les recettes
+    sans note sont exclues dès qu'un filtre effectif est posé.
     Les champs textuels sont retournés dans la langue `lang`.
     """
     if tag_ids is None:
         tag_ids = []
+    if min_rating is not None and min_rating <= 1:
+        min_rating = None
+    if max_rating is not None and max_rating >= 5:
+        max_rating = None
 
     with get_conn() if conn is None else nullcontext(conn) as _conn:
         conditions: list[str] = [
@@ -879,6 +888,18 @@ def search_recipes(
         if category_id:
             conditions.append("r.category_id = ?")
             params.append(category_id)
+
+        if min_rating is not None:
+            conditions.append(
+                "(SELECT AVG(rr.rating) FROM recipe_ratings rr WHERE rr.recipe_id = r.id) >= ?"
+            )
+            params.append(min_rating)
+
+        if max_rating is not None:
+            conditions.append(
+                "(SELECT AVG(rr.rating) FROM recipe_ratings rr WHERE rr.recipe_id = r.id) <= ?"
+            )
+            params.append(max_rating)
 
         if connection_id == DEFAULT_ACCOUNT_ID:
             conditions.append("r.connection_id IS NULL")

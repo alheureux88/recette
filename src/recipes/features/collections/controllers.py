@@ -158,6 +158,8 @@ async def collection_shared_page(
     favorite_ids: set[int] = set()
     if uid is not None:
         favorite_ids = get_user_favorite_ids(uid, conn=conn)
+    from recipes.features.recipes.controllers import _rating_context_for_recipes
+
     return templates.TemplateResponse(
         request=request,
         name="collection_detail.html",
@@ -168,6 +170,7 @@ async def collection_shared_page(
             favorite_ids=favorite_ids,
             can_edit_collection=False,
             is_shared_view=True,
+            **_rating_context_for_recipes(recipes, uid, conn),
             **_provenance_context(request, conn),
         ),
     )
@@ -200,6 +203,8 @@ async def collection_detail_page(
     favorite_ids: set[int] = set()
     if uid is not None:
         favorite_ids = get_user_favorite_ids(uid, conn=conn)
+    from recipes.features.recipes.controllers import _rating_context_for_recipes
+
     return templates.TemplateResponse(
         request=request,
         name="collection_detail.html",
@@ -210,6 +215,7 @@ async def collection_detail_page(
             favorite_ids=favorite_ids,
             can_edit_collection=can_edit(collection, uid, admin),
             is_shared_view=False,
+            **_rating_context_for_recipes(recipes, uid, conn),
             **_filter_context(conn, lang),
             **_provenance_context(request, conn),
         ),
@@ -238,6 +244,8 @@ async def collection_search(
     tags: list[int] = Query(default=[]),
     category: str | None = Query(default=None),
     account: str | None = Query(default=None),
+    min_rating: float | None = Query(default=None, ge=0, le=5),
+    max_rating: float | None = Query(default=None, ge=0, le=5),
 ) -> HTMLResponse:
     """HTMX partial : homepage filters scoped to a collection's recipes."""
     from recipes.shared.auth import OIDC_ENABLED
@@ -270,6 +278,8 @@ async def collection_search(
             tag_ids=tags,
             category_id=category_id,
             connection_id=_parse_account_param(account),
+            min_rating=min_rating,
+            max_rating=max_rating,
             lang=lang,
             conn=conn,
         )
@@ -278,6 +288,8 @@ async def collection_search(
     favorite_ids: set[int] = set()
     if uid is not None:
         favorite_ids = get_user_favorite_ids(uid, conn=conn)
+    from recipes.features.recipes.controllers import _rating_context_for_recipes
+
     return templates.TemplateResponse(
         request=request,
         name="partials/recipe_cards.html",
@@ -286,6 +298,7 @@ async def collection_search(
             "favorite_ids": favorite_ids,
             "user": get_user(request),
             "auth_enabled": OIDC_ENABLED,
+            **_rating_context_for_recipes(recipes, uid, conn),
             **_provenance_context(request, conn),
         },
     )

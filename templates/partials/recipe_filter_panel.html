@@ -23,7 +23,7 @@
                     hx-get="{{ search_url|default('/search') }}"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='account']"
+                    hx-include="[name='q'], [name='tags'], [name='account'], [name='min_rating'], [name='max_rating']"
                 >
                 {{ _('home.filter_all') }}
             </label>
@@ -37,7 +37,7 @@
                     hx-get="{{ search_url|default('/search') }}"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='account']"
+                    hx-include="[name='q'], [name='tags'], [name='account'], [name='min_rating'], [name='max_rating']"
                 >
                 {{ cat.display_name }}
             </label>
@@ -45,8 +45,7 @@
         </div>
     </div>
 
-    {% if show_provenance and provenances %}
-    <div class="filter-group">
+    {% if show_provenance and provenances %}    <div class="filter-group">
         <h3 class="filter-title">{{ _('home.filter_provenance') }}</h3>
         <div class="category-filters">
             <label class="tag-pill active">
@@ -58,7 +57,7 @@
                     hx-get="{{ search_url|default('/search') }}"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='category']"
+                    hx-include="[name='q'], [name='tags'], [name='category'], [name='min_rating'], [name='max_rating']"
                 >
                 {{ _('home.filter_all') }}
             </label>
@@ -71,7 +70,7 @@
                     hx-get="{{ search_url|default('/search') }}"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='tags'], [name='category']"
+                    hx-include="[name='q'], [name='tags'], [name='category'], [name='min_rating'], [name='max_rating']"
                 >
                 {{ prov.name }} ({{ prov.count }})
             </label>
@@ -79,6 +78,44 @@
         </div>
     </div>
     {% endif %}
+
+    <div class="filter-group">
+        <h3 class="filter-title">{{ _('home.filter_rating') }}</h3>
+        <div class="rating-range" id="rating-range" data-any="{{ _('home.filter_rating_any') }}">
+            <div class="rating-range-fill" id="rating-range-fill" aria-hidden="true"></div>
+            <input
+                type="range"
+                name="min_rating"
+                id="filter-min-rating"
+                class="rating-range-input"
+                min="1"
+                max="5"
+                step="0.5"
+                value="1"
+                aria-label="{{ _('home.filter_rating_min') }}"
+                hx-get="{{ search_url|default('/search') }}"
+                hx-trigger="change"
+                hx-target="#recipe-grid"
+                hx-include="[name='q'], [name='tags'], [name='category'], [name='account'], [name='max_rating']"
+            >
+            <input
+                type="range"
+                name="max_rating"
+                id="filter-max-rating"
+                class="rating-range-input"
+                min="1"
+                max="5"
+                step="0.5"
+                value="5"
+                aria-label="{{ _('home.filter_rating_max') }}"
+                hx-get="{{ search_url|default('/search') }}"
+                hx-trigger="change"
+                hx-target="#recipe-grid"
+                hx-include="[name='q'], [name='tags'], [name='category'], [name='account'], [name='min_rating']"
+            >
+        </div>
+        <span class="filter-rating-value" id="filter-rating-value" aria-live="polite"></span>
+    </div>
 
     {% for family_key, family in all_tags.items() %}
     <div class="filter-group">
@@ -94,7 +131,7 @@
                     hx-get="{{ search_url|default('/search') }}"
                     hx-trigger="change"
                     hx-target="#recipe-grid"
-                    hx-include="[name='q'], [name='category'], [name='tags']"
+                    hx-include="[name='q'], [name='category'], [name='tags'], [name='min_rating'], [name='max_rating']"
                 >
                 {{ tag.display_name }}
             </label>
@@ -129,6 +166,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 count += 1;
             }
         });
+        if (isRatingFilterActive()) {
+            count += 1;
+        }
         var badge = document.getElementById('filter-count');
         if (!badge) return;
         if (count > 0) {
@@ -143,6 +183,61 @@ document.addEventListener('DOMContentLoaded', function() {
     var panel = document.getElementById('filter-panel');
     var closeBtn = document.getElementById('filter-close');
     var backdrop = document.getElementById('filter-backdrop');
+
+    // Double-slider note moyenne : deux pouces superposés (min/max),
+    // remplissage accent entre les deux, libellé "★ min – max".
+    var ratingMin = document.getElementById('filter-min-rating');
+    var ratingMax = document.getElementById('filter-max-rating');
+    var ratingFill = document.getElementById('rating-range-fill');
+    var ratingValue = document.getElementById('filter-rating-value');
+    var ratingRange = document.getElementById('rating-range');
+
+    function fmtRating(v) {
+        return Number(v).toFixed(1).replace(/\.0$/, '');
+    }
+    function ratingBounds() {
+        return {
+            lo: ratingMin ? parseFloat(ratingMin.value) : 1,
+            hi: ratingMax ? parseFloat(ratingMax.value) : 5
+        };
+    }
+    function isRatingFilterActive() {
+        var b = ratingBounds();
+        return ratingMin && ratingMax && (b.lo > 1 || b.hi < 5);
+    }
+    function paintRatingRange() {
+        if (!ratingMin || !ratingMax) return;
+        var b = ratingBounds();
+        var pct = function (v) { return ((v - 1) / 4 * 100).toFixed(1) + '%'; };
+        if (ratingFill) {
+            ratingFill.style.left = pct(b.lo);
+            ratingFill.style.right = pct(5 - (b.hi - 1));
+        }
+        if (ratingValue) {
+            var anyText = ratingRange ? ratingRange.dataset.any : '';
+            ratingValue.textContent = (!isRatingFilterActive() && anyText)
+                ? anyText
+                : '★ ' + fmtRating(b.lo) + ' – ' + fmtRating(b.hi);
+        }
+    }
+    function onRatingInput(e) {
+        if (!ratingMin || !ratingMax) return;
+        var lo = parseFloat(ratingMin.value);
+        var hi = parseFloat(ratingMax.value);
+        // Les pouces ne se croisent pas : le pouce déplacé bute sur l'autre.
+        if (lo > hi) {
+            if (e.target === ratingMin) {
+                ratingMin.value = String(hi);
+            } else {
+                ratingMax.value = String(lo);
+            }
+        }
+        paintRatingRange();
+        updateFilterCount();
+    }
+    if (ratingMin) ratingMin.addEventListener('input', onRatingInput);
+    if (ratingMax) ratingMax.addEventListener('input', onRatingInput);
+    paintRatingRange();
 
     function openFilters() {
         if (!panel) return;

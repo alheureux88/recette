@@ -1,0 +1,30 @@
+<div class="rating-widget" id="rating-widget" data-slug="{{ slug }}">
+    <div class="rating-stars" role="radiogroup" aria-label="{{ _('ratings.your_rating') }}">
+        {% for value in [1, 2, 3, 4, 5] %}
+        <button
+            type="button"
+            class="rating-star{% if user_rating and value <= user_rating %} is-on{% endif %}"
+            data-value="{{ value }}"
+            title="{{ value }}/5"
+            aria-label="{{ value }}/5"
+            aria-pressed="{% if user_rating == value %}true{% else %}false{% endif %}"
+        >★</button>
+        {% endfor %}
+        {% if user_rating %}
+        <button
+            type="button"
+            class="rating-clear"
+            id="rating-clear"
+            title="{{ _('ratings.remove') }}"
+            aria-label="{{ _('ratings.remove') }}"
+        >✕</button>
+        {% endif %}
+    </div>
+    <p class="rating-summary">
+        {% if rating_count and rating_count > 0 %}
+            {{ ngettext('ratings.average_one', 'ratings.average_other', rating_count, avg=('%.1f' % rating_average)) }}
+        {% else %}
+            {{ _('ratings.no_ratings') }}
+        {% endif %}
+    </p>
+</div>

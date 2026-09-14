@@ -35,12 +35,24 @@
             </div>
             {% endif %}
             <h2>{{ recipe.title }}</h2>
-            {% if recipe.category %}
-            <span class="card-category">{{ recipe.category.display_name }}</span>
-            {% endif %}
-            {% if show_provenance and recipe.provenance %}
-            <span class="card-provenance">{{ recipe.provenance.name }}</span>
-            {% endif %}
+            <div class="card-meta">
+                {% if recipe.category %}
+                <span class="card-category">{{ recipe.category.display_name }}</span>
+                {% endif %}
+                {% if show_provenance and recipe.provenance %}
+                <span class="card-provenance">{{ recipe.provenance.name }}</span>
+                {% endif %}
+                {% if rating_summaries and rating_summaries.get(recipe.id) and rating_summaries.get(recipe.id).count > 0 %}
+                <span class="card-rating" title="{{ ngettext('ratings.average_one', 'ratings.average_other', rating_summaries.get(recipe.id).count, avg=('%.1f' % rating_summaries.get(recipe.id).average)) }}">
+                    <span class="card-rating-stars" aria-hidden="true">★</span>
+                    {{ '%.1f' % rating_summaries.get(recipe.id).average }}
+                    <span class="card-rating-count">({{ rating_summaries.get(recipe.id).count }})</span>
+                </span>
+                {% endif %}
+                {% if user_ratings and user_ratings.get(recipe.id) %}
+                <span class="card-rating-mine">{{ _('ratings.mine', n=user_ratings.get(recipe.id)) }}</span>
+                {% endif %}
+            </div>
             <p class="description">{{ recipe.description }}</p>
             <div class="card-tags">
                 {% for tag in recipe.tags %}

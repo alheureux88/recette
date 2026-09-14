@@ -50,6 +50,177 @@ def get_user_favorite_ids(user_id: int, conn: sqlite3.Connection | None = None) 
         return {int(r["recipe_id"]) for r in rows}
 
 
+# ---------------------------------------------------------------------------
+# Ratings (1-5 stars, one vote per user per recipe)
+# ---------------------------------------------------------------------------
+
+MIN_RATING = 1
+MAX_RATING = 5
+
+
+def _check_rating(rating: int) -> None:
+    """Lève ValueError si la note est hors 1-5."""
+    if not isinstance(rating, int) or isinstance(rating, bool):
+        raise ValueError(f"Rating must be an int between {MIN_RATING} and {MAX_RATING}")
+    if rating < MIN_RATING or rating > MAX_RATING:
+        raise ValueError(f"Rating must be between {MIN_RATING} and {MAX_RATING}")
+
+
+def set_rating(
+    user_id: int, recipe_id: int, rating: int, conn: sqlite3.Connection | None = None
+) -> None:
+    """Crée ou remplace la note d'un usager pour une recette (1-5)."""
+    _check_rating(rating)
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
+            """
+            INSERT INTO recipe_ratings (user_id, recipe_id, rating)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, recipe_id) DO UPDATE SET
+                rating = excluded.rating,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, recipe_id, rating),
+        )
+
+
+def delete_rating(user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None) -> None:
+    """Retire la note d'un usager pour une recette (sans erreur si absente)."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        _conn.execute(
+            "DELETE FROM recipe_ratings WHERE user_id = ? AND recipe_id = ?",
+            (user_id, recipe_id),
+        )
+
+
+def get_user_rating(
+    user_id: int, recipe_id: int, conn: sqlite3.Connection | None = None
+) -> int | None:
+    """Retourne la note d'un usager pour une recette, ou None si non notée."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
+            "SELECT rating FROM recipe_ratings WHERE user_id = ? AND recipe_id = ?",
+            (user_id, recipe_id),
+        ).fetchone()
+        return int(row["rating"]) if row is not None else None
+
+
+def get_recipe_rating_summary(recipe_id: int, conn: sqlite3.Connection | None = None) -> JsonDict:
+    """Moyenne + nombre de votes pour une recette."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        row = _conn.execute(
+            "SELECT COUNT(*) AS n, AVG(rating) AS avg FROM recipe_ratings WHERE recipe_id = ?",
+            (recipe_id,),
+        ).fetchone()
+        count = int(row["n"]) if row is not None else 0
+        avg_raw = row["avg"] if row is not None else None
+        return {
+            "count": count,
+            "average": float(avg_raw) if avg_raw is not None else None,
+        }
+
+
+def get_recipe_rating_summaries(
+    recipe_ids: Collection[int], conn: sqlite3.Connection | None = None
+) -> dict[int, JsonDict]:
+    """Moyennes + comptes pour un lot de recettes (une seule requête)."""
+    ids = list({int(i) for i in recipe_ids})
+    if not ids:
+        return {}
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        placeholders = ", ".join("?" for _ in ids)
+        rows = _conn.execute(
+            f"SELECT recipe_id, COUNT(*) AS n, AVG(rating) AS avg"
+            f" FROM recipe_ratings WHERE recipe_id IN ({placeholders})"
+            f" GROUP BY recipe_id",
+            ids,
+        ).fetchall()
+        result: dict[int, JsonDict] = {rid: {"count": 0, "average": None} for rid in ids}
+        for row in rows:
+            avg_raw = row["avg"]
+            result[int(row["recipe_id"])] = {
+                "count": int(row["n"]),
+                "average": float(avg_raw) if avg_raw is not None else None,
+            }
+        return result
+
+
+def get_user_ratings(user_id: int, conn: sqlite3.Connection | None = None) -> dict[int, int]:
+    """Toutes les notes d'un usager : {recipe_id: rating}."""
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
+            "SELECT recipe_id, rating FROM recipe_ratings WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+        return {int(r["recipe_id"]): int(r["rating"]) for r in rows}
+
+
+def get_user_rated_recipes(
+    user_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
+) -> list[JsonDict]:
+    """Recettes notées par l'usager, triées de la meilleure à la moins bonne.
+
+    Tri : note de l'usager DESC, puis moyenne globale DESC, puis titre.
+    Chaque entrée porte `user_rating` + `rating_average` / `rating_count`.
+    """
+    with get_conn() if conn is None else nullcontext(conn) as _conn:
+        rows = _conn.execute(
+            """
+            SELECT r.*, c.name AS category_name,
+                   c.display_name_fr AS category_display_name_fr,
+                   c.display_name_en AS category_display_name_en,
+                   rt.rating AS user_rating,
+                   (SELECT AVG(rating) FROM recipe_ratings WHERE recipe_id = r.id) AS rating_avg,
+                   (SELECT COUNT(*) FROM recipe_ratings WHERE recipe_id = r.id) AS rating_n
+            FROM recipe_ratings rt
+            JOIN recipes r ON rt.recipe_id = r.id
+            LEFT JOIN categories c ON r.category_id = c.id
+            WHERE rt.user_id = ?
+              AND (r.source_missing = 0 OR r.force_visible = 1)
+            ORDER BY rt.rating DESC, rating_avg DESC, r.updated_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+        results = []
+        cat_col = "category_display_name_en" if lang == "en" else "category_display_name_fr"
+        for row in rows:
+            translation = _load_translation(_conn, int(row["id"]), lang)
+            d: JsonDict = dict(row)
+            d.update(translation)
+            d["title"] = translation["title"]
+            if d.get("category_name"):
+                d["category"] = {
+                    "name": d["category_name"],
+                    "display_name": d[cat_col],
+                }
+            else:
+                d["category"] = None
+
+            tag_rows = _conn.execute(
+                """
+                SELECT t.id, t.name,
+                       t.display_name_fr, t.display_name_en,
+                       tf.name AS family
+                FROM recipe_tags rt
+                JOIN tags t ON rt.tag_id = t.id
+                JOIN tag_families tf ON t.family_id = tf.id
+                WHERE rt.recipe_id = ?
+                ORDER BY tf.sort_order, t.display_name_fr
+                """,
+                (row["id"],),
+            ).fetchall()
+            d["tags"] = [_localize_tag(tr, lang) | {"family": tr["family"]} for tr in tag_rows]
+            d["images"] = get_recipe_images(int(row["id"]), conn=_conn)
+            avg_raw = row["rating_avg"]
+            d["user_rating"] = int(row["user_rating"])
+            d["rating_average"] = float(avg_raw) if avg_raw is not None else None
+            d["rating_count"] = int(row["rating_n"])
+            results.append(d)
+
+        return results
+
+
 def get_favorite_recipes(
     user_id: int, lang: str = DEFAULT_LANGUAGE, conn: sqlite3.Connection | None = None
 ) -> list[JsonDict]:

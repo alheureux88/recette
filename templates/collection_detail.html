@@ -59,7 +59,7 @@
         hx-get="/collections/{{ collection.slug }}/search"
         hx-trigger="input changed delay:300ms, search"
         hx-target="#recipe-grid"
-        hx-include="[name='tags'], [name='category'], [name='account']"
+        hx-include="[name='tags'], [name='category'], [name='account'], [name='min_rating'], [name='max_rating']"
         autocomplete="off"
     >
 </div>

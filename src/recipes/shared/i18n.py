@@ -76,6 +76,10 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
         "fr": "Aucune recette trouvée. Essayez une autre recherche ou étiquette.",
         "en": "No recipe found. Try a different search or tag.",
     },
+    "home.filter_rating": {"fr": "Note moyenne", "en": "Average rating"},
+    "home.filter_rating_min": {"fr": "Note minimale", "en": "Minimum rating"},
+    "home.filter_rating_max": {"fr": "Note maximale", "en": "Maximum rating"},
+    "home.filter_rating_any": {"fr": "Toutes notes", "en": "Any rating"},
     # --- Page recette ---
     "recipe.back_to_list": {"fr": "← Toutes les recettes", "en": "← All recipes"},
     "recipe.cook_mode": {"fr": "Mode cuisine", "en": "Cook mode"},
@@ -159,6 +163,26 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "favorites.title": {"fr": "Mes favoris", "en": "My favorites"},
     "favorites.add": {"fr": "Ajouter aux favoris", "en": "Add to favorites"},
     "favorites.remove": {"fr": "Retirer des favoris", "en": "Remove from favorites"},
+    # --- Notes (1-5 étoiles) ---
+    "nav.ratings": {"fr": "Mes notes", "en": "My ratings"},
+    "ratings.title": {"fr": "Mes notes", "en": "My ratings"},
+    "ratings.empty": {
+        "fr": "Vous n'avez pas encore noté de recette.",
+        "en": "You have not rated any recipe yet.",
+    },
+    "ratings.your_rating": {"fr": "Votre note", "en": "Your rating"},
+    "ratings.mine": {"fr": "ma note : {n}/5", "en": "my rating: {n}/5"},
+    "ratings.average_one": {"fr": "Moyenne : {avg} (1 vote)", "en": "Average: {avg} (1 vote)"},
+    "ratings.average_other": {
+        "fr": "Moyenne : {avg} ({n} votes)",
+        "en": "Average: {avg} ({n} votes)",
+    },
+    "ratings.no_ratings": {"fr": "Pas encore notée", "en": "Not rated yet"},
+    "ratings.remove": {"fr": "Retirer ma note", "en": "Remove my rating"},
+    "ratings.login_hint": {
+        "fr": "Connectez-vous pour noter cette recette.",
+        "en": "Log in to rate this recipe.",
+    },
     # --- Administration : titres / nav ---
     "admin.recipes_title": {
         "fr": "Administration des recettes",

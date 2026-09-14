@@ -15,10 +15,17 @@ from recipes.features.preferences.controllers import (
 )
 from recipes.features.recipes.services import (
     add_favorite,
+    delete_rating,
     get_favorite_recipes,
+    get_recipe_rating_summaries,
+    get_recipe_rating_summary,
     get_user_favorite_ids,
+    get_user_rated_recipes,
+    get_user_rating,
+    get_user_ratings,
     is_favorite,
     remove_favorite,
+    set_rating,
 )
 from recipes.features.shopping.services import get_user_shopping_lists
 from recipes.shared.auth import get_user, is_admin, require_user
@@ -33,9 +40,24 @@ from recipes.shared.db import (
 )
 from recipes.shared.duration import format_duration
 from recipes.shared.i18n import DEFAULT_LANGUAGE, gettext
-from recipes.shared.models import JsonDict
+from recipes.shared.models import JsonDict, RatingCreate
 from recipes.shared.units import format_ingredient
 from recipes.shared.web import _parse_account_param
+
+
+def _rating_context_for_recipes(
+    recipes: list[JsonDict],
+    user_id: int | None,
+    conn: sqlite3.Connection,
+) -> JsonDict:
+    """Moyennes globales + notes de l'usager pour un lot de recettes."""
+    ids = [int(str(r["id"])) for r in recipes if r.get("id") is not None]
+    summaries = get_recipe_rating_summaries(ids, conn=conn)
+    user_ratings: dict[int, int] = {}
+    if user_id is not None:
+        user_ratings = get_user_ratings(user_id, conn=conn)
+    return {"rating_summaries": summaries, "user_ratings": user_ratings}
+
 
 router = APIRouter(tags=["recipes"])
 
@@ -200,8 +222,10 @@ async def index(
     recipes = search_recipes(tag_ids=tags, lang=lang, conn=conn)
     user = get_user(request)
     favorite_ids: set[int] = set()
+    user_id: int | None = None
     if user:
-        favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
+        user_id = int(str(user["id"]))
+        favorite_ids = get_user_favorite_ids(user_id, conn=conn)
     from recipes.features.collections.services import list_featured_collections
 
     return templates.TemplateResponse(
@@ -217,6 +241,7 @@ async def index(
             active_category_id=None,
             favorite_ids=favorite_ids,
             featured_collections=list_featured_collections(conn=conn),
+            **_rating_context_for_recipes(recipes, user_id, conn),
             **_provenance_context(request, conn),
         ),
     )
@@ -230,6 +255,8 @@ async def search(
     tags: list[int] = Query(default=[]),
     category: str | None = Query(default=None),
     account: str | None = Query(default=None),
+    min_rating: float | None = Query(default=None, ge=0, le=5),
+    max_rating: float | None = Query(default=None, ge=0, le=5),
 ) -> HTMLResponse:
     from recipes.shared.auth import OIDC_ENABLED
     from recipes.shared.web import _provenance_context, _resolve_request_lang, templates
@@ -248,13 +275,17 @@ async def search(
         tag_ids=tags,
         category_id=category_id,
         connection_id=_parse_account_param(account),
+        min_rating=min_rating,
+        max_rating=max_rating,
         lang=lang,
         conn=conn,
     )
     user = get_user(request)
     favorite_ids: set[int] = set()
+    search_user_id: int | None = None
     if user:
-        favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
+        search_user_id = int(str(user["id"]))
+        favorite_ids = get_user_favorite_ids(search_user_id, conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="partials/recipe_cards.html",
@@ -263,6 +294,7 @@ async def search(
             "favorite_ids": favorite_ids,
             "user": user,
             "auth_enabled": OIDC_ENABLED,
+            **_rating_context_for_recipes(recipes, search_user_id, conn),
             **_provenance_context(request, conn),
         },
     )
@@ -308,7 +340,11 @@ async def recipe_detail(
         return render_not_found(request, variant="recipe", detail=gettext("recipe.not_found", lang))
     recipe_id, recipe = resolved
     user = get_user(request)
-    is_fav = bool(user and is_favorite(user["id"], recipe_id, conn=conn))
+    is_fav = bool(user and is_favorite(int(str(user["id"])), recipe_id, conn=conn))
+    summary = get_recipe_rating_summary(recipe_id, conn=conn)
+    user_rating: int | None = None
+    if user:
+        user_rating = get_user_rating(int(str(user["id"])), recipe_id, conn=conn)
     ingredient_ctx_early, steps_list = _resolved_steps(
         recipe, servings, units, multiplier, request, conn, lang=lang
     )
@@ -372,6 +408,9 @@ async def recipe_detail(
             print_prefs=print_prefs_for_user(request, conn),
             show_step_ingredients=show_step_ingredients_for_user(request, conn),
             all_images=all_images,
+            user_rating=user_rating,
+            rating_average=summary["average"],
+            rating_count=summary["count"],
             **ingredient_ctx_early,
         ),
     )
@@ -537,8 +576,9 @@ async def favorites_list(
     if not user:
         return RedirectResponse(url="/auth/login", status_code=302)
     lang = _resolve_request_lang(request)
-    recipes = get_favorite_recipes(user["id"], lang=lang, conn=conn)
-    favorite_ids = get_user_favorite_ids(user["id"], conn=conn)
+    recipes = get_favorite_recipes(int(str(user["id"])), lang=lang, conn=conn)
+    fav_user_id = int(str(user["id"]))
+    favorite_ids = get_user_favorite_ids(fav_user_id, conn=conn)
     return templates.TemplateResponse(
         request=request,
         name="favorites.html",
@@ -546,6 +586,105 @@ async def favorites_list(
             request,
             recipes=recipes,
             favorite_ids=favorite_ids,
+            **_rating_context_for_recipes(recipes, fav_user_id, conn),
+            **_provenance_context(request, conn),
+        ),
+    )
+
+
+def _rating_widget_context(
+    slug: str, recipe_id: int, user_id: int, conn: sqlite3.Connection
+) -> JsonDict:
+    """Contexte du partial étoiles après un vote / retrait."""
+    summary = get_recipe_rating_summary(recipe_id, conn=conn)
+    return {
+        "slug": slug,
+        "user_rating": get_user_rating(user_id, recipe_id, conn=conn),
+        "rating_average": summary["average"],
+        "rating_count": summary["count"],
+    }
+
+
+@router.post("/ratings/{slug}")
+async def set_recipe_rating(
+    payload: RatingCreate,
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    slug: str = Path(),
+    user: dict[str, Any] = Depends(require_user),
+) -> HTMLResponse:
+    """Note une recette (1-5). Un nouveau vote écrase le précédent."""
+    from recipes.shared.web import _resolve_request_lang, templates
+
+    lang = _resolve_request_lang(request)
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
+    recipe_id, _recipe = resolved
+    user_id = int(str(user["id"]))
+    set_rating(user_id, recipe_id, payload.rating, conn=conn)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/rating_widget.html",
+        context=_rating_widget_context(slug, recipe_id, user_id, conn),
+    )
+
+
+@router.delete("/ratings/{slug}")
+async def remove_recipe_rating(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    slug: str = Path(),
+    user: dict[str, Any] = Depends(require_user),
+) -> HTMLResponse:
+    """Retire la note de l'usager pour une recette."""
+    from recipes.shared.web import _resolve_request_lang, templates
+
+    lang = _resolve_request_lang(request)
+    resolved = _get_recipe_by_slug(slug, lang, conn)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail=gettext("recipe.not_found", lang))
+    recipe_id, _recipe = resolved
+    user_id = int(str(user["id"]))
+    delete_rating(user_id, recipe_id, conn=conn)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/rating_widget.html",
+        context=_rating_widget_context(slug, recipe_id, user_id, conn),
+    )
+
+
+@router.get("/ratings", response_model=None)
+async def my_ratings_list(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> HTMLResponse | RedirectResponse:
+    """Page « Mes notes » : recettes notées par l'usager, meilleures d'abord."""
+    from recipes.shared.auth import OIDC_ENABLED
+    from recipes.shared.web import (
+        _base_context,
+        _provenance_context,
+        _resolve_request_lang,
+        templates,
+    )
+
+    if not OIDC_ENABLED:
+        return RedirectResponse(url="/", status_code=302)
+    user = get_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/login", status_code=302)
+    lang = _resolve_request_lang(request)
+    user_id = int(str(user["id"]))
+    recipes = get_user_rated_recipes(user_id, lang=lang, conn=conn)
+    favorite_ids = get_user_favorite_ids(user_id, conn=conn)
+    return templates.TemplateResponse(
+        request=request,
+        name="ratings.html",
+        context=_base_context(
+            request,
+            recipes=recipes,
+            favorite_ids=favorite_ids,
+            **_rating_context_for_recipes(recipes, user_id, conn),
             **_provenance_context(request, conn),
         ),
     )

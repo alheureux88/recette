@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ _('ratings.title') }} — Recettes Merizzi{% endblock %}
+{% block content %}
+
+<h1 class="page-title">{{ _('ratings.title') }}</h1>
+
+{% if recipes %}
+<div id="recipe-grid">
+    {% include "partials/recipe_cards.html" %}
+</div>
+{% else %}
+<p class="empty">{{ _('ratings.empty') }}</p>
+{% endif %}
+
+{% endblock %}
