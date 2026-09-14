@@ -12,8 +12,10 @@ from fastapi.templating import Jinja2Templates
 from recipes.shared.assets import CSS_VERSION, asset_url
 from recipes.shared.auth import (
     OIDC_ENABLED,
+    can_admin_content,
     get_user,
     is_admin,
+    is_superuser,
     login_url,
     logout_url,
 )
@@ -76,6 +78,8 @@ def _base_context(request: Request, **extra: object) -> JsonDict:
         "login_url": login_url(request),
         "logout_url": logout_url(request),
         "is_admin": is_admin(request),
+        "is_superuser": is_superuser(request),
+        "can_admin": can_admin_content(request),
         "lang": _resolve_request_lang(request),
         "available_languages": available_languages(),
         "theme_pref": theme_for_request(request),

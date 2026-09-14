@@ -30,7 +30,12 @@ from recipes.features.collections.services import (
     update_collection,
 )
 from recipes.features.recipes.services import get_user_favorite_ids
-from recipes.shared.auth import get_user, is_admin, require_admin, require_user
+from recipes.shared.auth import (
+    can_admin_content,
+    get_user,
+    require_content_admin,
+    require_user,
+)
 from recipes.shared.db import get_db, get_recipe_id_by_slug
 from recipes.shared.i18n import gettext
 from recipes.shared.models import (
@@ -102,7 +107,7 @@ def _require_edit(
     404 (instead of 403) avoids confirming the existence of other
     users' private collections by ID enumeration.
     """
-    if not can_edit(collection, _effective_user_id(request, conn), is_admin(request)):
+    if not can_edit(collection, _effective_user_id(request, conn), can_admin_content(request)):
         raise HTTPException(status_code=404, detail=gettext("collections.not_found", lang))
 
 
@@ -152,7 +157,7 @@ async def collection_shared_page(
             request, variant="generic", detail=gettext("collections.not_found", lang)
         )
     uid = _effective_user_id(request, conn)
-    if can_view(collection, uid, is_admin(request)):
+    if can_view(collection, uid, can_admin_content(request)):
         return RedirectResponse(url=f"/collections/{collection['slug']}", status_code=302)
     recipes = get_collection_recipes(int(str(collection["id"])), lang=lang, conn=conn)
     favorite_ids: set[int] = set()
@@ -194,7 +199,7 @@ async def collection_detail_page(
     lang = _resolve_request_lang(request)
     collection = get_collection_by_slug(slug, conn=conn)
     uid = _effective_user_id(request, conn)
-    admin = is_admin(request)
+    admin = can_admin_content(request)
     if collection is None or not can_view(collection, uid, admin):
         return render_not_found(
             request, variant="generic", detail=gettext("collections.not_found", lang)
@@ -260,7 +265,7 @@ async def collection_search(
     lang = _resolve_request_lang(request)
     collection = get_collection_by_slug(slug, conn=conn)
     uid = _effective_user_id(request, conn)
-    if collection is None or not can_view(collection, uid, is_admin(request)):
+    if collection is None or not can_view(collection, uid, can_admin_content(request)):
         raise HTTPException(status_code=404, detail=gettext("collections.not_found", lang))
     category_id: int | None = None
     if category and category.strip():
@@ -509,7 +514,7 @@ async def api_toggle_recipe_membership(
 async def admin_collections_page(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    user: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     """Admin overview of every collection with promote/feature actions."""
     from recipes.shared.web import _base_context, templates
@@ -526,7 +531,7 @@ async def admin_promote_collection(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     collection_id: int = Path(gt=0),
-    user: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_content_admin),
 ) -> RedirectResponse:
     """Upgrade a user collection to a site collection."""
     from recipes.shared.web import _resolve_request_lang
@@ -542,7 +547,7 @@ async def admin_demote_collection(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     collection_id: int = Path(gt=0),
-    user: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_content_admin),
 ) -> RedirectResponse:
     """Revert a site collection to a private user collection."""
     from recipes.shared.web import _resolve_request_lang
@@ -558,7 +563,7 @@ async def admin_feature_collection(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     collection_id: int = Path(gt=0),
-    user: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_content_admin),
 ) -> RedirectResponse:
     """Toggle the homepage-carousel flag of a site collection."""
     from recipes.shared.web import _resolve_request_lang
@@ -576,7 +581,7 @@ async def admin_delete_collection(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     collection_id: int = Path(gt=0),
-    user: dict[str, Any] = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_content_admin),
 ) -> RedirectResponse:
     """Delete any collection."""
     delete_collection(collection_id, conn=conn)

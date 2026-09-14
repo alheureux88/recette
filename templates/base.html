@@ -68,9 +68,11 @@
                                 <a href="/preferences" class="nav-dropdown-item" role="menuitem">{{ _('nav.preferences') }}</a>
                                 <a href="/shopping/templates" class="nav-dropdown-item" role="menuitem">{{ _('nav.templates') }}</a>
                                 <a href="/ratings" class="nav-dropdown-item" role="menuitem">{{ _('nav.ratings') }}</a>
-                                {% if is_admin %}
+                                {% if can_admin %}
                                 <a href="/admin" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_recipes') }}</a>
+                                {% if is_admin %}
                                 <a href="/admin/config" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_system') }}</a>
+                                {% endif %}
                                  <a href="/admin/shopping" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_shopping') }}</a>
                                  <a href="/admin/collections" class="nav-dropdown-item" role="menuitem">{{ _('nav.admin_collections') }}</a>
                                 {% endif %}

@@ -28,7 +28,7 @@ from recipes.features.recipes.services import (
     set_rating,
 )
 from recipes.features.shopping.services import get_user_shopping_lists
-from recipes.shared.auth import get_user, is_admin, require_user
+from recipes.shared.auth import can_admin_content, get_user, require_user
 from recipes.shared.db import (
     get_all_categories,
     get_all_tags_grouped,
@@ -384,7 +384,7 @@ async def recipe_detail(
                 )
 
     all_images: list[JsonDict] = []
-    if is_admin(request):
+    if can_admin_content(request):
         primary_marked = False
         for img in get_recipe_images(recipe_id, conn=conn, include_hidden=True):
             marked = dict(img)

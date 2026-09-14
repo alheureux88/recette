@@ -178,3 +178,25 @@
         {{ _('config.llm_hint', default=llm_model_default) }}
     </p>
 </form>
+
+<h2 class="admin-section-title">{{ _('config.superusers_title') }}</h2>
+<form class="admin-edit-form config-form"
+      hx-post="/admin/config/superusers"
+      hx-target="#admin-content">
+    <div class="form-row">
+        <div class="field field-title">
+            <span>{{ _('config.superusers_field') }}</span>
+            <input type="text" name="superuser_groups" value="{{ superuser_groups_raw }}"
+                   placeholder="{{ _('config.superusers_placeholder') }}">
+        </div>
+        <div class="field">
+            <span>&nbsp;</span>
+            <div class="form-actions">
+                <button type="submit" class="btn-retry">{{ _('config.superusers_apply') }}</button>
+            </div>
+        </div>
+    </div>
+    <p class="config-hint">
+        {{ _('config.superusers_hint') }}
+    </p>
+</form>

@@ -38,6 +38,8 @@ __all__ = [
     "set_default_account_active",
     "set_default_account_visible",
     "get_recipe_provenances",
+    "get_superuser_groups",
+    "set_superuser_groups",
 ]
 
 # ---------------------------------------------------------------------------
@@ -249,6 +251,38 @@ def set_default_account_active(active: bool, conn: sqlite3.Connection | None = N
 
 def set_default_account_visible(visible: bool, conn: sqlite3.Connection | None = None) -> None:
     set_setting("default_visible", "1" if visible else "0", conn=conn)
+
+
+# ---------------------------------------------------------------------------
+# Super-users (groupes OIDC avec droits d'administration du contenu)
+# ---------------------------------------------------------------------------
+
+
+def _normalize_group_list(raw: str | list[str]) -> list[str]:
+    """Normalise une liste de groupes OIDC (CSV ou liste) : trim + déduplique."""
+    parts = raw.split(",") if isinstance(raw, str) else list(raw)
+    seen: set[str] = set()
+    result: list[str] = []
+    for part in parts:
+        name = part.strip()
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+def get_superuser_groups(conn: sqlite3.Connection | None = None) -> list[str]:
+    """Groupes OIDC super-users configurés en DB (hors valeur env)."""
+    return _normalize_group_list(get_setting("superuser_groups", "", conn=conn))
+
+
+def set_superuser_groups(
+    groups: str | list[str], conn: sqlite3.Connection | None = None
+) -> list[str]:
+    """Remplace la liste des groupes OIDC super-users (stockée en CSV)."""
+    normalized = _normalize_group_list(groups)
+    set_setting("superuser_groups", ",".join(normalized), conn=conn)
+    return normalized
 
 
 # ---------------------------------------------------------------------------

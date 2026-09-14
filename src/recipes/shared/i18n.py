@@ -493,6 +493,31 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
             "model configured in .env ({default}). Applies on the next scan."
         ),
     },
+    "config.superusers_title": {
+        "fr": "Groupes super-users (OIDC)",
+        "en": "Super-user groups (OIDC)",
+    },
+    "config.superusers_field": {
+        "fr": "Groupes autorisés (séparés par des virgules)",
+        "en": "Allowed groups (comma-separated)",
+    },
+    "config.superusers_placeholder": {
+        "fr": "Ex : editeurs, famille",
+        "en": "e.g. editors, family",
+    },
+    "config.superusers_apply": {"fr": "Appliquer", "en": "Apply"},
+    "config.superusers_hint": {
+        "fr": (
+            "Les membres de ces groupes OIDC peuvent administrer les recettes, "
+            "les collections et l'épicerie, mais pas l'administration système. "
+            "Valeur par défaut via SUPERUSER_GROUPS dans le .env."
+        ),
+        "en": (
+            "Members of these OIDC groups can administer recipes, collections "
+            "and groceries, but not system administration. Default value via "
+            "SUPERUSER_GROUPS in .env."
+        ),
+    },
     # --- Flash messages / erreurs ---
     "flash.dropbox_name_required": {
         "fr": "Le nom et le refresh token sont obligatoires.",

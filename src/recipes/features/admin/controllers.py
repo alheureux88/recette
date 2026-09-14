@@ -20,6 +20,7 @@ from recipes.features.admin.services import (
     get_dropbox_connections,
     get_failed_files,
     get_setting,
+    get_superuser_groups,
     is_default_account_active,
     is_default_account_visible,
     remove_failed_file,
@@ -29,6 +30,7 @@ from recipes.features.admin.services import (
     set_dropbox_connection_active,
     set_dropbox_connection_visible,
     set_setting,
+    set_superuser_groups,
 )
 from recipes.features.recipes.services import (
     RETAG_SCOPES,
@@ -44,7 +46,7 @@ from recipes.features.shopping.services import (
     get_shopping_list_by_id,
     get_shopping_list_items,
 )
-from recipes.shared.auth import require_admin
+from recipes.shared.auth import require_admin, require_content_admin
 from recipes.shared.db import (
     get_all_categories,
     get_db,
@@ -175,6 +177,8 @@ def _admin_config_context(
         dropbox_folder=DROPBOX_FOLDER,
         llm_model=get_setting("llm_model", "", conn=conn),
         llm_model_default=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+        superuser_groups=get_superuser_groups(conn=conn),
+        superuser_groups_raw=",".join(get_superuser_groups(conn=conn)),
         message=message,
     )
 
@@ -293,7 +297,7 @@ def _tags_from_form(form: Any) -> dict[str, list[str]]:
 async def admin_page(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     from recipes.shared.web import templates
 
@@ -323,7 +327,7 @@ async def admin_config_page(
 async def admin_recipes_data(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     """Data for the admin table: recipes, categories, and tags."""
     from recipes.shared.tagger import TAGGER_VERSION
@@ -344,7 +348,7 @@ async def admin_retag_recipe(
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
     data: RetagUpdate | None = None,
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     """Relance le tagger actuel sur une recette (re-download Dropbox).
 
@@ -390,7 +394,7 @@ async def admin_retag_bulk(
     data: BulkRetagUpdate,
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     """Retag en masse : relance le tagger sur chaque recette listée."""
     from recipes.shared.web import _resolve_request_lang
@@ -416,7 +420,7 @@ async def admin_recipe_image_primary(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     """Choisit la photo principale d'une recette (première affichée partout)."""
     from recipes.shared.web import _resolve_request_lang
@@ -435,7 +439,7 @@ async def admin_recipe_image_visibility(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     """Cache ou ré-affiche une photo d'une recette (affichages publics)."""
     from recipes.shared.web import _resolve_request_lang
@@ -452,7 +456,7 @@ async def admin_recipe_image_visibility(
 async def admin_files_data(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     """Data for blacklisted and failed files tables."""
     from recipes.shared.web import _resolve_request_lang
@@ -499,7 +503,7 @@ async def admin_inline_category(
     data: InlineCategoryUpdate,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     from recipes.shared.web import _resolve_request_lang
 
@@ -515,7 +519,7 @@ async def admin_inline_tags(
     data: InlineTagsUpdate,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     from recipes.shared.web import _resolve_request_lang
 
@@ -529,7 +533,7 @@ async def admin_inline_tags(
 async def admin_bulk_category(
     data: BulkCategoryUpdate,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     updated = bulk_update_category(data.ids, data.category, conn=conn)
     return {"ok": True, "updated": updated}
@@ -539,7 +543,7 @@ async def admin_bulk_category(
 async def admin_bulk_tags(
     data: BulkTagsUpdate,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> JsonDict:
     updated = bulk_update_tags(
         data.ids, _parse_tag_keys(data.add), _parse_tag_keys(data.remove), conn=conn
@@ -733,6 +737,29 @@ async def admin_config_set_model(
     )
 
 
+@router.post("/config/superusers", response_class=HTMLResponse)
+async def admin_config_set_superusers(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+    _user: dict[str, Any] = Depends(require_admin),
+) -> HTMLResponse:
+    """Définit les groupes OIDC super-users (admin contenu, sans système)."""
+    from recipes.shared.web import templates
+
+    form = await request.form()
+    raw = str(form.get("superuser_groups") or "")
+    groups = set_superuser_groups(raw, conn=conn)
+    if groups:
+        message = ("ok", f"Groupes super-users : {', '.join(groups)}.")
+    else:
+        message = ("ok", "Aucun groupe super-user configuré.")
+    return templates.TemplateResponse(
+        request=request,
+        name=_config_template_name(request),
+        context=_admin_config_context(request, conn, message),
+    )
+
+
 @router.post("/config/dropbox/default/toggle-active", response_class=HTMLResponse)
 async def admin_config_toggle_default_active(
     request: Request,
@@ -893,7 +920,7 @@ async def admin_edit_form(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
 
@@ -918,7 +945,7 @@ async def admin_edit_save(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     from recipes.shared.web import _resolve_request_lang, templates
 
@@ -979,7 +1006,7 @@ async def admin_blacklist(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     from recipes.shared.web import templates
 
@@ -996,7 +1023,7 @@ async def admin_unblacklist(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     path: str = Query(...),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     from recipes.shared.web import templates
 
@@ -1013,7 +1040,7 @@ async def admin_retry_failed(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     path: str = Query(...),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     from recipes.shared.web import templates
 
@@ -1030,7 +1057,7 @@ async def admin_orphan_show(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     """Force l'affichage d'une recette dont la source a disparu."""
     from recipes.shared.web import _resolve_request_lang, templates
@@ -1050,7 +1077,7 @@ async def admin_orphan_hide(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     recipe_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     """Annule l'affichage forcé d'une recette orpheline."""
     from recipes.shared.web import _resolve_request_lang, templates
@@ -1074,7 +1101,7 @@ async def admin_orphan_hide(
 async def admin_shopping_lists(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     """Admin page to view and manage all shopping lists."""
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
@@ -1106,7 +1133,7 @@ async def admin_shopping_list_view(
     conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
     mode: str = Query(default="edit"),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse:
     """Admin view of a shopping list (read-only, doesn't affect counters)."""
     from recipes.shared.web import _base_context, _resolve_request_lang, templates
@@ -1150,7 +1177,7 @@ async def admin_shopping_list_delete(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
     list_id: int = Path(gt=0),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> RedirectResponse:
     """Admin delete a shopping list."""
     delete_shopping_list(list_id, conn=conn)
