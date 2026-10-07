@@ -31,7 +31,7 @@ from recipes.features.shopping.controllers import router as shopping_router
 from recipes.features.shopping.scan_controllers import router as shopping_scan_router
 from recipes.features.shopping.services import cleanup_expired_shopping_lists
 from recipes.features.shopping.template_controllers import router as shopping_templates_router
-from recipes.shared.auth import OIDC_ENABLED
+from recipes.shared.auth import OIDC_ENABLED, log_oidc_config
 from recipes.shared.db import init_db
 from recipes.shared.i18n import (
     COOKIE_MAX_AGE,
@@ -84,6 +84,7 @@ _scheduler: BackgroundScheduler | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    log_oidc_config()
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
     log.info("Starting initial Dropbox poll in background...")
