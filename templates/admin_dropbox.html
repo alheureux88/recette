@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ _('admin.dropbox_title') }} — Recettes Merizzi{% endblock %}
+{% block main_class %}admin-main{% endblock %}
+{% block content %}
+
+<h1 class="page-title">{{ _('admin.dropbox_title') }}</h1>
+
+<div id="dropbox-content">
+    {% include "partials/admin_dropbox.html" %}
+</div>
+
+{% endblock %}

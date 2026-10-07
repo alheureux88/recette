@@ -100,6 +100,66 @@
     {{ _('config.hint_toggle') }}
 </p>
 
+<h2 class="admin-section-title">{{ _('config.pending_title') }}</h2>
+
+{% if pending_connections %}
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>{{ _('config.col_name') }}</th>
+            <th>{{ _('config.pending_by') }}</th>
+            <th>{{ _('admin.dropbox_col_status') }}</th>
+            <th>{{ _('config.col_folder') }}</th>
+            <th>{{ _('config.col_filter') }}</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in pending_connections %}
+        <tr>
+            <td>{{ p.name }}</td>
+            <td>{% if p.proposer_name %}{{ p.proposer_name }}{% if p.proposer_email %} ({{ p.proposer_email }}){% endif %}{% elif p.proposer_email %}{{ p.proposer_email }}{% else %}—{% endif %}</td>
+            <td>
+                <span class="status-badge status-off">
+                    {% if p.status == 'rejected' %}{{ _('admin.dropbox_status_rejected') }}
+                    {% else %}{{ _('admin.dropbox_status_pending') }}{% endif %}
+                </span>
+            </td>
+            <td class="path-cell">{{ p.folder or "/" }}</td>
+            <td>{{ p.file_filter or "—" }}</td>
+            <td class="admin-actions">
+                {% if p.status == 'pending' %}
+                <button class="btn-restore"
+                        hx-post="/admin/config/dropbox/{{ p.id }}/approve"
+                        hx-target="#admin-content">
+                    {{ _('config.action_approve') }}
+                </button>
+                <button class="btn-blacklist"
+                        hx-post="/admin/config/dropbox/{{ p.id }}/reject"
+                        hx-target="#admin-content">
+                    {{ _('config.action_reject') }}
+                </button>
+                {% endif %}
+                <button class="btn-blacklist"
+                        hx-post="/admin/config/dropbox/{{ p.id }}/delete"
+                        hx-target="#admin-content"
+                        hx-confirm="{{ _('config.action_delete') }} ?">
+                    {{ _('config.action_delete') }}
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p class="config-hint">
+    {{ _('config.pending_approve_hint') }}
+</p>
+{% else %}
+<p class="config-hint">
+    {{ _('config.pending_empty') }}
+</p>
+{% endif %}
+
 <h2 class="admin-section-title">{{ _('config.add_title') }}</h2>
 
 <div class="config-actions">

@@ -1,0 +1,102 @@
+{% if message %}
+<div class="flash flash-{{ message.0 }}">{{ message.1 }}</div>
+{% endif %}
+
+<p class="config-note">
+    {{ _('admin.dropbox_intro') }}
+</p>
+
+<div class="config-actions">
+    <a href="/admin/dropbox/connect" class="btn-restore">
+        {{ _('admin.dropbox_connect') }}
+    </a>
+    <span class="config-hint">
+        {{ _('admin.dropbox_connect_hint') }}
+    </span>
+</div>
+
+{% if oauth_refresh_token %}
+<h2 class="admin-section-title">{{ _('config.add_title') }}</h2>
+
+<form class="admin-edit-form config-form"
+      hx-post="/admin/dropbox"
+      hx-target="#dropbox-content">
+    <div class="form-row">
+        <div class="field field-title">
+            <span>{{ _('config.field_name') }}</span>
+            <input type="text" name="name" required
+                   placeholder="{% if oauth_account_label %}{{ oauth_account_label }}{% else %}{{ _('config.name_placeholder') }}{% endif %}"
+                   {% if oauth_account_label %}value="{{ oauth_account_label.split(' — ')[0] }}"{% endif %}>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="field field-title">
+            <span>{{ _('config.field_refresh_token') }}</span>
+            <input type="hidden" name="refresh_token" value="{{ oauth_refresh_token }}">
+            <input type="text" value="{{ oauth_refresh_token }}" disabled>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="field">
+            <span>{{ _('config.field_folder') }}</span>
+            <input type="text" name="folder" placeholder="{{ _('config.folder_placeholder') }}">
+        </div>
+        <div class="field">
+            <span>{{ _('config.field_file_filter') }}</span>
+            <input type="text" name="file_filter" placeholder="{{ _('config.file_filter_placeholder') }}">
+        </div>
+    </div>
+    <p class="config-hint">
+        {{ _('config.dropbox_app_hint') }}
+    </p>
+    <div class="form-actions">
+        <button type="submit" class="btn-edit">{{ _('admin.dropbox_action_propose') }}</button>
+    </div>
+</form>
+{% endif %}
+
+<h2 class="admin-section-title">{{ _('admin.dropbox_mine_title') }}</h2>
+
+{% if proposals %}
+<table class="admin-table">
+    <thead>
+        <tr>
+            <th>{{ _('config.col_name') }}</th>
+            <th>{{ _('admin.dropbox_col_status') }}</th>
+            <th>{{ _('config.col_folder') }}</th>
+            <th>{{ _('config.col_filter') }}</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in proposals %}
+        <tr>
+            <td>{{ p.name }}</td>
+            <td>
+                <span class="status-badge {{ 'status-on' if p.status == 'approved' else 'status-off' }}">
+                    {% if p.status == 'approved' %}{{ _('admin.dropbox_status_approved') }}
+                    {% elif p.status == 'rejected' %}{{ _('admin.dropbox_status_rejected') }}
+                    {% else %}{{ _('admin.dropbox_status_pending') }}{% endif %}
+                </span>
+            </td>
+            <td class="path-cell">{{ p.folder or "/" }}</td>
+            <td>{{ p.file_filter or "—" }}</td>
+            <td class="admin-actions">
+                {% if p.status != 'approved' %}
+                <button class="btn-blacklist"
+                        hx-post="/admin/dropbox/{{ p.id }}/delete"
+                        hx-target="#dropbox-content"
+                        hx-confirm="{{ _('config.action_delete') }} ?">
+                    {{ _('config.action_delete') }}
+                </button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="config-hint">
+    {{ _('admin.dropbox_empty') }}
+</p>
+{% endif %}

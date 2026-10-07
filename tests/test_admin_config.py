@@ -18,7 +18,9 @@ from recipes.features.admin.services import (
     get_setting,
     is_default_account_active,
     is_default_account_visible,
+    pop_dropbox_oauth_state,
     record_failed_file,
+    save_dropbox_oauth_state,
     set_default_account_visible,
     set_dropbox_connection_visible,
     set_setting,
@@ -422,7 +424,7 @@ class TestOauthFlow:
     def test_callback_htmx_renders_partial(self, admin, monkeypatch):
         monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
-        set_setting("dropbox_oauth_state", "st-1")
+        save_dropbox_oauth_state("st-1", "test", "add", "verifier-1")
 
         monkeypatch.setattr(
             "recipes.features.admin.controllers.exchange_authorization_code",
@@ -473,7 +475,13 @@ class TestOauthFlow:
         monkeypatch.setenv("DROPBOX_APP_SECRET", "secret-123")
         resp = admin.get("/admin/config/dropbox/connect", follow_redirects=False)
         assert resp.status_code == 302
-        assert get_setting("dropbox_oauth_verifier") != ""
+        location = resp.headers["location"]
+        state = [p for p in location.split("&") if p.startswith("state=")][0][6:]
+        flow = pop_dropbox_oauth_state(state)
+        assert flow is not None
+        assert flow["purpose"] == "add"
+        assert flow["sub"] == "test"
+        assert flow["verifier"], "PKCE verifier must be forwarded to the exchange"
 
     def test_redirect_uri_env_override(self, admin, monkeypatch):
         monkeypatch.setenv("DROPBOX_APP_KEY", "key-123")

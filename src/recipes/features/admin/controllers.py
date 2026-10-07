@@ -23,8 +23,11 @@ from recipes.features.admin.services import (
     get_superuser_groups,
     is_default_account_active,
     is_default_account_visible,
+    list_unapproved_dropbox_connections,
+    pop_dropbox_oauth_state,
     remove_failed_file,
     remove_from_blacklist,
+    save_dropbox_oauth_state,
     set_default_account_active,
     set_default_account_visible,
     set_dropbox_connection_active,
@@ -46,6 +49,7 @@ from recipes.features.shopping.services import (
     get_shopping_list_by_id,
     get_shopping_list_items,
 )
+from recipes.shared import auth as auth_module
 from recipes.shared.auth import require_admin, require_content_admin
 from recipes.shared.db import (
     get_all_categories,
@@ -170,7 +174,12 @@ def _admin_config_context(
 
     return _base_context(
         request,
-        connections=get_dropbox_connections(conn=conn),
+        connections=[
+            c
+            for c in get_dropbox_connections(conn=conn)
+            if str(c.get("status", "approved")) == "approved"
+        ],
+        pending_connections=list_unapproved_dropbox_connections(conn=conn),
         env_dropbox_enabled=has_env_dropbox_credentials(),
         default_active=is_default_account_active(conn=conn),
         default_visible=is_default_account_visible(conn=conn),
@@ -223,12 +232,14 @@ def _config_template_name(request: Request) -> str:
 def _admin_config_oauth_context(
     request: Request, conn: sqlite3.Connection, refresh_token: str, account_label: str
 ) -> JsonDict:
+    from recipes.shared.web import _resolve_request_lang
+
     ctx = _admin_config_context(
         request,
         conn,
         (
             "ok",
-            "Compte Dropbox autorise. Choisissez un nom pour finaliser la connexion.",
+            gettext("flash.dropbox_oauth_state", _resolve_request_lang(request)),
         ),
     )
     ctx["oauth_refresh_token"] = refresh_token
@@ -562,8 +573,9 @@ async def admin_config_add_dropbox(
     conn: sqlite3.Connection = Depends(get_db),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.shared.web import templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
     form = await request.form()
     name = str(form.get("name") or "").strip()
     refresh_token = str(form.get("refresh_token") or "").strip()
@@ -577,7 +589,7 @@ async def admin_config_add_dropbox(
             context=_admin_config_context(
                 request,
                 conn,
-                ("error", "Le nom et le refresh token sont obligatoires."),
+                ("error", gettext("flash.dropbox_name_required", lang)),
             ),
             status_code=422,
         )
@@ -594,7 +606,9 @@ async def admin_config_add_dropbox(
             request=request,
             name=_config_template_name(request),
             context=_admin_config_context(
-                request, conn, ("error", f"Une connexion nommee '{name}' existe deja.")
+                request,
+                conn,
+                ("error", gettext("flash.dropbox_name_taken", lang, name=name)),
             ),
             status_code=422,
         )
@@ -605,7 +619,7 @@ async def admin_config_add_dropbox(
         context=_admin_config_context(
             request,
             conn,
-            ("ok", f"Connexion '{name}' ajoutee. Elle sera utilisee au prochain scan."),
+            ("ok", gettext("flash.dropbox_added", lang, name=name)),
         ),
     )
 
@@ -617,12 +631,15 @@ async def admin_config_connect_dropbox(
     _user: dict[str, Any] = Depends(require_admin),
 ) -> Response:
     """Redirect to Dropbox authorization page (offline OAuth2 flow)."""
-    from recipes.shared.web import templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
+    lang = _resolve_request_lang(request)
+    sub = _user.get("sub")
+    if not isinstance(sub, str) or not sub:
+        raise HTTPException(status_code=401, detail=gettext("error.not_authenticated", lang))
     state = secrets.token_urlsafe(24)
     verifier, challenge = create_pkce_pair()
-    set_setting("dropbox_oauth_state", state, conn=conn)
-    set_setting("dropbox_oauth_verifier", verifier, conn=conn)
+    save_dropbox_oauth_state(state, sub, "add", verifier, conn=conn)
     try:
         url = build_oauth_authorize_url(_dropbox_redirect_uri(request), state, challenge)
     except ValueError as e:
@@ -639,12 +656,22 @@ async def admin_config_connect_dropbox(
 async def admin_config_dropbox_callback(
     request: Request,
     conn: sqlite3.Connection = Depends(get_db),
-    _user: dict[str, Any] = Depends(require_admin),
+    _user: dict[str, Any] = Depends(require_content_admin),
 ) -> HTMLResponse | RedirectResponse:
-    """Receive Dropbox authorization code and exchange for refresh token."""
-    from recipes.shared.web import templates
+    """Receive Dropbox authorization code and exchange for refresh token.
 
-    template_name = _config_template_name(request)
+    Shared by the owner flow (direct add, purpose `add`) and the
+    super-user proposal flow (purpose `propose`) : the `state` tells which
+    flow started, and the flow author must match the current session.
+    """
+    from recipes.features.admin.dropbox_controllers import (
+        _dropbox_page_context,
+        _dropbox_template_name,
+        _session_identity,
+    )
+    from recipes.shared.web import _resolve_request_lang, templates
+
+    lang = _resolve_request_lang(request)
     received_state = request.query_params.get("state")
     code = request.query_params.get("code")
     error = request.query_params.get("error")
@@ -652,25 +679,21 @@ async def admin_config_dropbox_callback(
     if error:
         return templates.TemplateResponse(
             request=request,
-            name=template_name,
+            name=_config_template_name(request),
             context=_admin_config_context(
-                request, conn, ("error", f"Autorisation Dropbox refusee : {error}")
+                request,
+                conn,
+                ("error", gettext("flash.dropbox_oauth_denied", lang, error=error)),
             ),
         )
 
-    expected_state = get_setting("dropbox_oauth_state", conn=conn)
-    verifier = get_setting("dropbox_oauth_verifier", conn=conn)
+    flow = pop_dropbox_oauth_state(received_state, conn=conn)
+    # Hygiene : drop pre-migration single keys if still present.
     delete_setting("dropbox_oauth_state", conn=conn)
     delete_setting("dropbox_oauth_verifier", conn=conn)
 
-    if not code:
-        detail = "code manquant"
-    elif not expected_state or received_state != expected_state:
-        detail = "state invalide — relancez la connexion depuis la page de configuration"
-    else:
-        detail = ""
-
-    if detail:
+    if flow is None or not code:
+        detail = "code manquant" if flow is not None else "state inconnu ou expiré"
         log.warning(
             "Dropbox OAuth callback rejected: %s (received state present: %s)",
             detail,
@@ -678,16 +701,52 @@ async def admin_config_dropbox_callback(
         )
         return templates.TemplateResponse(
             request=request,
-            name=template_name,
+            name=_config_template_name(request),
             context=_admin_config_context(
-                request, conn, ("error", f"Reponse Dropbox invalide ({detail}).")
+                request,
+                conn,
+                ("error", gettext("flash.dropbox_oauth_retry", lang)),
             ),
             status_code=422,
         )
 
+    session_user = auth_module.get_user(request)
+    session_sub = session_user.get("sub") if session_user else None
+    if session_sub != flow.get("sub"):
+        log.warning(
+            "Dropbox OAuth callback forbidden: flow owned by another user "
+            "(received state present: %s)",
+            bool(received_state),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=gettext("flash.dropbox_oauth_forbidden", lang),
+        )
+
+    purpose = flow.get("purpose")
+    if purpose == "add" and not auth_module.is_admin(request):
+        raise HTTPException(
+            status_code=403,
+            detail=gettext("flash.dropbox_admin_required", lang),
+        )
+    if purpose not in ("add", "propose"):
+        log.warning("Dropbox OAuth callback rejected: unknown purpose %r", purpose)
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(
+                request,
+                conn,
+                ("error", gettext("flash.dropbox_oauth_retry", lang)),
+            ),
+            status_code=422,
+        )
+    raw_verifier = flow.get("verifier")
+    verifier = str(raw_verifier) if isinstance(raw_verifier, str) else None
+
     try:
         refresh_token = exchange_authorization_code(
-            str(code), _dropbox_redirect_uri(request), verifier or None
+            str(code), _dropbox_redirect_uri(request), verifier
         )
         try:
             account_label = verify_connection_credentials(refresh_token)
@@ -698,15 +757,31 @@ async def admin_config_dropbox_callback(
         log.exception("Dropbox OAuth code exchange failed")
         return templates.TemplateResponse(
             request=request,
-            name=template_name,
+            name=_config_template_name(request),
             context=_admin_config_context(
-                request, conn, ("error", f"Echange du code echoue : {e}")
+                request,
+                conn,
+                ("error", gettext("flash.dropbox_exchange_failed", lang, error=e)),
             ),
         )
 
+    if purpose == "propose":
+        user_id, _sub = _session_identity(request, conn, lang)
+        return templates.TemplateResponse(
+            request=request,
+            name=_dropbox_template_name(request),
+            context=_dropbox_page_context(
+                request,
+                conn,
+                user_id,
+                ("ok", gettext("flash.dropbox_oauth_state", lang)),
+                oauth_refresh_token=refresh_token,
+                oauth_account_label=account_label,
+            ),
+        )
     return templates.TemplateResponse(
         request=request,
-        name=template_name,
+        name=_config_template_name(request),
         context=_admin_config_oauth_context(request, conn, refresh_token, account_label),
     )
 
@@ -808,7 +883,7 @@ async def admin_config_toggle_active(
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.shared.web import templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
     dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
     if not dbx_conn:
@@ -817,6 +892,23 @@ async def admin_config_toggle_active(
             name=_config_template_name(request),
             context=_admin_config_context(request, conn, ("error", "Connexion introuvable.")),
             status_code=404,
+        )
+    if str(dbx_conn.get("status", "approved")) != "approved":
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(
+                request,
+                conn,
+                (
+                    "error",
+                    gettext(
+                        "flash.dropbox_approval_required",
+                        _resolve_request_lang(request),
+                    ),
+                ),
+            ),
+            status_code=422,
         )
     connections = {c["id"]: c for c in get_dropbox_connections(conn=conn)}
     new_active = not bool(connections[connection_id]["active"])
@@ -831,7 +923,7 @@ async def admin_config_toggle_visible(
     connection_id: int = Path(gt=0),
     _user: dict[str, Any] = Depends(require_admin),
 ) -> HTMLResponse:
-    from recipes.shared.web import templates
+    from recipes.shared.web import _resolve_request_lang, templates
 
     dbx_conn = get_dropbox_connection_credentials(connection_id, conn=conn)
     if not dbx_conn:
@@ -840,6 +932,23 @@ async def admin_config_toggle_visible(
             name=_config_template_name(request),
             context=_admin_config_context(request, conn, ("error", "Connexion introuvable.")),
             status_code=404,
+        )
+    if str(dbx_conn.get("status", "approved")) != "approved":
+        return templates.TemplateResponse(
+            request=request,
+            name=_config_template_name(request),
+            context=_admin_config_context(
+                request,
+                conn,
+                (
+                    "error",
+                    gettext(
+                        "flash.dropbox_approval_required",
+                        _resolve_request_lang(request),
+                    ),
+                ),
+            ),
+            status_code=422,
         )
     connections = {c["id"]: c for c in get_dropbox_connections(conn=conn)}
     new_visible = not bool(connections[connection_id]["visible"])

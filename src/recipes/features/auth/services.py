@@ -2,6 +2,7 @@
 
 import sqlite3
 from contextlib import nullcontext
+from typing import Any
 
 from recipes.shared.db import get_conn
 
@@ -33,3 +34,31 @@ def get_or_create_user(
         )
         assert cur.lastrowid is not None
         return int(cur.lastrowid)
+
+
+def resolve_user_id(
+    session_user: dict[str, Any] | None, conn: sqlite3.Connection | None = None
+) -> int | None:
+    """Return the numeric user ID for a session, self-healing a stale session.
+
+    The session may hold an ID with no matching `users` row (e.g. the
+    database was recreated after login) : resolve via `subject` (stable
+    OIDC identifier) so writes never use a dangling foreign key.
+    """
+    if session_user is None:
+        return None
+    subject = session_user.get("sub")
+    if not isinstance(subject, str) or not subject.strip():
+        raw_id = session_user.get("id")
+        try:
+            return int(str(raw_id))
+        except (TypeError, ValueError):
+            return None
+    email = session_user.get("email")
+    name = session_user.get("name")
+    return get_or_create_user(
+        subject=subject.strip(),
+        email=str(email) if isinstance(email, str) else None,
+        name=str(name) if isinstance(name, str) else None,
+        conn=conn,
+    )

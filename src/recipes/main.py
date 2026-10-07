@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from recipes.features.admin.controllers import router as admin_router
+from recipes.features.admin.dropbox_controllers import router as admin_dropbox_router
 from recipes.features.auth.controllers import router as auth_router
 from recipes.features.collections.controllers import router as collections_router
 from recipes.features.preferences.controllers import router as preferences_router
@@ -143,6 +144,7 @@ app.include_router(shopping_templates_router)
 app.include_router(shopping_router)
 app.include_router(shopping_scan_router)
 app.include_router(admin_router)
+app.include_router(admin_dropbox_router)
 
 
 @app.middleware("http")

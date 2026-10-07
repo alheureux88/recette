@@ -58,27 +58,11 @@ def _effective_user_id(request: Request, conn: sqlite3.Connection) -> int | None
     Resolve via `subject` (stable OIDC identifier) and refresh the
     session so subsequent requests are consistent.
     """
-    from recipes.features.auth.services import get_or_create_user
+    from recipes.features.auth.services import resolve_user_id
 
     session_user = get_user(request)
-    if session_user is None:
-        return None
-    subject = session_user.get("sub")
-    if not isinstance(subject, str) or not subject.strip():
-        raw_id = session_user.get("id")
-        try:
-            return int(str(raw_id))
-        except (TypeError, ValueError):
-            return None
-    email = session_user.get("email")
-    name = session_user.get("name")
-    fresh_id = get_or_create_user(
-        subject=subject.strip(),
-        email=str(email) if isinstance(email, str) else None,
-        name=str(name) if isinstance(name, str) else None,
-        conn=conn,
-    )
-    if session_user.get("id") != fresh_id:
+    fresh_id = resolve_user_id(session_user, conn=conn)
+    if session_user is not None and fresh_id is not None and session_user.get("id") != fresh_id:
         session_user["id"] = fresh_id
         request.session["user"] = session_user
     return fresh_id

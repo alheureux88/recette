@@ -518,6 +518,61 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
             "SUPERUSER_GROUPS in .env."
         ),
     },
+    # --- Administration : propositions Dropbox en attente (owners) ---
+    "config.pending_title": {
+        "fr": "Propositions en attente",
+        "en": "Pending proposals",
+    },
+    "config.pending_empty": {
+        "fr": "Aucune proposition en attente.",
+        "en": "No pending proposals.",
+    },
+    "config.pending_by": {"fr": "Proposée par", "en": "Proposed by"},
+    "config.pending_approve_hint": {
+        "fr": "Approuver active et affiche la connexion aussitôt (ajustable ensuite).",
+        "en": "Approving activates and shows the connection right away (adjustable afterwards).",
+    },
+    "config.action_approve": {"fr": "Approuver", "en": "Approve"},
+    "config.action_reject": {"fr": "Refuser", "en": "Reject"},
+    # --- Administration : page Comptes Dropbox (super-users) ---
+    "admin.dropbox_title": {
+        "fr": "Comptes Dropbox",
+        "en": "Dropbox accounts",
+    },
+    "admin.dropbox_intro": {
+        "fr": (
+            "Proposez votre compte Dropbox personnel. La connexion restera "
+            "inactive et invisible tant qu'un owner ne l'aura pas approuvée."
+        ),
+        "en": (
+            "Propose your personal Dropbox account. The connection will stay "
+            "inactive and invisible until an owner approves it."
+        ),
+    },
+    "admin.dropbox_connect": {
+        "fr": "Connecter mon compte Dropbox",
+        "en": "Connect my Dropbox account",
+    },
+    "admin.dropbox_connect_hint": {
+        "fr": "Vous serez redirigé vers Dropbox pour autoriser l'accès à vos recettes.",
+        "en": "You will be redirected to Dropbox to authorize access to your recipes.",
+    },
+    "admin.dropbox_mine_title": {
+        "fr": "Mes propositions",
+        "en": "My proposals",
+    },
+    "admin.dropbox_empty": {
+        "fr": "Aucune proposition pour le moment.",
+        "en": "No proposals yet.",
+    },
+    "admin.dropbox_col_status": {"fr": "Statut", "en": "Status"},
+    "admin.dropbox_status_pending": {"fr": "En attente", "en": "Pending"},
+    "admin.dropbox_status_approved": {"fr": "Approuvée", "en": "Approved"},
+    "admin.dropbox_status_rejected": {"fr": "Refusée", "en": "Rejected"},
+    "admin.dropbox_action_propose": {
+        "fr": "Proposer la connexion",
+        "en": "Propose connection",
+    },
     # --- Flash messages / erreurs ---
     "flash.dropbox_name_required": {
         "fr": "Le nom et le refresh token sont obligatoires.",
@@ -575,6 +630,48 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "flash.dropbox_state_paused": {"fr": "arretee", "en": "stopped"},
     "flash.dropbox_state_visible": {"fr": "visible", "en": "visible"},
     "flash.dropbox_state_hidden": {"fr": "masquee", "en": "hidden"},
+    "flash.dropbox_proposed": {
+        "fr": (
+            "Proposition '{name}' envoyee. Elle restera inactive et invisible "
+            "jusqu'a approbation par un owner."
+        ),
+        "en": (
+            "Proposal '{name}' submitted. It will stay inactive and invisible "
+            "until an owner approves it."
+        ),
+    },
+    "flash.dropbox_limit_reached": {
+        "fr": "Vous avez deja {n} propositions en attente (maximum autorise).",
+        "en": "You already have {n} pending proposals (maximum allowed).",
+    },
+    "flash.dropbox_proposal_deleted": {
+        "fr": "Proposition supprimee.",
+        "en": "Proposal deleted.",
+    },
+    "flash.dropbox_approved": {
+        "fr": "Connexion '{name}' approuvee et activee.",
+        "en": "Connection '{name}' approved and activated.",
+    },
+    "flash.dropbox_rejected": {
+        "fr": "Connexion '{name}' refusee.",
+        "en": "Connection '{name}' rejected.",
+    },
+    "flash.dropbox_oauth_retry": {
+        "fr": "Session OAuth expiree ou invalide : relancez la connexion.",
+        "en": "OAuth session expired or invalid: please restart the connection.",
+    },
+    "flash.dropbox_oauth_forbidden": {
+        "fr": "Ce flux d'autorisation appartient a un autre usager.",
+        "en": "This authorization flow belongs to another user.",
+    },
+    "flash.dropbox_admin_required": {
+        "fr": "Seul un owner peut finaliser une connexion directe.",
+        "en": "Only an owner can finalize a direct connection.",
+    },
+    "flash.dropbox_approval_required": {
+        "fr": "Connexion en attente d'approbation : approuvez-la d'abord.",
+        "en": "Connection pending approval: approve it first.",
+    },
     "flash.llm_set": {
         "fr": "Modele LLM defini : '{model}'.",
         "en": "LLM model set: '{model}'.",
@@ -903,6 +1000,10 @@ TRANSLATIONS: Final[dict[str, dict[str, str]]] = {
     "nav.admin_collections": {
         "fr": "Administration Collections",
         "en": "Collection administration",
+    },
+    "nav.admin_dropbox": {
+        "fr": "Administration Dropbox",
+        "en": "Dropbox administration",
     },
     "collections.title": {"fr": "Collections", "en": "Collections"},
     "collections.site_title": {

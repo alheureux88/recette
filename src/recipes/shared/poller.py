@@ -597,6 +597,9 @@ def run() -> None:
     for conn in get_dropbox_connections():
         conn_id = int(str(conn["id"]))
         label = str(conn["name"])
+        if str(conn.get("status", "approved")) != "approved":
+            log.info("[%s] Not approved by an owner — skipping.", label)
+            continue
         if not conn["active"]:
             log.info("[%s] Synchronization paused — skipping.", label)
             continue
